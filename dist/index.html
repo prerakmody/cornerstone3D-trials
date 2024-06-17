@@ -1,23 +1,22 @@
 <html>
     <head>
-        <style>
-            .pressed {
-              background-color: #259736;
-            }
-        </style>
     </head>
     <body>
-        <input type="file" id="dicomFolder" webkitdirectory multiple />
-        <br> 
-        <button id="dicomDownload">Download</button>
         <p>
-            Click on Mouse Scroll to pan. <br> 
-            Zoom using Right Mouse Button. <br> 
-            Draw/Sculpt Contours using Left Mouse Button. <br>
-            Press 'Esc' to get out of an incomplete contour. <br>
-            Press 'r' to reset the stack (not working!). <br>
+            <b>Interactions</b>
+            <br/>
+            1. Use scroll to navigate slices of the axial,sagittal and coronal planes. 
+            <br> 
+            2. Use right click to zoom Click on Mouse Scroll to pan. 
+            <br> 
+            3. Draw/Sculpt Contours using Left Mouse Button.
+            <br>
+            4. Press the "No Contouring" button to change window of CT scan.
+            <br>
+            
         </p>
-        <div id="content"></div>
+        <div id="interactionButtonsDiv"></div>
+        <div id="contentDiv"></div>
         <script src="main.js"></script>
     </body>
 

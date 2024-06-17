@@ -10,9 +10,12 @@ import setCtTransferFunctionForVolumeActor from './helpers/setCtTransferFunction
 
 //******************************************* Step 0 - Define Ids (and other configs) */
 
-const axialID    = 'CT_AXIAL_STACK';
-const sagittalID = 'CT_SAGITTAL_STACK';
-const coronalID  = 'CT_CORONAL_STACK';
+const contentDivId = 'contentDiv';
+const interactionButtonsDivId = 'interactionButtonsDiv'
+
+const axialID    = 'Axial';
+const sagittalID = 'Sagittal';
+const coronalID  = 'Coronal';
 const viewportIds = [axialID, sagittalID, coronalID];
 const viewPortDivId = 'viewportDiv';
 
@@ -35,51 +38,60 @@ const volumeLoaderScheme = 'cornerstoneStreamingImageVolume';
 const volumeIdPET           = `${volumeLoaderScheme}:myVolumePET`;
 const volumeIdCT           = `${volumeLoaderScheme}:myVolumeCT`;
 
-// CT scan from cornerstone3D
-// const searchObjCT = {
-//     StudyInstanceUID: '1.3.6.1.4.1.14519.5.2.1.7009.2403.334240657131972136850343327463',
-//     SeriesInstanceUID:'1.3.6.1.4.1.14519.5.2.1.7009.2403.226151125820845824875394858561',
-//     wadoRsRoot: 'https://d3t6nz73ql33tx.cloudfront.net/dicomweb',
-// }
 
-// const searchObjPET = {
-//     StudyInstanceUID: '1.3.6.1.4.1.14519.5.2.1.7009.2403.334240657131972136850343327463',
-//     SeriesInstanceUID:'1.3.6.1.4.1.14519.5.2.1.7009.2403.879445243400782656317561081015',
-//     wadoRsRoot: 'https://d3t6nz73ql33tx.cloudfront.net/dicomweb',
-// }
+console.log('process.env.NETLIFY: ', process.env.NETLIFY)
+let searchObjCT = {};
+let searchObjPET = {};
+if (process.env.NETLIFY == true){
 
-// ProstateX-004 (MR)  
-// const searchObj = {
-//     StudyInstanceUID: '1.3.6.1.4.1.14519.5.2.1.7311.5101.170561193612723093192571245493',
-//     SeriesInstanceUID:'1.3.6.1.4.1.14519.5.2.1.7311.5101.206828891270520544417996275680',
-//     wadoRsRoot: `${window.location.origin}/dicom-web`,
-//   }
-//// --> (Try in postman) http://localhost:8042/dicom-web/studies/1.3.6.1.4.1.14519.5.2.1.7311.5101.170561193612723093192571245493/series/1.3.6.1.4.1.14519.5.2.1.7311.5101.206828891270520544417996275680/metadata 
-
-// HCAI-Interactive-XX (PET)
-const searchObjPET = {
-    StudyInstanceUID: '1.2.752.243.1.1.20240123155004085.1690.65801',
-    SeriesInstanceUID:'1.2.752.243.1.1.20240123155004085.1700.14027',
-    wadoRsRoot:  `${window.location.origin}/dicom-web`,
+    // CT scan from cornerstone3D samples
+    searchObjCT = {
+        StudyInstanceUID: '1.3.6.1.4.1.14519.5.2.1.7009.2403.334240657131972136850343327463',
+        SeriesInstanceUID:'1.3.6.1.4.1.14519.5.2.1.7009.2403.226151125820845824875394858561',
+        wadoRsRoot: 'https://d3t6nz73ql33tx.cloudfront.net/dicomweb',
+    }
+    
+    // PET scan from cornerstone3D samples
+    searchObjPET = {
+        StudyInstanceUID: '1.3.6.1.4.1.14519.5.2.1.7009.2403.334240657131972136850343327463',
+        SeriesInstanceUID:'1.3.6.1.4.1.14519.5.2.1.7009.2403.879445243400782656317561081015',
+        wadoRsRoot: 'https://d3t6nz73ql33tx.cloudfront.net/dicomweb',
+    }   
 }
-//// --> (Try in postman) http://localhost:8042/dicom-web/studies/1.2.752.243.1.1.20240123155004085.1690.65801/series/1.2.752.243.1.1.20240123155004085.1700.14027/metadata
+else {
+    // ProstateX-004 (MR)  
+    // const searchObj = {
+    //     StudyInstanceUID: '1.3.6.1.4.1.14519.5.2.1.7311.5101.170561193612723093192571245493',
+    //     SeriesInstanceUID:'1.3.6.1.4.1.14519.5.2.1.7311.5101.206828891270520544417996275680',
+    //     wadoRsRoot: `${window.location.origin}/dicom-web`,
+    //   }
+    //// --> (Try in postman) http://localhost:8042/dicom-web/studies/1.3.6.1.4.1.14519.5.2.1.7311.5101.170561193612723093192571245493/series/1.3.6.1.4.1.14519.5.2.1.7311.5101.206828891270520544417996275680/metadata 
 
-// HCAI-Interactive-XX (CT)
-const searchObjCT = {
-    StudyInstanceUID: '1.2.752.243.1.1.20240123155004085.1690.65801',
-    SeriesInstanceUID:'1.2.752.243.1.1.20240123155006526.5320.21561',
-    wadoRsRoot:  `${window.location.origin}/dicom-web`,
+    // HCAI-Interactive-XX (PET)
+    searchObjPET = {
+        StudyInstanceUID: '1.2.752.243.1.1.20240123155004085.1690.65801',
+        SeriesInstanceUID:'1.2.752.243.1.1.20240123155004085.1700.14027',
+        wadoRsRoot:  `${window.location.origin}/dicom-web`,
+    }
+    //// --> (Try in postman) http://localhost:8042/dicom-web/studies/1.2.752.243.1.1.20240123155004085.1690.65801/series/1.2.752.243.1.1.20240123155004085.1700.14027/metadata
+
+    // HCAI-Interactive-XX (CT)
+    searchObjCT = {
+        StudyInstanceUID: '1.2.752.243.1.1.20240123155004085.1690.65801',
+        SeriesInstanceUID:'1.2.752.243.1.1.20240123155006526.5320.21561',
+        wadoRsRoot:  `${window.location.origin}/dicom-web`,
+    }
+    //// --> (Try in postman) http://localhost:8042/dicom-web/studies/1.2.752.243.1.1.20240123155004085.1690.65801/series/1.2.752.243.1.1.20240123155004085.1700.14027/metadata
 }
-//// --> (Try in postman) http://localhost:8042/dicom-web/studies/1.2.752.243.1.1.20240123155004085.1690.65801/series/1.2.752.243.1.1.20240123155004085.1700.14027/metadata
+
 let volumeCT = 'none';
 let volumePT = 'none';
-
 
 //******************************************* Step 1 - Make viewport (and other) htmls */
 
 function createViewPortsHTML() {
 
-    const contentDiv = document.getElementById('content');
+    const contentDiv = document.getElementById(contentDivId);
 
     const viewportGridDiv = document.createElement('div');
     viewportGridDiv.id = viewPortDivId;
@@ -117,8 +129,8 @@ const {axialDiv, sagittalDiv, coronalDiv} = createViewPortsHTML();
 
 function createContouringHTML() {
 
-    // Step 1.0 - Get contentDiv and contouringButtonDiv
-    const contentDiv = document.getElementById('content');
+    // Step 1.0 - Get interactionButtonsDiv and contouringButtonDiv
+    const interactionButtonsDiv = document.getElementById(interactionButtonsDivId);
     const contouringButtonDiv = document.createElement('div');
     contouringButtonDiv.id = contouringButtonDivId;
     contouringButtonDiv.style.display = 'flex';
@@ -127,17 +139,17 @@ function createContouringHTML() {
     // Step 1.1 - Create a button to enable PlanarFreehandContourSegmentationTool
     const contourSegmentationToolButton = document.createElement('button');
     contourSegmentationToolButton.id = contourSegmentationToolButtonId;
-    contourSegmentationToolButton.innerHTML = 'Enable PlanarFreehandSegmentationTool';
+    contourSegmentationToolButton.innerHTML = 'Enable Circle Brush';
     
     // Step 1.2 - Create a button to enable SculptorTool
     const sculptorToolButton = document.createElement('button');
     sculptorToolButton.id = sculptorToolButtonId;
-    sculptorToolButton.innerHTML = 'Enable SculptorTool';
+    sculptorToolButton.innerHTML = 'Enable Circle Eraser';
     
     // Step 1.3 - No contouring button
     const noContouringButton = document.createElement('button');
     noContouringButton.id = noContouringButtonId;
-    noContouringButton.innerHTML = 'No Contouring';
+    noContouringButton.innerHTML = 'Enable WindowLevelTool';
     
     // Step 1.3 - Add buttons to contouringButtonDiv
     contouringButtonDiv.appendChild(contourSegmentationToolButton);
@@ -145,7 +157,7 @@ function createContouringHTML() {
     contouringButtonDiv.appendChild(noContouringButton);
 
     // Step 1.4 - Add contouringButtonDiv to contentDiv
-    contentDiv.appendChild(contouringButtonDiv); 
+    interactionButtonsDiv.appendChild(contouringButtonDiv); 
     
     return {noContouringButton, contourSegmentationToolButton, sculptorToolButton};
 
@@ -177,8 +189,8 @@ function getValue(volume, worldPos) {
 
 function otherHTMLElements(){
 
-    // Step 1.0 - Get contentDiv and contouringButtonDiv
-    const contentDiv = document.getElementById('content');
+    // Step 1.0 - Get interactionButtonsDiv and contouringButtonDiv
+    const interactionButtonsDiv = document.getElementById(interactionButtonsDivId);
     const otherButtonsDiv = document.createElement('div');
     otherButtonsDiv.id = otherButtonsDivId;
     otherButtonsDiv.style.display = 'flex';
@@ -204,7 +216,6 @@ function otherHTMLElements(){
     showPETButton.id = 'showPETButton';
     showPETButton.innerHTML = 'Show PET';
     showPETButton.addEventListener('click', function() {
-        console.log('Showing PET (fusedPETCT: ', fusedPETCT);
         const renderingEngine = cornerstone3D.getRenderingEngine(renderingEngineId);
         if (fusedPETCT) {
             [axialID, sagittalID, coronalID].forEach((viewportId) => {
@@ -237,14 +248,13 @@ function otherHTMLElements(){
     [axialDiv, sagittalDiv, coronalDiv].forEach((viewportDiv, index) => {
         viewportDiv.addEventListener('mousemove', function(evt) {
             if (volumeCT === 'none' || volumePT === 'none') return;
-            console.log(viewportIds[index], volumeCT, volumePT)
             const renderingEngine = cornerstone3D.getRenderingEngine(renderingEngineId);
             const rect        = viewportDiv.getBoundingClientRect();
             const canvasPos   = [Math.floor(evt.clientX - rect.left),Math.floor(evt.clientY - rect.top),];
             const viewPortTmp = renderingEngine.getViewport(viewportIds[index]);
             const worldPos    = viewPortTmp.canvasToWorld(canvasPos);
 
-            canvasPosHTML.innerText = `Canvas position: (${canvasPos[0]}, ${canvasPos[1]})`;
+            canvasPosHTML.innerText = `Canvas position: (${viewportIds[index]}) - (${canvasPos[0]}, ${canvasPos[1]})`;
             ctValueHTML.innerText = `CT value: ${getValue(volumeCT, worldPos)}`;
             ptValueHTML.innerText = `PT value: ${getValue(volumePT, worldPos)}`;
         });
@@ -258,7 +268,7 @@ function otherHTMLElements(){
     otherButtonsDiv.appendChild(resetViewButton);
     otherButtonsDiv.appendChild(showPETButton);
     otherButtonsDiv.appendChild(mouseHoverDiv);
-    contentDiv.appendChild(otherButtonsDiv);
+    interactionButtonsDiv.appendChild(otherButtonsDiv);
 
     return {resetViewButton, showPETButton};
 }

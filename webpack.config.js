@@ -2,6 +2,7 @@ const path = require('path');
 const SpeedMeasurePlugin = require("speed-measure-webpack-plugin");
 const smp = new SpeedMeasurePlugin();
 const { createProxyMiddleware } = require('http-proxy-middleware');
+const webpack = require('webpack');
 
 module.exports = smp.wrap({
   // entry: './src/index3D.js',
@@ -51,4 +52,10 @@ module.exports = smp.wrap({
       },
     ],
   },
+  plugins: [
+    new webpack.DefinePlugin({
+      'process.env.NETLIFY': JSON.stringify(process.env.NETLIFY),
+      'process.env.CONTEXT': JSON.stringify(process.env.CONTEXT),
+    })
+  ],
 });
