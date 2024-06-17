@@ -1,0 +1,11 @@
+# Node stuff
+node_modules
+
+# Project
+dist/
+package-lock.json
+
+# Others
+.vscode
+.DS_STORE
+.mjs
