@@ -39,11 +39,12 @@ const volumeIdPET           = `${volumeLoaderScheme}:myVolumePET`;
 const volumeIdCT           = `${volumeLoaderScheme}:myVolumeCT`;
 
 
-console.log('process.env.NETLIFY: ', process.env.NETLIFY)
+console.log('process.env.NETLIFY: ', process.env.NETLIFY, process.env.NETLIFY == true)
 let searchObjCT = {};
 let searchObjPET = {};
-if (process.env.NETLIFY == true){
+if (process.env.NETLIFY === "true"){
 
+    console.log('Running on Netlify')
     // CT scan from cornerstone3D samples
     searchObjCT = {
         StudyInstanceUID: '1.3.6.1.4.1.14519.5.2.1.7009.2403.334240657131972136850343327463',
@@ -59,6 +60,8 @@ if (process.env.NETLIFY == true){
     }   
 }
 else {
+    console.log('Running on localhost')
+
     // ProstateX-004 (MR)  
     // const searchObj = {
     //     StudyInstanceUID: '1.3.6.1.4.1.14519.5.2.1.7311.5101.170561193612723093192571245493',
@@ -201,7 +204,6 @@ function otherHTMLElements(){
     resetViewButton.id = 'resetViewButton';
     resetViewButton.innerHTML = 'Reset View';
     resetViewButton.addEventListener('click', function() {
-        console.log('Resetting view');
         const renderingEngine = cornerstone3D.getRenderingEngine(renderingEngineId);
         [axialID, sagittalID, coronalID].forEach((viewportId) => {
             console.log('Resetting view: ', viewportId, renderingEngine.getViewport(viewportId));
