@@ -47,14 +47,14 @@ module.exports = smp.wrap({
     rules: [
       {
         test: /\.wasm$/,
-        use: ['wasm-loader'],
+        use: ['wasm-loader'], //to deal with ERROR in ./node_modules/@icr/polyseg-wasm/dist/ICRPolySeg.wasm 1:0
         type: 'javascript/auto',
       },
     ],
   },
   plugins: [
     new webpack.DefinePlugin({
-      'process.env.NETLIFY': JSON.stringify(process.env.NETLIFY),
+      'process.env.NETLIFY': JSON.stringify(process.env.NETLIFY), // to use dicoms from https://d3t6nz73ql33tx.cloudfront.net/dicomweb when on netlify
       'process.env.CONTEXT': JSON.stringify(process.env.CONTEXT),
     })
   ],
