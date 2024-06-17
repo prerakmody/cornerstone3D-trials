@@ -1,6 +1,6 @@
 import dicomParser from 'dicom-parser';
 import * as cornerstone3D from '@cornerstonejs/core';
-import * as cornerstone3DTools from '@cornerstonejs/tools/dist/umd/index.js'; // to deal with ERROR in ./node_modules/@icr/polyseg-wasm/dist/ICRPolySeg.wasm 1:0
+import * as cornerstone3DTools from '@cornerstonejs/tools';
 import * as cornerstoneDICOMImageLoader from '@cornerstonejs/dicom-image-loader';
 import * as cornerstoneStreamingImageLoader from '@cornerstonejs/streaming-image-volume-loader';
 

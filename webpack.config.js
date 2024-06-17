@@ -39,4 +39,16 @@ module.exports = smp.wrap({
       return middlewares;
     },
   },
+  experiments: {
+    asyncWebAssembly: true,
+  },
+  module: {
+    rules: [
+      {
+        test: /\.wasm$/,
+        use: ['wasm-loader'],
+        type: 'javascript/auto',
+      },
+    ],
+  },
 });
