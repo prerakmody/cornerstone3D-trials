@@ -1,12 +1,14 @@
 import dicomParser from 'dicom-parser';
 import * as cornerstone3D from '@cornerstonejs/core';
 import * as cornerstone3DTools from '@cornerstonejs/tools';
+import * as cornerstoneAdapters from "@cornerstonejs/adapters";
 import * as cornerstoneDICOMImageLoader from '@cornerstonejs/dicom-image-loader';
 import * as cornerstoneStreamingImageLoader from '@cornerstonejs/streaming-image-volume-loader';
 
 import createImageIdsAndCacheMetaData from './helpers/createImageIdsAndCacheMetaData'; // https://github.com/cornerstonejs/cornerstone3D/blob/a4ca4dde651d17e658a4aec5a4e3ec1b274dc580/utils/demo/helpers/createImageIdsAndCacheMetaData.js
 import setPetColorMapTransferFunctionForVolumeActor from './helpers/setPetColorMapTransferFunctionForVolumeActor'; //https://github.com/cornerstonejs/cornerstone3D/blob/v1.77.13/utils/demo/helpers/setPetColorMapTransferFunctionForVolumeActor.js
 import setCtTransferFunctionForVolumeActor from './helpers/setCtTransferFunctionForVolumeActor'; // https://github.com/cornerstonejs/cornerstone3D/blob/v1.77.13/utils/demo/helpers/setCtTransferFunctionForVolumeActor.js
+
 
 /****************************************************************
 *                             VARIABLES  
@@ -35,23 +37,29 @@ const strEraserCircle = 'circularEraser';
 const renderingEngineId  = 'myRenderingEngine';
 const toolGroupId        = 'STACK_TOOL_GROUP_ID';
 const volumeLoaderScheme = 'cornerstoneStreamingImageVolume';
-const volumeIdPET        = `${volumeLoaderScheme}:myVolumePET`;
-const volumeIdCT         = `${volumeLoaderScheme}:myVolumeCT`;
+const volumeIdPETBase      = `${volumeLoaderScheme}:myVolumePET`; //+ cornerstone3D.utilities.uuidv4()
+const volumeIdCTBase       = `${volumeLoaderScheme}:myVolumeCT`;
+let volumeIdCT;
+let volumeIdPET;
+
 const segmentationId     = `SEGMENTATION_ID`;
 
 // General
 let fusedPETCT   = false;
-let volumeCT     = 'none';
-let volumePT     = 'none';
+// let volumeCT     = 'none';
+// let volumePT     = 'none';
+let petBool      = false;
+// let renderingEngine = 'none';
 
 /****************************************************************
 *                             UTILS  
 *****************************************************************/
 
-function getData(){
+function getDataURLs(caseNumber){
 
     let searchObjCT  = {};
     let searchObjPET = {};
+    let searchObjRTS = {};
 
     if (process.env.NETLIFY === "true"){
 
@@ -73,32 +81,56 @@ function getData(){
     else {
         console.log(' - [getData()] Running on localhost. Getting data from local orthanc.')
 
-        // ProstateX-004 (MR)  
-        // const searchObj = {
-        //     StudyInstanceUID: '1.3.6.1.4.1.14519.5.2.1.7311.5101.170561193612723093192571245493',
-        //     SeriesInstanceUID:'1.3.6.1.4.1.14519.5.2.1.7311.5101.206828891270520544417996275680',
-        //     wadoRsRoot: `${window.location.origin}/dicom-web`,
-        //   }
-        //// --> (Try in postman) http://localhost:8042/dicom-web/studies/1.3.6.1.4.1.14519.5.2.1.7311.5101.170561193612723093192571245493/series/1.3.6.1.4.1.14519.5.2.1.7311.5101.206828891270520544417996275680/metadata 
-
-        // HCAI-Interactive-XX (PET)
-        searchObjPET = {
-            StudyInstanceUID: '1.2.752.243.1.1.20240123155004085.1690.65801',
-            SeriesInstanceUID:'1.2.752.243.1.1.20240123155004085.1700.14027',
-            wadoRsRoot:  `${window.location.origin}/dicom-web`,
+        // ProstateX-004 (MR)
+        if (caseNumber == 0){
+            searchObjCT = {
+                StudyInstanceUID: '1.3.6.1.4.1.14519.5.2.1.7311.5101.170561193612723093192571245493',
+                SeriesInstanceUID:'1.3.6.1.4.1.14519.5.2.1.7311.5101.206828891270520544417996275680',
+                wadoRsRoot: `${window.location.origin}/dicom-web`,
+              }
+            // --> (Try in postman) http://localhost:8042/dicom-web/studies/1.3.6.1.4.1.14519.5.2.1.7311.5101.170561193612723093192571245493/series/1.3.6.1.4.1.14519.5.2.1.7311.5101.206828891270520544417996275680/metadata 
+            searchObjPET = {}
+            searchObjRTS = {}
         }
-        //// --> (Try in postman) http://localhost:8042/dicom-web/studies/1.2.752.243.1.1.20240123155004085.1690.65801/series/1.2.752.243.1.1.20240123155004085.1700.14027/metadata
+        // HCAI-Interactive-XX
+        else if (caseNumber == 1){
+            // HCAI-Interactive-XX (PET)
+            searchObjPET = {
+                StudyInstanceUID: '1.2.752.243.1.1.20240123155004085.1690.65801',
+                SeriesInstanceUID:'1.2.752.243.1.1.20240123155004085.1700.14027',
+                wadoRsRoot:  `${window.location.origin}/dicom-web`,
+            }
+            //// --> (Try in postman) http://localhost:8042/dicom-web/studies/1.2.752.243.1.1.20240123155004085.1690.65801/series/1.2.752.243.1.1.20240123155004085.1700.14027/metadata
 
-        // HCAI-Interactive-XX (CT)
-        searchObjCT = {
-            StudyInstanceUID: '1.2.752.243.1.1.20240123155004085.1690.65801',
-            SeriesInstanceUID:'1.2.752.243.1.1.20240123155006526.5320.21561',
-            wadoRsRoot:  `${window.location.origin}/dicom-web`,
+            // HCAI-Interactive-XX (CT)
+            searchObjCT = {
+                StudyInstanceUID: '1.2.752.243.1.1.20240123155004085.1690.65801',
+                SeriesInstanceUID:'1.2.752.243.1.1.20240123155006526.5320.21561',
+                wadoRsRoot:  `${window.location.origin}/dicom-web`,
+            }
+            //// --> (Try in postman) http://localhost:8042/dicom-web/studies/1.2.752.243.1.1.20240123155004085.1690.65801/series/1.2.752.243.1.1.20240123155004085.1700.14027/metadata
+
+            searchObjRTS = {}
         }
-        //// --> (Try in postman) http://localhost:8042/dicom-web/studies/1.2.752.243.1.1.20240123155004085.1690.65801/series/1.2.752.243.1.1.20240123155004085.1700.14027/metadata
+        // https://www.cornerstonejs.org/live-examples/segmentationvolume
+        else if (caseNumber == 2){
+            searchObjCT = {
+                StudyInstanceUID:"1.3.6.1.4.1.14519.5.2.1.256467663913010332776401703474716742458",
+                SeriesInstanceUID:"1.3.6.1.4.1.14519.5.2.1.40445112212390159711541259681923198035",
+                wadoRsRoot: "https://d33do7qe4w26qo.cloudfront.net/dicomweb"
+            },
+            searchObjPET = {
+            }
+            searchObjRTS = {
+                StudyInstanceUID:"1.3.6.1.4.1.14519.5.2.1.256467663913010332776401703474716742458",
+                SeriesInstanceUID:"1.2.276.0.7230010.3.1.3.481034752.2667.1663086918.611582",
+                SOPInstanceUID:"1.2.276.0.7230010.3.1.4.481034752.2667.1663086918.611583",
+            }
+        }  
+        
     }
 
-    return {searchObjCT, searchObjPET}
+    return {searchObjCT, searchObjPET, searchObjRTS};
 }
 
 function getValue(volume, worldPos) {
@@ -163,7 +195,11 @@ function showToast(message, duration = 1000) {
     setTimeout(() => {
       document.body.removeChild(toast);
     }, duration);
-  }
+}
+
+function getSegmentationIds() {
+    return cornerstone3DTools.segmentation.state.getSegmentations().map(x => x.segmentationId);
+}
 
 /****************************************************************
 *                         HTML ELEMENTS  
@@ -280,26 +316,30 @@ function otherHTMLElements(){
     showPETButton.id = 'showPETButton';
     showPETButton.innerHTML = 'Show PET';
     showPETButton.addEventListener('click', async function() {
-        const renderingEngine = cornerstone3D.getRenderingEngine(renderingEngineId);
-        if (fusedPETCT) {
-            [axialID, sagittalID, coronalID].forEach((viewportId) => {
-                const viewportTmp = renderingEngine.getViewport(viewportId);
-                viewportTmp.removeVolumeActors([volumeIdPET], true);
-                fusedPETCT = false;
-            });
-            setButtonBoundaryColor(this, false);
-        }
-        else {
-            // [axialID, sagittalID, coronalID].forEach((viewportId) => {
-            for (const viewportId of viewportIds) {
-                const viewportTmp = renderingEngine.getViewport(viewportId);
-                await viewportTmp.addVolumes([{ volumeId: volumeIdPET,}], true); // immeditate=true
-                fusedPETCT = true;
-                viewportTmp.setProperties({ colormap: { name: 'hsv', opacity:0.5 }, voiRange: { upper: 50000, lower: 100, } }, volumeIdPET);
-                // viewportTmp.setProperties({ colormap: { name: 'PET 20 Step', opacity:0.5 }, voiRange: { upper: 50000, lower: 100, } }, volumeIdPET);
-                // console.log(' -- colormap: ', viewportTmp.getColormap(volumeIdPET), viewportTmp.getColormap(volumeIdCT)); 
-            };
-            setButtonBoundaryColor(this, true);
+        if (petBool){
+            const renderingEngine = cornerstone3D.getRenderingEngine(renderingEngineId);
+            if (fusedPETCT) {
+                [axialID, sagittalID, coronalID].forEach((viewportId) => {
+                    const viewportTmp = renderingEngine.getViewport(viewportId);
+                    viewportTmp.removeVolumeActors([volumeIdPET], true);
+                    fusedPETCT = false;
+                });
+                setButtonBoundaryColor(this, false);
+            }
+            else {
+                // [axialID, sagittalID, coronalID].forEach((viewportId) => {
+                for (const viewportId of viewportIds) {
+                    const viewportTmp = renderingEngine.getViewport(viewportId);
+                    await viewportTmp.addVolumes([{ volumeId: volumeIdPET,}], true); // immeditate=true
+                    fusedPETCT = true;
+                    viewportTmp.setProperties({ colormap: { name: 'hsv', opacity:0.5 }, voiRange: { upper: 50000, lower: 100, } }, volumeIdPET);
+                    // viewportTmp.setProperties({ colormap: { name: 'PET 20 Step', opacity:0.5 }, voiRange: { upper: 50000, lower: 100, } }, volumeIdPET);
+                    // console.log(' -- colormap: ', viewportTmp.getColormap(volumeIdPET), viewportTmp.getColormap(volumeIdCT)); 
+                };
+                setButtonBoundaryColor(this, true);
+            }
+        }else{
+            showToast('No PET data available')
         }
     });
 
@@ -316,16 +356,19 @@ function otherHTMLElements(){
 
     [axialDiv, sagittalDiv, coronalDiv].forEach((viewportDiv, index) => {
         viewportDiv.addEventListener('mousemove', function(evt) {
-            if (volumeCT === 'none' || volumePT === 'none') return;
+            const volumeCTThis = cornerstone3D.cache.getVolume(volumeIdCT);
+            const volumePTThis = cornerstone3D.cache.getVolume(volumeIdPET);
+            if (volumeCTThis == undefined && volumePTThis == undefined) return;
             const renderingEngine = cornerstone3D.getRenderingEngine(renderingEngineId);
             const rect        = viewportDiv.getBoundingClientRect();
             const canvasPos   = [Math.floor(evt.clientX - rect.left),Math.floor(evt.clientY - rect.top),];
             const viewPortTmp = renderingEngine.getViewport(viewportIds[index]);
             const worldPos    = viewPortTmp.canvasToWorld(canvasPos);
 
-            canvasPosHTML.innerText = `Canvas position: (${viewportIds[index]}) - (${canvasPos[0]}, ${canvasPos[1]})`;
-            ctValueHTML.innerText = `CT value: ${getValue(volumeCT, worldPos)}`;
-            ptValueHTML.innerText = `PT value: ${getValue(volumePT, worldPos)}`;
+            canvasPosHTML.innerText = `Canvas position: (${viewportIds[index]}) => (${canvasPos[0]}, ${canvasPos[1]})`;
+            ctValueHTML.innerText = `CT value: ${getValue(volumeCTThis, worldPos)}`;
+            if (petBool){ptValueHTML.innerText = `PT value: ${getValue(volumePTThis, worldPos)}`;}
+            
         });
     });
 
@@ -333,28 +376,34 @@ function otherHTMLElements(){
     mouseHoverDiv.appendChild(ctValueHTML);
     mouseHoverDiv.appendChild(ptValueHTML);
 
-    // Step 5 - Create a toast HTML
-    const toastHTML = document.createElement('div');
-    toastHTML.style.position = 'fixed';
-    toastHTML.style.bottom = '20px';
-    toastHTML.style.left = '50%';
-    toastHTML.style.transform = 'translateX(-50%)';
-    toastHTML.style.background = '#333';
-    toastHTML.style.color = '#fff';
-    toastHTML.style.padding = '10px';
-    toastHTML.style.borderRadius = '5px';
-    toastHTML.style.zIndex = '1000';
-    document.body.appendChild(toastHTML);
+    // Step 5 - Create dropdown for case selection
+    const caseSelection = document.createElement('select');
+    caseSelection.id        = 'caseSelection';
+    caseSelection.innerHTML = 'Case Selection';
+    const cases = ['ProstateX-004', 'HCAI-Interactive-XX', 'SegmentationVolume'];
+    cases.forEach((caseName, index) => {
+        const option = document.createElement('option');
+        option.value = index;
+        option.text = caseName;
+        caseSelection.appendChild(option);
+    });
+    caseSelection.addEventListener('change', async function() {
+        const caseNumber = parseInt(this.value);
+        console.log('   -- caseNumber: ', caseNumber);
+        const renderingEngine = cornerstone3D.getRenderingEngine(renderingEngineId);
+        await fetchAndLoadData(caseNumber, renderingEngine, [volumeIdCT]);
+    });
 
     // Step 99 - Add to contentDiv
+    otherButtonsDiv.appendChild(caseSelection);
     otherButtonsDiv.appendChild(resetViewButton);
     otherButtonsDiv.appendChild(showPETButton);
     otherButtonsDiv.appendChild(mouseHoverDiv);
     interactionButtonsDiv.appendChild(otherButtonsDiv);
 
-    return {resetViewButton, showPETButton, toastHTML};
+    return {resetViewButton, showPETButton};
 }
-const {resetViewButton, showPETButton, toastHTML} = otherHTMLElements();
+const {resetViewButton, showPETButton} = otherHTMLElements();
 
 /****************************************************************
 *                      CORNERSTONE FUNCS  
@@ -521,45 +570,76 @@ function getAndSetRenderingEngineAndViewports(toolGroup){
     return {renderingEngine};
 }
 
-async function loadData(){
+async function fetchAndLoadData(caseNumber, renderingEngine){
 
     console.log(' \n ----------------- Getting .dcm data ----------------- \n')
+    restart();
 
     // Step 1 - Get search parameters
-    const {searchObjCT, searchObjPET} = getData();
+    const {searchObjCT, searchObjPET, searchObjRTS} = getDataURLs(caseNumber);
     console.log(' - [loadData()] searchObjCT: ', searchObjCT);
 
-    // Step 2 - Get .dcm data
+    // Step 2.1 - Create volume for CT
+    volumeIdCT       = volumeIdCTBase + cornerstone3D.utilities.uuidv4();
     const imageIdsCT = await createImageIdsAndCacheMetaData(searchObjCT);
-    const imageIdsPET = await createImageIdsAndCacheMetaData(searchObjPET);
-
-    // Step 3 - Create volume
-    volumeCT = await cornerstone3D.volumeLoader.createAndCacheVolume(volumeIdCT, { imageIds:imageIdsCT });
+    const volumeCT   = await cornerstone3D.volumeLoader.createAndCacheVolume(volumeIdCT, { imageIds:imageIdsCT });
     volumeCT.load();
-    volumePT = await cornerstone3D.volumeLoader.createAndCacheVolume(volumeIdPET, { imageIds: imageIdsPET });
-    volumePT.load();
+
+    // Step 2.2 - Create volume for PET
+    volumeIdPET = 'none';
+    petBool = false;
+    if (Object.keys(searchObjPET).length > 0){
+        volumeIdPET       = volumeIdPETBase + cornerstone3D.utilities.uuidv4();
+        const imageIdsPET = await createImageIdsAndCacheMetaData(searchObjPET);
+        const volumePT    = await cornerstone3D.volumeLoader.createAndCacheVolume(volumeIdPET, { imageIds: imageIdsPET });
+        volumePT.load();
+        petBool = true;
+    }
+
+    // Step 3 - Set volumes for viewports
+    await cornerstone3D.setVolumesForViewports(renderingEngine, [{ volumeId:volumeIdCT}, ], viewportIds, true);
+    
+    // Step 4 - Render viewports
+    renderingEngine.renderViewports(viewportIds);
+
+    // Step 5 - setupSegmentation
+    await setupSegmentation();
 }
 
-async function fillUpViewports(renderingEngine){
+function restart() {
+    
+    // Step 1 - Clear cache (images and volumes)
+    cornerstone3D.cache.purgeCache(); // cornerstone3D.cache.getVolumes(), cornerstone3D.cache.getCacheSize()
+    
+    // Step 2 - Remove segmentations from toolGroup
+    cornerstone3DTools.segmentation.removeSegmentationsFromToolGroup(toolGroupId);
+
+    // Step 3 - Remove segmentations from state
+    const segmentationIds = getSegmentationIds();
+    segmentationIds.forEach(segmentationId => {
+        cornerstone3DTools.segmentation.state.removeSegmentation(segmentationId);
+    });
+}
+
+async function fillUpViewports(renderingEngine, volumeIds){
 
     // Step 1 - Set volumes for viewports
     await cornerstone3D.setVolumesForViewports(renderingEngine,
-        // [{ volumeId:volumeIdPET}, { volumeId:volumeIdCT}, ],
-        [{ volumeId:volumeIdCT}, ],
-         viewportIds);
+        volumeIds.map(volumeId_ => ({ volumeId:volumeId_ })),
+        viewportIds);
     
     // Step 2 - Render viewports
     renderingEngine.renderViewports(viewportIds);
 
 }
 
-async function setupSegmentation(segmentation){
+async function setupSegmentation(){
 
     // Step 1 - Create a segmentation volume
     await cornerstone3D.volumeLoader.createAndCacheDerivedSegmentationVolume(volumeIdCT, {volumeId: segmentationId,});
 
     // Step 2 - Add the segmentation to the state
-    segmentation.addSegmentations([
+    cornerstone3DTools.segmentation.addSegmentations([
         {segmentationId,
             representation: {
                 type: cornerstone3DTools.Enums.SegmentationRepresentations.Labelmap,
@@ -568,10 +648,8 @@ async function setupSegmentation(segmentation){
         },
     ]);
 
-    
-
     // Step 3 - Set the segmentation representation to the toolGroup
-    const segmentationRepresentationUIDs = await segmentation.addSegmentationRepresentations(toolGroupId, [
+    await cornerstone3DTools.segmentation.addSegmentationRepresentations(toolGroupId, [
         {segmentationId, type: cornerstone3DTools.Enums.SegmentationRepresentations.Labelmap,},
     ]);
 
@@ -593,13 +671,7 @@ async function setup(){
     const {renderingEngine} = getAndSetRenderingEngineAndViewports(toolGroup);
     
     // -------------------------------------------------> Step 4 - Get .dcm data
-    await loadData()
-
-    // -------------------------------------------------> Step 5 - Fill up viewports
-    await fillUpViewports(renderingEngine);
-
-    // -------------------------------------------------> Step 6 - Setup segmentation
-    await setupSegmentation(segmentation);
+    await fetchAndLoadData(0, renderingEngine);
 
 }
 
