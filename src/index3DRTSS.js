@@ -60,40 +60,73 @@ function getDataURLs(caseNumber){
     let searchObjCT  = {};
     let searchObjPET = {};
     let searchObjRTS = {};
+    let caseName     = '';
 
-    if (process.env.NETLIFY === "true"){
+    // if (process.env.NETLIFY === "true"){
+    if (true){
 
-        console.log(' - [getData()] Running on Netlify. Getting data from cloudfront.')
-        // CT scan from cornerstone3D samples
-        searchObjCT = {
-            StudyInstanceUID: '1.3.6.1.4.1.14519.5.2.1.7009.2403.334240657131972136850343327463',
-            SeriesInstanceUID:'1.3.6.1.4.1.14519.5.2.1.7009.2403.226151125820845824875394858561',
-            wadoRsRoot: 'https://d3t6nz73ql33tx.cloudfront.net/dicomweb',
+        console.log(' - [getData()] Running on Netlify. Getting data from cloudfront for caseNumber: ', caseNumber);
+        if (caseNumber == 0){   
+            caseName = 'C3D - CT + PET';
+            // CT scan from cornerstone3D samples
+            searchObjCT = {
+                StudyInstanceUID: '1.3.6.1.4.1.14519.5.2.1.7009.2403.334240657131972136850343327463',
+                SeriesInstanceUID:'1.3.6.1.4.1.14519.5.2.1.7009.2403.226151125820845824875394858561',
+                wadoRsRoot: 'https://d3t6nz73ql33tx.cloudfront.net/dicomweb',
+            }
+            
+            // PET scan from cornerstone3D samples
+            searchObjPET = {
+                StudyInstanceUID: '1.3.6.1.4.1.14519.5.2.1.7009.2403.334240657131972136850343327463',
+                SeriesInstanceUID:'1.3.6.1.4.1.14519.5.2.1.7009.2403.879445243400782656317561081015',
+                wadoRsRoot: 'https://d3t6nz73ql33tx.cloudfront.net/dicomweb',
+            }
         }
-        
-        // PET scan from cornerstone3D samples
-        searchObjPET = {
-            StudyInstanceUID: '1.3.6.1.4.1.14519.5.2.1.7009.2403.334240657131972136850343327463',
-            SeriesInstanceUID:'1.3.6.1.4.1.14519.5.2.1.7009.2403.879445243400782656317561081015',
-            wadoRsRoot: 'https://d3t6nz73ql33tx.cloudfront.net/dicomweb',
-        }   
+        // https://www.cornerstonejs.org/live-examples/segmentationvolume
+        else if (caseNumber == 1){
+            caseName = 'C3D - Abdominal CT + RTSS';
+            searchObjCT = {
+                StudyInstanceUID:"1.3.6.1.4.1.14519.5.2.1.256467663913010332776401703474716742458",
+                SeriesInstanceUID:"1.3.6.1.4.1.14519.5.2.1.40445112212390159711541259681923198035",
+                wadoRsRoot: "https://d33do7qe4w26qo.cloudfront.net/dicomweb"
+            },
+            searchObjRTS = {
+                StudyInstanceUID:"1.3.6.1.4.1.14519.5.2.1.256467663913010332776401703474716742458",
+                SeriesInstanceUID:"1.2.276.0.7230010.3.1.3.481034752.2667.1663086918.611582",
+                SOPInstanceUID:"1.2.276.0.7230010.3.1.4.481034752.2667.1663086918.611583",
+            }
+        }
+        // https://www.cornerstonejs.org/live-examples/segmentationvolume
+        else if (caseNumber == 2){
+            caseName = 'C3D - MR + RTSS';
+            searchObjCT = {
+                StudyInstanceUID:"1.3.12.2.1107.5.2.32.35162.30000015050317233592200000046",
+                SeriesInstanceUID:"1.3.12.2.1107.5.2.32.35162.1999123112191238897317963.0.0.0",
+                wadoRsRoot: "https://d33do7qe4w26qo.cloudfront.net/dicomweb"
+            },
+            searchObjRTS = {
+                StudyInstanceUID:"1.3.12.2.1107.5.2.32.35162.30000015050317233592200000046",
+                SeriesInstanceUID:"1.2.276.0.7230010.3.1.3.296485376.8.1542816659.201008",
+                SOPInstanceUID:"1.2.276.0.7230010.3.1.4.296485376.8.1542816659.201009",
+            }
+        }
     }
     else {
         console.log(' - [getData()] Running on localhost. Getting data from local orthanc.')
 
         // ProstateX-004 (MR)
         if (caseNumber == 0){
+            caseName = 'ProstateX-004';
             searchObjCT = {
                 StudyInstanceUID: '1.3.6.1.4.1.14519.5.2.1.7311.5101.170561193612723093192571245493',
                 SeriesInstanceUID:'1.3.6.1.4.1.14519.5.2.1.7311.5101.206828891270520544417996275680',
                 wadoRsRoot: `${window.location.origin}/dicom-web`,
               }
             // --> (Try in postman) http://localhost:8042/dicom-web/studies/1.3.6.1.4.1.14519.5.2.1.7311.5101.170561193612723093192571245493/series/1.3.6.1.4.1.14519.5.2.1.7311.5101.206828891270520544417996275680/metadata 
-            searchObjPET = {}
-            searchObjRTS = {}
         }
         // HCAI-Interactive-XX
         else if (caseNumber == 1){
+            caseName = 'HCAI-Interactive-XX (CT + PET)';
             // HCAI-Interactive-XX (PET)
             searchObjPET = {
                 StudyInstanceUID: '1.2.752.243.1.1.20240123155004085.1690.65801',
@@ -114,13 +147,12 @@ function getDataURLs(caseNumber){
         }
         // https://www.cornerstonejs.org/live-examples/segmentationvolume
         else if (caseNumber == 2){
+            caseName = 'C3D - CT + RTSS';
             searchObjCT = {
                 StudyInstanceUID:"1.3.6.1.4.1.14519.5.2.1.256467663913010332776401703474716742458",
                 SeriesInstanceUID:"1.3.6.1.4.1.14519.5.2.1.40445112212390159711541259681923198035",
                 wadoRsRoot: "https://d33do7qe4w26qo.cloudfront.net/dicomweb"
             },
-            searchObjPET = {
-            }
             searchObjRTS = {
                 StudyInstanceUID:"1.3.6.1.4.1.14519.5.2.1.256467663913010332776401703474716742458",
                 SeriesInstanceUID:"1.2.276.0.7230010.3.1.3.481034752.2667.1663086918.611582",
@@ -130,7 +162,7 @@ function getDataURLs(caseNumber){
         
     }
 
-    return {searchObjCT, searchObjPET, searchObjRTS};
+    return {searchObjCT, searchObjPET, searchObjRTS, caseName};
 }
 
 function getValue(volume, worldPos) {
@@ -580,30 +612,34 @@ async function fetchAndLoadData(caseNumber, renderingEngine){
     console.log(' - [loadData()] searchObjCT: ', searchObjCT);
 
     // Step 2.1 - Create volume for CT
-    volumeIdCT       = volumeIdCTBase + cornerstone3D.utilities.uuidv4();
-    const imageIdsCT = await createImageIdsAndCacheMetaData(searchObjCT);
-    const volumeCT   = await cornerstone3D.volumeLoader.createAndCacheVolume(volumeIdCT, { imageIds:imageIdsCT });
-    volumeCT.load();
+    if (Object.keys(searchObjCT).length > 0){
+        volumeIdCT       = volumeIdCTBase + cornerstone3D.utilities.uuidv4();
+        const imageIdsCT = await createImageIdsAndCacheMetaData(searchObjCT);
+        const volumeCT   = await cornerstone3D.volumeLoader.createAndCacheVolume(volumeIdCT, { imageIds:imageIdsCT });
+        volumeCT.load();
 
-    // Step 2.2 - Create volume for PET
-    volumeIdPET = 'none';
-    petBool = false;
-    if (Object.keys(searchObjPET).length > 0){
-        volumeIdPET       = volumeIdPETBase + cornerstone3D.utilities.uuidv4();
-        const imageIdsPET = await createImageIdsAndCacheMetaData(searchObjPET);
-        const volumePT    = await cornerstone3D.volumeLoader.createAndCacheVolume(volumeIdPET, { imageIds: imageIdsPET });
-        volumePT.load();
-        petBool = true;
+        // Step 2.2 - Create volume for PET
+        volumeIdPET = 'none';
+        petBool = false;
+        if (Object.keys(searchObjPET).length > 0){
+            volumeIdPET       = volumeIdPETBase + cornerstone3D.utilities.uuidv4();
+            const imageIdsPET = await createImageIdsAndCacheMetaData(searchObjPET);
+            const volumePT    = await cornerstone3D.volumeLoader.createAndCacheVolume(volumeIdPET, { imageIds: imageIdsPET });
+            volumePT.load();
+            petBool = true;
+        }
+
+        // Step 3 - Set volumes for viewports
+        await cornerstone3D.setVolumesForViewports(renderingEngine, [{ volumeId:volumeIdCT}, ], viewportIds, true);
+        
+        // Step 4 - Render viewports
+        renderingEngine.renderViewports(viewportIds);
+
+        // Step 5 - setupSegmentation
+        await setupSegmentation();
+    }else{
+        showToast('No CT data available')
     }
-
-    // Step 3 - Set volumes for viewports
-    await cornerstone3D.setVolumesForViewports(renderingEngine, [{ volumeId:volumeIdCT}, ], viewportIds, true);
-    
-    // Step 4 - Render viewports
-    renderingEngine.renderViewports(viewportIds);
-
-    // Step 5 - setupSegmentation
-    await setupSegmentation();
 }
 
 function restart() {
@@ -619,17 +655,9 @@ function restart() {
     segmentationIds.forEach(segmentationId => {
         cornerstone3DTools.segmentation.state.removeSegmentation(segmentationId);
     });
-}
 
-async function fillUpViewports(renderingEngine, volumeIds){
-
-    // Step 1 - Set volumes for viewports
-    await cornerstone3D.setVolumesForViewports(renderingEngine,
-        volumeIds.map(volumeId_ => ({ volumeId:volumeId_ })),
-        viewportIds);
-    
-    // Step 2 - Render viewports
-    renderingEngine.renderViewports(viewportIds);
+    // Step 4 - Other UI stuff
+    setButtonBoundaryColor(showPETButton, false);
 
 }
 

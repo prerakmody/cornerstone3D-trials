@@ -8,7 +8,8 @@ module.exports = smp.wrap({
   // entry: './src/index3D.js',
   // entry: './src/index3DVolume.js',
   // entry: './src/index3DContours.js',
-  entry: './src/index3DBrush.js',
+  // entry: './src/index3DBrush.js',
+  entry: './src/index3DRTSS.js',
   output: {
     filename: 'main.js',
     path: path.resolve(__dirname, 'dist'),
@@ -19,6 +20,7 @@ module.exports = smp.wrap({
     compress: true,
     port: 8080,
     hot: true,
+    client: {overlay: false,},
     headers: {
       "Access-Control-Allow-Origin": "*", // not a soln for CORS on orthanc
       "Cross-Origin-Embedder-Policy": "require-corp",
