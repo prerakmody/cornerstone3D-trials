@@ -1,4 +1,6 @@
 import dicomParser from 'dicom-parser';
+import * as dicomWebClient from "dicomweb-client";
+
 import * as cornerstone3D from '@cornerstonejs/core';
 import * as cornerstone3DTools from '@cornerstonejs/tools';
 import * as cornerstoneAdapters from "@cornerstonejs/adapters";
@@ -42,7 +44,12 @@ const volumeIdCTBase       = `${volumeLoaderScheme}:myVolumeCT`;
 let volumeIdCT;
 let volumeIdPET;
 
-const segmentationId     = `SEGMENTATION_ID`;
+const scribbleSegmentationId     = `SEGMENTATION_ID`;
+let scribbleSegmentationUID;
+let scribbleSegmentationRepresentationObj;
+let oldSegmentationId;
+let oldSegmentationUID;
+let oldSegmentationRepresentationObj;
 
 // General
 let fusedPETCT   = false;
@@ -62,8 +69,8 @@ function getDataURLs(caseNumber){
     let searchObjRTS = {};
     let caseName     = '';
 
-    // if (process.env.NETLIFY === "true"){
-    if (true){
+    if (process.env.NETLIFY === "true"){
+    // if (true){ //DEBUG
 
         console.log(' - [getData()] Running on Netlify. Getting data from cloudfront for caseNumber: ', caseNumber);
         if (caseNumber == 0){   
@@ -94,6 +101,7 @@ function getDataURLs(caseNumber){
                 StudyInstanceUID:"1.3.6.1.4.1.14519.5.2.1.256467663913010332776401703474716742458",
                 SeriesInstanceUID:"1.2.276.0.7230010.3.1.3.481034752.2667.1663086918.611582",
                 SOPInstanceUID:"1.2.276.0.7230010.3.1.4.481034752.2667.1663086918.611583",
+                wadoRsRoot: "https://d33do7qe4w26qo.cloudfront.net/dicomweb"
             }
         }
         // https://www.cornerstonejs.org/live-examples/segmentationvolume
@@ -108,6 +116,7 @@ function getDataURLs(caseNumber){
                 StudyInstanceUID:"1.3.12.2.1107.5.2.32.35162.30000015050317233592200000046",
                 SeriesInstanceUID:"1.2.276.0.7230010.3.1.3.296485376.8.1542816659.201008",
                 SOPInstanceUID:"1.2.276.0.7230010.3.1.4.296485376.8.1542816659.201009",
+                wadoRsRoot: "https://d33do7qe4w26qo.cloudfront.net/dicomweb"
             }
         }
     }
@@ -157,6 +166,7 @@ function getDataURLs(caseNumber){
                 StudyInstanceUID:"1.3.6.1.4.1.14519.5.2.1.256467663913010332776401703474716742458",
                 SeriesInstanceUID:"1.2.276.0.7230010.3.1.3.481034752.2667.1663086918.611582",
                 SOPInstanceUID:"1.2.276.0.7230010.3.1.4.481034752.2667.1663086918.611583",
+                wadoRsRoot: "https://d33do7qe4w26qo.cloudfront.net/dicomweb"
             }
         }  
         
@@ -223,7 +233,7 @@ function showToast(message, duration = 1000) {
     document.body.appendChild(toast);
     
     // After 'duration' milliseconds, remove the toast
-    console.log('   -- Toast: ', message);
+    // console.log('   -- Toast: ', message);
     setTimeout(() => {
       document.body.removeChild(toast);
     }, duration);
@@ -290,6 +300,7 @@ function createContouringHTML() {
     const contourSegmentationToolButton = document.createElement('button');
     contourSegmentationToolButton.id = contourSegmentationToolButtonId;
     contourSegmentationToolButton.innerHTML = 'Enable Circle Brush';
+    setButtonBoundaryColor(contourSegmentationToolButton, true);
     
     // Step 1.2 - Create a button to enable SculptorTool
     const sculptorToolButton = document.createElement('button');
@@ -306,12 +317,55 @@ function createContouringHTML() {
     para.innerHTML = 'Contouring Tools (use +/- to change brushSize):';
     para.style.margin = '0';
 
-    // Step 1.5 - Add buttons to contouringButtonDiv
+    // Step 1.5 - Edit main contour vs scribble contour. Add buttons for that
+    const choseContourToEditHTML = document.createElement('div');
+    choseContourToEditHTML.style.display = 'flex';
+    choseContourToEditHTML.style.flexDirection = 'row';
+
+    // Step 1.5.1
+    const paraEdit     = document.createElement('p');
+    paraEdit.innerHTML = 'Edit Predicted Contour:';
+    choseContourToEditHTML.appendChild(paraEdit);
+    
+    // Step 1.5.2
+    const editBaseContourViaBrushButton     = document.createElement('button');
+    editBaseContourViaBrushButton.id        = 'editBaseContourViaBrushButton';
+    editBaseContourViaBrushButton.innerHTML = '(using brush)';
+    choseContourToEditHTML.appendChild(editBaseContourViaBrushButton);
+    editBaseContourViaBrushButton.addEventListener('click', function() {
+        if (oldSegmentationUID != undefined){
+            cornerstone3DTools.segmentation.activeSegmentation.setActiveSegmentationRepresentation(oldSegmentationUID[0]);
+            setButtonBoundaryColor(editBaseContourViaBrushButton, true);
+            setButtonBoundaryColor(editBaseContourViaScribbleButton, false);
+        }
+    })
+    
+    // Step 1.5.3
+    const paraEdit2 = document.createElement('p');
+    paraEdit2.innerHTML = ' or ';
+    choseContourToEditHTML.appendChild(paraEdit2);
+
+    // Step 1.5.4
+    const editBaseContourViaScribbleButton     = document.createElement('button');
+    editBaseContourViaScribbleButton.id        = 'editBaseContourViaScribbleButton';
+    editBaseContourViaScribbleButton.innerHTML = '(using AI-scribble)';
+    choseContourToEditHTML.appendChild(editBaseContourViaScribbleButton);
+    setButtonBoundaryColor(editBaseContourViaScribbleButton, true);
+    editBaseContourViaScribbleButton.addEventListener('click', function() {
+        if (scribbleSegmentationUID != undefined){
+            cornerstone3DTools.segmentation.activeSegmentation.setActiveSegmentationRepresentation(scribbleSegmentationUID[0]);
+            setButtonBoundaryColor(editBaseContourViaBrushButton, false);
+            setButtonBoundaryColor(editBaseContourViaScribbleButton, true);
+        }
+    });
+
+    // Step 1.99 - Add buttons to contouringButtonDiv
     contouringButtonDiv.appendChild(para);
     contouringButtonDiv.appendChild(contouringButtonInnerDiv);
     contouringButtonInnerDiv.appendChild(contourSegmentationToolButton);
     contouringButtonInnerDiv.appendChild(sculptorToolButton);
     contouringButtonInnerDiv.appendChild(noContouringButton);
+    contouringButtonDiv.appendChild(choseContourToEditHTML);
 
     // Step 1.6 - Add contouringButtonDiv to contentDiv
     interactionButtonsDiv.appendChild(contouringButtonDiv); 
@@ -386,21 +440,25 @@ function otherHTMLElements(){
     ctValueHTML.innerText = 'CT value:';
     ptValueHTML.innerText = 'PT value:';
 
-    [axialDiv, sagittalDiv, coronalDiv].forEach((viewportDiv, index) => {
+    viewportIds.forEach((viewportId_, index) => {
+        const viewportDiv = document.getElementById(viewportIds[index]);
         viewportDiv.addEventListener('mousemove', function(evt) {
-            const volumeCTThis = cornerstone3D.cache.getVolume(volumeIdCT);
-            const volumePTThis = cornerstone3D.cache.getVolume(volumeIdPET);
-            if (volumeCTThis == undefined && volumePTThis == undefined) return;
-            const renderingEngine = cornerstone3D.getRenderingEngine(renderingEngineId);
-            const rect        = viewportDiv.getBoundingClientRect();
-            const canvasPos   = [Math.floor(evt.clientX - rect.left),Math.floor(evt.clientY - rect.top),];
-            const viewPortTmp = renderingEngine.getViewport(viewportIds[index]);
-            const worldPos    = viewPortTmp.canvasToWorld(canvasPos);
+            if (volumeIdCT != undefined && volumeIdPET != undefined){
+                const volumeCTThis = cornerstone3D.cache.getVolume(volumeIdCT);
+                const volumePTThis = cornerstone3D.cache.getVolume(volumeIdPET);
+                if (volumeCTThis != undefined){
+                    const renderingEngine = cornerstone3D.getRenderingEngine(renderingEngineId);
+                    const rect        = viewportDiv.getBoundingClientRect();
+                    const canvasPos   = [Math.floor(evt.clientX - rect.left),Math.floor(evt.clientY - rect.top),];
+                    const viewPortTmp = renderingEngine.getViewport(viewportIds[index]);
+                    const worldPos    = viewPortTmp.canvasToWorld(canvasPos);
 
-            canvasPosHTML.innerText = `Canvas position: (${viewportIds[index]}) => (${canvasPos[0]}, ${canvasPos[1]})`;
-            ctValueHTML.innerText = `CT value: ${getValue(volumeCTThis, worldPos)}`;
-            if (petBool){ptValueHTML.innerText = `PT value: ${getValue(volumePTThis, worldPos)}`;}
-            
+                    canvasPosHTML.innerText = `Canvas position: (${viewportIds[index]}) => (${canvasPos[0]}, ${canvasPos[1]})`;
+                    ctValueHTML.innerText = `CT value: ${getValue(volumeCTThis, worldPos)}`;
+                    if (volumePTThis != undefined)
+                        {ptValueHTML.innerText = `PT value: ${getValue(volumePTThis, worldPos)}`;}
+                }
+            }
         });
     });
 
@@ -409,33 +467,32 @@ function otherHTMLElements(){
     mouseHoverDiv.appendChild(ptValueHTML);
 
     // Step 5 - Create dropdown for case selection
-    const caseSelection = document.createElement('select');
-    caseSelection.id        = 'caseSelection';
-    caseSelection.innerHTML = 'Case Selection';
-    const cases = ['ProstateX-004', 'HCAI-Interactive-XX', 'SegmentationVolume'];
+    const caseSelectionHTML     = document.createElement('select');
+    caseSelectionHTML.id        = 'caseSelection';
+    caseSelectionHTML.innerHTML = 'Case Selection';
+    const cases = Array.from({length: 10}, (_, i) => getDataURLs(i).caseName).filter(caseName => caseName.length > 0);
     cases.forEach((caseName, index) => {
         const option = document.createElement('option');
         option.value = index;
         option.text = caseName;
-        caseSelection.appendChild(option);
+        caseSelectionHTML.appendChild(option);
     });
-    caseSelection.addEventListener('change', async function() {
+    caseSelectionHTML.addEventListener('change', async function() {
         const caseNumber = parseInt(this.value);
-        console.log('   -- caseNumber: ', caseNumber);
-        const renderingEngine = cornerstone3D.getRenderingEngine(renderingEngineId);
-        await fetchAndLoadData(caseNumber, renderingEngine, [volumeIdCT]);
+        console.log('   -- caseNumber (for caseSelectionHTML): ', caseNumber);
+        await fetchAndLoadData(caseNumber);
     });
 
     // Step 99 - Add to contentDiv
-    otherButtonsDiv.appendChild(caseSelection);
+    otherButtonsDiv.appendChild(caseSelectionHTML);
     otherButtonsDiv.appendChild(resetViewButton);
     otherButtonsDiv.appendChild(showPETButton);
     otherButtonsDiv.appendChild(mouseHoverDiv);
     interactionButtonsDiv.appendChild(otherButtonsDiv);
 
-    return {resetViewButton, showPETButton};
+    return {caseSelectionHTML, resetViewButton, showPETButton};
 }
-const {resetViewButton, showPETButton} = otherHTMLElements();
+const {caseSelectionHTML, resetViewButton, showPETButton} = otherHTMLElements();
 
 /****************************************************************
 *                      CORNERSTONE FUNCS  
@@ -487,7 +544,7 @@ async function getToolsAndToolGroup() {
     toolGroup.addTool(probeTool.toolName);
     toolGroup.addTool(referenceLinesTool.toolName);
     toolGroup.addTool(segmentationDisplayTool.toolName);
-    // toolGroup.addTool(brushTool.toolName);
+    toolGroup.addTool(brushTool.toolName);
     toolGroup.addToolInstance(strBrushCircle, brushTool.toolName, { activeStrategy: 'FILL_INSIDE_CIRCLE', brushSize:5});
     toolGroup.addToolInstance(strEraserCircle, brushTool.toolName, { activeStrategy: 'ERASE_INSIDE_CIRCLE', brushSize:5});
 
@@ -511,35 +568,16 @@ async function getToolsAndToolGroup() {
     // Listen for keydown event
     window.addEventListener('keydown', function(event) {
         // For brush tool radius
-        if (event.shiftKey && event.key === '+' || event.key === '+') {
-            if (toolGroup.getToolOptions(strBrushCircle).mode == 'Active'){
-                let initialBrushSize = toolGroup.getToolConfiguration(strBrushCircle).brushSize;
-                toolGroup.setToolConfiguration(strBrushCircle, {brushSize: initialBrushSize += 1});
-                let newBrushSize = toolGroup.getToolConfiguration(strBrushCircle).brushSize;
-                showToast(`Brush size: ${newBrushSize}`);
-            }            
-            else if (toolGroup.getToolOptions(strEraserCircle).mode == 'Active'){
-                let initialBrushSize = toolGroup.getToolConfiguration(strEraserCircle).brushSize;
-                toolGroup.setToolConfiguration(strEraserCircle, {brushSize: initialBrushSize += 1});
-                let newBrushSize = toolGroup.getToolConfiguration(strEraserCircle).brushSize;
-                showToast(`Brush size: ${newBrushSize}`);
-            }
+        const segUtils       = cornerstone3DTools.utilities.segmentation;
+        let initialBrushSize = segUtils.getBrushSizeForToolGroup(toolGroupId);
+        if (event.key === '+')
+            segUtils.setBrushSizeForToolGroup(toolGroupId, initialBrushSize + 1);
+        else if (event.key === '-'){
+            if (initialBrushSize > 1)
+                segUtils.setBrushSizeForToolGroup(toolGroupId, initialBrushSize - 1);
         }
-
-        else if (event.shiftKey && event.key === '-' || event.key === '-') {
-            if (toolGroup.getToolOptions(strBrushCircle).mode == 'Active'){
-                let initialBrushSize = toolGroup.getToolConfiguration(strBrushCircle).brushSize;
-                toolGroup.setToolConfiguration(strBrushCircle, {brushSize: initialBrushSize -= 1});
-                let newBrushSize = toolGroup.getToolConfiguration(strBrushCircle).brushSize;
-                showToast(`Brush size: ${newBrushSize}`);
-            }            
-            else if (toolGroup.getToolOptions(strEraserCircle).mode == 'Active'){
-                let initialBrushSize = toolGroup.getToolConfiguration(strEraserCircle).brushSize;
-                toolGroup.setToolConfiguration(strEraserCircle, {brushSize: initialBrushSize -= 1});
-                let newBrushSize = toolGroup.getToolConfiguration(strEraserCircle).brushSize;
-                showToast(`Brush size: ${newBrushSize}`);
-            }
-        }
+        let newBrushSize = segUtils.getBrushSizeForToolGroup(toolGroupId);
+        showToast(`Brush size: ${newBrushSize}`);
     });
 
     return {toolGroup, windowLevelTool, panTool, zoomTool, stackScrollMouseWheelTool, probeTool, referenceLinesTool, segmentation, segmentationDisplayTool, brushTool, toolState};
@@ -582,7 +620,7 @@ function setContouringButtonsLogic(toolGroup, windowLevelTool){
     });
 }
 
-function getAndSetRenderingEngineAndViewports(toolGroup){
+function setRenderingEngineAndViewports(toolGroup){
 
     const renderingEngine = new cornerstone3D.RenderingEngine(renderingEngineId);
 
@@ -599,10 +637,79 @@ function getAndSetRenderingEngineAndViewports(toolGroup){
         toolGroup.addViewport(viewportId, renderingEngineId)
     );
 
-    return {renderingEngine};
+    // return {renderingEngine};
 }
 
-async function fetchAndLoadData(caseNumber, renderingEngine){
+async function fetchAndLoadDCMSeg(searchObj, imageIds){
+
+    // Step 1 - Get search parameters
+    const client = new dicomWebClient.api.DICOMwebClient({
+        url: searchObj.wadoRsRoot
+    });
+    const arrayBuffer = await client.retrieveInstance({
+        studyInstanceUID: searchObj.StudyInstanceUID,
+        seriesInstanceUID: searchObj.SeriesInstanceUID,
+        sopInstanceUID: searchObj.SOPInstanceUID
+    });
+
+    // Step 2 - Add it to GUI
+    oldSegmentationId = "LOAD_SEGMENTATION_ID:" + cornerstone3D.utilities.uuidv4();
+
+    // Step 3 - Generate tool state
+    const generateToolState =
+        await cornerstoneAdapters.adaptersSEG.Cornerstone3D.Segmentation.generateToolState(
+            imageIds,
+            arrayBuffer,
+            cornerstone3D.metaData
+        );
+
+    const {derivedVolume, segUID} = await addSegmentationToState(oldSegmentationId);
+    const derivedVolumeScalarData = derivedVolume.getScalarData();
+    derivedVolumeScalarData.set(new Uint8Array(generateToolState.labelmapBufferArray[0]));
+    
+    oldSegmentationUID = segUID;
+
+}
+
+function restart() {
+    
+    // Step 1 - Clear cache (images and volumes)
+    cornerstone3D.cache.purgeCache(); // cornerstone3D.cache.getVolumes(), cornerstone3D.cache.getCacheSize()
+    
+    // Step 2 - Remove segmentations from toolGroup
+    cornerstone3DTools.segmentation.removeSegmentationsFromToolGroup(toolGroupId);
+
+    // Step 3 - Remove segmentations from state
+    const segmentationIds = getSegmentationIds();
+    segmentationIds.forEach(segmentationId => {
+        cornerstone3DTools.segmentation.state.removeSegmentation(segmentationId);
+    });
+
+    // Step 4 - Other UI stuff
+    setButtonBoundaryColor(showPETButton, false);
+
+}
+
+async function addSegmentationToState(segmentationIdParam){
+
+    // Step 1 - Create a segmentation volume
+    const derivedVolume = await cornerstone3D.volumeLoader.createAndCacheDerivedSegmentationVolume(volumeIdCT, {volumeId: segmentationIdParam,});
+
+    // Step 2 - Add the segmentation to the state
+    cornerstone3DTools.segmentation.addSegmentations([{ segmentationId:segmentationIdParam, representation: { type: cornerstone3DTools.Enums.SegmentationRepresentations.Labelmap, data: { volumeId: segmentationIdParam, }, }, },]);
+
+    // Step 3 - Set the segmentation representation to the toolGroup
+    const segUID = await cornerstone3DTools.segmentation.addSegmentationRepresentations(toolGroupId, [
+        {segmentationId:segmentationIdParam, type: cornerstone3DTools.Enums.SegmentationRepresentations.Labelmap,},
+    ]);
+
+    console.log(' - [addSegmentationToState()] derivedVolume: ', derivedVolume)
+    return {derivedVolume, segUID}
+
+}
+
+// MAIN FUNCTION
+async function fetchAndLoadData(caseNumber){
 
     console.log(' \n ----------------- Getting .dcm data ----------------- \n')
     restart();
@@ -613,6 +720,9 @@ async function fetchAndLoadData(caseNumber, renderingEngine){
 
     // Step 2.1 - Create volume for CT
     if (Object.keys(searchObjCT).length > 0){
+
+        const renderingEngine = cornerstone3D.getRenderingEngine(renderingEngineId);
+
         volumeIdCT       = volumeIdCTBase + cornerstone3D.utilities.uuidv4();
         const imageIdsCT = await createImageIdsAndCacheMetaData(searchObjCT);
         const volumeCT   = await cornerstone3D.volumeLoader.createAndCacheVolume(volumeIdCT, { imageIds:imageIdsCT });
@@ -635,52 +745,18 @@ async function fetchAndLoadData(caseNumber, renderingEngine){
         // Step 4 - Render viewports
         renderingEngine.renderViewports(viewportIds);
 
-        // Step 5 - setupSegmentation
-        await setupSegmentation();
+        // Step 5 - setup segmentation
+        console.log(' \n ----------------- Segmentation stuff ----------------- \n')
+        if (Object.keys(searchObjRTS).length > 0){
+            await fetchAndLoadDCMSeg(searchObjRTS, imageIdsCT)
+        }
+        let { segUID: scribbleSegmentationUID } = await addSegmentationToState(scribbleSegmentationId);
+        console.log(' - scribbleSegmentationUID: ', scribbleSegmentationUID, ' || oldSegmentationUID: ', oldSegmentationUID);
+        cornerstone3DTools.segmentation.activeSegmentation.setActiveSegmentationRepresentation(toolGroupId, oldSegmentationUID[0]);
+
     }else{
         showToast('No CT data available')
     }
-}
-
-function restart() {
-    
-    // Step 1 - Clear cache (images and volumes)
-    cornerstone3D.cache.purgeCache(); // cornerstone3D.cache.getVolumes(), cornerstone3D.cache.getCacheSize()
-    
-    // Step 2 - Remove segmentations from toolGroup
-    cornerstone3DTools.segmentation.removeSegmentationsFromToolGroup(toolGroupId);
-
-    // Step 3 - Remove segmentations from state
-    const segmentationIds = getSegmentationIds();
-    segmentationIds.forEach(segmentationId => {
-        cornerstone3DTools.segmentation.state.removeSegmentation(segmentationId);
-    });
-
-    // Step 4 - Other UI stuff
-    setButtonBoundaryColor(showPETButton, false);
-
-}
-
-async function setupSegmentation(){
-
-    // Step 1 - Create a segmentation volume
-    await cornerstone3D.volumeLoader.createAndCacheDerivedSegmentationVolume(volumeIdCT, {volumeId: segmentationId,});
-
-    // Step 2 - Add the segmentation to the state
-    cornerstone3DTools.segmentation.addSegmentations([
-        {segmentationId,
-            representation: {
-                type: cornerstone3DTools.Enums.SegmentationRepresentations.Labelmap,
-                data: { volumeId: segmentationId, },
-            },
-        },
-    ]);
-
-    // Step 3 - Set the segmentation representation to the toolGroup
-    await cornerstone3DTools.segmentation.addSegmentationRepresentations(toolGroupId, [
-        {segmentationId, type: cornerstone3DTools.Enums.SegmentationRepresentations.Labelmap,},
-    ]);
-
 }
 
 /****************************************************************
@@ -696,10 +772,10 @@ async function setup(){
     setContouringButtonsLogic(toolGroup, windowLevelTool, brushTool, toolState);    
 
     // -------------------------------------------------> Step 3 - Make rendering engine
-    const {renderingEngine} = getAndSetRenderingEngineAndViewports(toolGroup);
+    setRenderingEngineAndViewports(toolGroup);
     
     // -------------------------------------------------> Step 4 - Get .dcm data
-    await fetchAndLoadData(0, renderingEngine);
+    await fetchAndLoadData(2);
 
 }
 
@@ -710,19 +786,9 @@ setup()
 
 /**
 TO-DO
-1. [P] Volume scrolling using left-right arrow
-2. [D] Contour making tool (using a select button)
-3. [Part D] Contour sculpting tool (using a select button)
-4. [P] RTStruct loading tool (from dicomweb)
-
-REFERENCES
- - To change slideId in volumeViewport: https://github.com/cornerstonejs/cornerstone3D/issues/1307
- - More segmentation examples: https://deploy-preview-1205--cornerstone-3d-docs.netlify.app/live-examples/segmentationstack
- - SegmentationDisplayTool is to display the segmentation on the viewport
-    - https://github.com/cornerstonejs/cornerstone3D/blob/main/packages/tools/src/tools/displayTools/SegmentationDisplayTool.ts
-        - currently only supports LabelMap
-    - viewport .setVolumes([{ volumeId, callback: setCtTransferFunctionForVolumeActor }]) .then(() => { viewport.setProperties({ voiRange: { lower: -160, upper: 240 }, VOILUTFunction: Enums.VOILUTFunctionType.LINEAR, colormap: { name: 'Grayscale' }, slabThickness: 0.1, }); });
-
-OTHER NOTES
- - docker run -p 4242:4242 -p 8042:8042 -p 8081:8081 -p 8082:8082 -v tmp:/etc/orthanc -v orthanc-db:/var/lib/orthanc/db/ -v node-data:/root orthanc-plugins-withnode:v1
+1. Handle brush size going negative
+2. Make trsnsfer function for PET
+3. Make segmentation uneditable.
+4. Add fgd and bgd buttons
+5. Check why 'C3D - CT + RTSS' has a slightly displaced RTSS
 */
