@@ -33,7 +33,7 @@ const toolGroupId = 'STACK_TOOL_GROUP_ID';
 
 function createViewPortsHTML() {
 
-    const contentDiv = document.getElementById('content');
+    const contentDiv = document.getElementById('contentDiv');
 
     const viewportGridDiv = document.createElement('div');
     viewportGridDiv.id = viewPortDivId;
@@ -72,7 +72,7 @@ const {axialDiv, sagittalDiv, coronalDiv} = createViewPortsHTML();
 function createContouringHTML() {
 
     // Step 1.0 - Get contentDiv and contouringButtonDiv
-    const contentDiv = document.getElementById('content');
+    const contentDiv = document.getElementById('contentDiv');
     const contouringButtonDiv = document.createElement('div');
     contouringButtonDiv.id = contouringButtonDivId;
     contouringButtonDiv.style.display = 'flex';
@@ -202,8 +202,10 @@ async function setup(){
     });
 
     toolGroup.setToolEnabled(segmentationDisplayTool.toolName);
-    toolGroup.setToolPassive(planarFreehandROITool.toolName);
-    toolGroup.setToolActive(planarFreehandContourSegmentationTool.toolName, {bindings: [{mouseButton: cornerstone3DTools.Enums.MouseBindings.Primary, },],}); // Left Click        
+    // toolGroup.setToolPassive(planarFreehandROITool.toolName);
+    // toolGroup.setToolActive(planarFreehandContourSegmentationTool.toolName, {bindings: [{mouseButton: cornerstone3DTools.Enums.MouseBindings.Primary, },],}); // Left Click
+    toolGroup.setToolPassive(planarFreehandContourSegmentationTool.toolName);
+    toolGroup.setToolActive(planarFreehandROITool.toolName, {bindings: [{mouseButton: cornerstone3DTools.Enums.MouseBindings.Primary, },],}); // Left Click        
     toolGroup.setToolPassive(sculptorTool.toolName);
     console.log(' - toolState.toolGroups: ', toolState.toolGroups);
     console.log('  -- toolState: ', toolState.toolGroups[0].toolOptions);

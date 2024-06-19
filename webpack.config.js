@@ -9,7 +9,8 @@ module.exports = smp.wrap({
   // entry: './src/index3DVolume.js',
   // entry: './src/index3DContours.js',
   // entry: './src/index3DBrush.js',
-  entry: './src/index3DRTSS.js',
+  // entry: './src/index3DRTSS.js',
+  entry: './src/index3DRTSS-v2.js',
   output: {
     filename: 'main.js',
     path: path.resolve(__dirname, 'dist'),
