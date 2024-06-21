@@ -19,8 +19,9 @@ module.exports = smp.wrap({
   devServer: {
     static: path.join(__dirname, 'dist'),
     compress: true,
-    port: 8080,
-    hot: true,
+    host: '0.0.0.0', // to allow access from other devices on the same network
+    port: 50000,
+    // hot: true,
     client: {overlay: false,},
     headers: {
       "Access-Control-Allow-Origin": "*", // not a soln for CORS on orthanc

@@ -1,6 +1,9 @@
 # Node stuff
 node_modules
 
+# Python stuff
+__pycache__
+
 # Project
 dist/
 package-lock.json
@@ -9,3 +12,4 @@ package-lock.json
 .vscode
 .DS_STORE
 .mjs
+*.mjs
