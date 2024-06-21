@@ -48,7 +48,7 @@ const volumeIdCTBase       = `${volumeLoaderScheme}:myVolumeCT`;
 let volumeIdCT;
 let volumeIdPET;
 
-const scribbleSegmentationId = `SEGMENTATION_ID`;
+const scribbleSegmentationId = `SCRIBBLE_SEGMENTATION_ID`; // this should not change for different scribbles
 let scribbleSegmentationUIDs;
 let oldSegmentationId;
 let oldSegmentationUIDs;
@@ -272,7 +272,6 @@ async function otherHTMLElements(patientIdx){
                     ctValueHTML.innerText = `CT value: ${getValue(volumeCTThis, worldPos)}`;
                     if (volumePTThis != undefined)
                         {ptValueHTML.innerText = `PT value: ${getValue(volumePTThis, worldPos)}`;}
-                    console.log('asdf')
                 }
             }
         });
@@ -309,7 +308,6 @@ async function otherHTMLElements(patientIdx){
 
     return {caseSelectionHTML, resetViewButton, showPETButton};
 }
-
 
 function createDebuggingButtons(){
 
@@ -461,6 +459,7 @@ function getDataURLs(caseNumber){
                 StudyInstanceUID:"1.3.6.1.4.1.14519.5.2.1.256467663913010332776401703474716742458",
                 SeriesInstanceUID:"1.3.6.1.4.1.14519.5.2.1.40445112212390159711541259681923198035",
                 wadoRsRoot: "https://d33do7qe4w26qo.cloudfront.net/dicomweb"
+                // wadoRsRoot: "https://d33do7qe4w26qo.cloudfront.net/dicomwebb"
             },
             searchObjRTS = {
                 StudyInstanceUID:"1.3.6.1.4.1.14519.5.2.1.256467663913010332776401703474716742458",
@@ -545,8 +544,31 @@ function showToast(message, duration = 1000) {
     }, duration);
 }
 
-function getSegmentationIds() {
-    return cornerstone3DTools.segmentation.state.getSegmentations().map(x => x.segmentationId);
+async function getSegmentationIdsAndUIDs() {
+    
+    // Step 1 - Get all segmentationRepresentations
+    const allSegReps = cornerstone3DTools.segmentation.state.getAllSegmentationRepresentations() // alternatively .state.getSegmentations()
+    const allSegRepsList = allSegReps['STACK_TOOL_GROUP_ID'] 
+    
+    // Step 2 - Get all segmentationIds and segmentationUIDs
+    let allSegIds=[], allSegUIDs=[];
+    if (allSegRepsList != undefined){
+        allSegIds  = allSegRepsList.map(x => x.segmentationId)
+        allSegUIDs = allSegRepsList.map(x => x.segmentationRepresentationUID
+        )
+    }
+    
+    return {allSegIds, allSegUIDs}
+}
+
+async function getSegmentationUIDforScribbleSegmentationId() {
+    const {allSegIds, allSegUIDs} = await getSegmentationIdsAndUIDs();
+    const idx = allSegIds.indexOf(scribbleSegmentationId);
+    if (idx == -1){
+        console.log('   -- [getSegmentationUIDforSegmentationId()] SegmentationId not found. Returning undefined.')
+        return undefined;
+    }
+    return allSegUIDs[idx];
 }
 
 /****************************************************************
@@ -648,19 +670,20 @@ async function getToolsAndToolGroup() {
     return {toolGroup, windowLevelTool, panTool, zoomTool, stackScrollMouseWheelTool, probeTool, referenceLinesTool, segmentation, segmentationDisplayTool, brushTool, planarFreeHandRoiTool, toolState};
 }
 
-function setContouringButtonsLogic(scribbleSegmentationUIDs, oldSegmentationUIDs){
+// function setContouringButtonsLogic(scribbleSegmentationUIDs, oldSegmentationUIDs){
+function setContouringButtonsLogic(){
 
     // Step 0 - Init
     const planarFreehandROITool = cornerstone3DTools.PlanarFreehandROITool;
     const windowLevelTool       = cornerstone3DTools.WindowLevelTool;
     const toolGroup             = cornerstone3DTools.ToolGroupManager.getToolGroup(toolGroupId);
-    console.log(' - [setContouringButtonsLogic()] scribbleSegmentationUIDs: ', scribbleSegmentationUIDs, '|| oldSegmentationUIDs: ', oldSegmentationUIDs);
+    // console.log(' - [setContouringButtonsLogic()] scribbleSegmentationUIDs: ', scribbleSegmentationUIDs, '|| oldSegmentationUIDs: ', oldSegmentationUIDs);
 
     // Step 2 - Add event listeners to buttons        
     [noContouringButton, contourSegmentationToolButton, sculptorToolButton, editBaseContourViaScribbleButton].forEach((buttonHTML, buttonId) => {
         if (buttonHTML === null) return;
         
-        buttonHTML.addEventListener('click', function() {
+        buttonHTML.addEventListener('click', async function() {
             if (buttonId === 0) {
                 toolGroup.setToolPassive(planarFreehandROITool.toolName);
                 toolGroup.setToolPassive(strEraserCircle);
@@ -704,13 +727,17 @@ function setContouringButtonsLogic(scribbleSegmentationUIDs, oldSegmentationUIDs
                 toolGroup.setToolPassive(strEraserCircle);
                 toolGroup.setToolPassive(strBrushCircle);
                 toolGroup.setToolActive(planarFreehandROITool.toolName, { bindings: [ { mouseButton: cornerstone3DTools.Enums.MouseBindings.Primary, }, ], });
-                cornerstone3DTools.segmentation.activeSegmentation.setActiveSegmentationRepresentation(toolGroupId, scribbleSegmentationUIDs[0]);
+                const {allSegIds, allSegUIDs} = await getSegmentationIdsAndUIDs();
+                const scribbleSegmentationUID = await getSegmentationUIDforScribbleSegmentationId();
+                cornerstone3DTools.segmentation.activeSegmentation.setActiveSegmentationRepresentation(toolGroupId, scribbleSegmentationUID);
 
                 setButtonBoundaryColor(noContouringButton, false);
                 setButtonBoundaryColor(sculptorToolButton, false);
                 setButtonBoundaryColor(contourSegmentationToolButton, false);
                 setButtonBoundaryColor(editBaseContourViaBrushButton, false);
                 setButtonBoundaryColor(editBaseContourViaScribbleButton, true);
+
+                showToast('Scribble tool activated.', 3000);
             }
         });
     });
@@ -724,19 +751,13 @@ function setContouringButtonsLogic(scribbleSegmentationUIDs, oldSegmentationUIDs
                     const allAnnotations = cornerstone3DTools.annotation.state.getAllAnnotations();
                     const scribbleAnnotations = allAnnotations.filter(x => x.metadata.toolName === planarFreehandROITool.toolName);
                     if (scribbleAnnotations.length > 0){
-                        // const scribbleAnnotation = scribbleAnnotations[0];
-                        // const {contour} = scribbleAnnotation.data;
-                        // const {polyline} = contour;
                         const polyline           = scribbleAnnotations[0].data.contour.polyline;
                         const points3D = polyline.map(function(point) {
                             return getIndex(cornerstone3D.cache.getVolume(volumeIdCT), point);
                         });
-                        console.log('\n ---------------------------------------');
-                        console.log(' - [setContouringButtonsLogic()] polyline: ', polyline);
-                        console.log(' - [setContouringButtonsLogic()] points3D: ', points3D);
-                        // const {data} = scribbleAnnotation;
-                        // console.log(' - [setContouringButtonsLogic()] scribbleAnnotation: ', scribbleAnnotation);
-                        // console.log(' - [setContouringButtonsLogic()] data: ', data.contour.polyline);
+                        // console.log('\n ---------------------------------------');
+                        // console.log(' - [setContouringButtonsLogic()] polyline: ', polyline);
+                        // console.log(' - [setContouringButtonsLogic()] points3D: ', points3D);
                     }
                 }
             }, 100);
@@ -837,12 +858,17 @@ async function addSegmentationToState(segmentationIdParam, segType){
 // (Sub) MAIN FUNCTION
 async function restart() {
     
+    console.log(' \n ----------------- restart() ----------------- \n')
+
+    // Step 1.0 - Get all segmentationIds
+    const {allSegIds} = await getSegmentationIdsAndUIDs(); // call this before removing segmentations from toolGroup
+
     // Step 1.1 - Remove segmentations from toolGroup
     cornerstone3DTools.segmentation.removeSegmentationsFromToolGroup(toolGroupId);
 
     // Step 1.2 - Remove segmentations from state
-    const segmentationIds = getSegmentationIds();
-    segmentationIds.forEach(segmentationId => {
+    allSegIds.forEach(segmentationId => {
+        console.log(' - [restart()] Removing segmentationId: ', segmentationId)
         cornerstone3DTools.segmentation.state.removeSegmentation(segmentationId);
     });
 
@@ -877,15 +903,18 @@ async function restart() {
 
     // Step 5 - Other stuff
     // setToolsAsActivePassive(true);
+    const stackScrollMouseWheelTool = cornerstone3DTools.StackScrollMouseWheelTool;
+    const toolGroup = cornerstone3DTools.ToolGroupManager.getToolGroup(toolGroupId);
+    toolGroup.setToolPassive(stackScrollMouseWheelTool.toolName);
 
 }
 
 // MAIN FUNCTION
 async function fetchAndLoadData(caseNumber){
 
-    console.log(' \n ----------------- Getting .dcm data ----------------- \n')
     await restart();
-
+    console.log(' \n ----------------- Getting .dcm data ----------------- \n')
+    
     // Step 1 - Get search parameters
     const {searchObjCT, searchObjPET, searchObjRTS} = getDataURLs(caseNumber);
     console.log(' - [loadData()] searchObjCT: ', searchObjCT);
@@ -895,36 +924,63 @@ async function fetchAndLoadData(caseNumber){
 
         const renderingEngine = cornerstone3D.getRenderingEngine(renderingEngineId);
 
-        volumeIdCT       = volumeIdCTBase + cornerstone3D.utilities.uuidv4();
-        const imageIdsCT = await createImageIdsAndCacheMetaData(searchObjCT);
-        const volumeCT   = await cornerstone3D.volumeLoader.createAndCacheVolume(volumeIdCT, { imageIds:imageIdsCT });
-        volumeCT.load();
-
-        // Step 2.2 - Create volume for PET
-        if (searchObjPET.wadoRsRoot.length > 0){
-            volumeIdPET       = volumeIdPETBase + cornerstone3D.utilities.uuidv4();
-            const imageIdsPET = await createImageIdsAndCacheMetaData(searchObjPET);
-            const volumePT    = await cornerstone3D.volumeLoader.createAndCacheVolume(volumeIdPET, { imageIds: imageIdsPET });
-            volumePT.load();
-            petBool = true;
+        volumeIdCT     = volumeIdCTBase + cornerstone3D.utilities.uuidv4();
+        let ctLoadBool = false;
+        let imageIdsCT = [];
+        try{
+            imageIdsCT = await createImageIdsAndCacheMetaData(searchObjCT);
+            ctLoadBool = true;
+        } catch (error){
+            console.error(' - [loadData()] Error in createImageIdsAndCacheMetaData(searchObjCT): ', error);
+            showToast('Error in loading CT data', 3000);
         }
-
-        // Step 3 - Set volumes for viewports
-        await cornerstone3D.setVolumesForViewports(renderingEngine, [{ volumeId:volumeIdCT}, ], viewportIds, true);
         
-        // Step 4 - Render viewports
-        await renderingEngine.renderViewports(viewportIds);
+        if (ctLoadBool){
+            const volumeCT   = await cornerstone3D.volumeLoader.createAndCacheVolume(volumeIdCT, { imageIds:imageIdsCT });
+            volumeCT.load();
 
-        // Step 5 - setup segmentation
-        console.log(' \n ----------------- Segmentation stuff ----------------- \n')
-        if (searchObjRTS.wadoRsRoot.length > 0){
-            await fetchAndLoadDCMSeg(searchObjRTS, imageIdsCT)
+            // Step 2.2 - Create volume for PET
+            if (searchObjPET.wadoRsRoot.length > 0){
+                volumeIdPET      = volumeIdPETBase + cornerstone3D.utilities.uuidv4();
+                let petLoadBool  = false;
+                let imageIdsPET  = [];
+                try{
+                    imageIdsPET = await createImageIdsAndCacheMetaData(searchObjPET);
+                    petLoadBool = true;
+                } catch(error){
+                    console.error(' - [loadData()] Error in createImageIdsAndCacheMetaData(searchObjPET): ', error);
+                    showToast('Error in loading PET data', 3000);
+                }
+                if (petLoadBool){
+                    const volumePT    = await cornerstone3D.volumeLoader.createAndCacheVolume(volumeIdPET, { imageIds: imageIdsPET });
+                    volumePT.load();
+                    petBool = true;
+                }
+            }
+
+            // Step 3 - Set volumes for viewports
+            await cornerstone3D.setVolumesForViewports(renderingEngine, [{ volumeId:volumeIdCT}, ], viewportIds, true);
+            
+            // Step 4 - Render viewports
+            await renderingEngine.renderViewports(viewportIds);
+
+            // Step 5 - setup segmentation
+            console.log(' \n ----------------- Segmentation stuff ----------------- \n')
+            if (searchObjRTS.wadoRsRoot.length > 0){
+                await fetchAndLoadDCMSeg(searchObjRTS, imageIdsCT)
+            }
+            let { segReprUID: scribbleSegmentationUIDs } = await addSegmentationToState(scribbleSegmentationId, cornerstone3DTools.Enums.SegmentationRepresentations.Contour);
+            cornerstone3DTools.segmentation.activeSegmentation.setActiveSegmentationRepresentation(toolGroupId, scribbleSegmentationUIDs[0]);
+            editBaseContourViaScribbleButton.click(); // not doing this means clicking on the button twice
+            
+            // Step 6 - Set tools as active/passive
+            const stackScrollMouseWheelTool = cornerstone3DTools.StackScrollMouseWheelTool;
+            const toolGroup = cornerstone3DTools.ToolGroupManager.getToolGroup(toolGroupId);
+            toolGroup.setToolActive(stackScrollMouseWheelTool.toolName);
+            
+            // Step 99 - Done
+            showToast('Data loaded successfully', 3000);
         }
-        let { segReprUID: scribbleSegmentationUIDs } = await addSegmentationToState(scribbleSegmentationId, cornerstone3DTools.Enums.SegmentationRepresentations.Contour);
-        cornerstone3DTools.segmentation.activeSegmentation.setActiveSegmentationRepresentation(toolGroupId, scribbleSegmentationUIDs[0]);
-        setContouringButtonsLogic(scribbleSegmentationUIDs, oldSegmentationUIDs);
-        editBaseContourViaScribbleButton.click();
-        showToast('Data loaded successfully', 3000);
 
     }else{
         showToast('No CT data available')
@@ -947,6 +1003,7 @@ async function setup(patientIdx){
     
     // -------------------------------------------------> Step 4 - Get .dcm data
     await fetchAndLoadData(patientIdx);
+    setContouringButtonsLogic();
 
 }
 
