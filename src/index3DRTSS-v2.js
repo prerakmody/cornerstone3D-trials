@@ -77,7 +77,7 @@ let petBool      = false;
 *                         HTML ELEMENTS  
 *****************************************************************/
 
-function createViewPortsHTML() {
+async function createViewPortsHTML() {
 
     const contentDiv = document.getElementById(contentDivId);
 
@@ -113,9 +113,9 @@ function createViewPortsHTML() {
 
     return {contentDiv, viewportGridDiv, axialDiv, sagittalDiv, coronalDiv};
 }
-const {axialDiv, sagittalDiv, coronalDiv} = createViewPortsHTML();
+const {axialDiv, sagittalDiv, coronalDiv} = await createViewPortsHTML();
 
-function createContouringHTML() {
+async function createContouringHTML() {
 
     // Step 1.0 - Get interactionButtonsDiv and contouringButtonDiv
     const interactionButtonsDiv = document.getElementById(interactionButtonsDivId);
@@ -263,7 +263,7 @@ function createContouringHTML() {
     return {noContouringButton, contourSegmentationToolButton, sculptorToolButton, editBaseContourViaBrushButton, editBaseContourViaScribbleButton};
 
 }
-const {noContouringButton, contourSegmentationToolButton, sculptorToolButton, editBaseContourViaBrushButton, editBaseContourViaScribbleButton} = createContouringHTML();
+const {noContouringButton, contourSegmentationToolButton, sculptorToolButton, editBaseContourViaBrushButton, editBaseContourViaScribbleButton} = await createContouringHTML();
 
 async function otherHTMLElements(patientIdx){
 
@@ -428,7 +428,7 @@ async function getLoaderHTML(){
         // Step 5 - Position the grayOutDiv and loadingIndicatorDiv 
         const contentDiv = document.getElementById(contentDivId);
         const contentDivRect = contentDiv.getBoundingClientRect();
-        console.log(' -- contentDivRect: ', contentDivRect);
+        // console.log(' -- contentDivRect: ', contentDivRect);
 
         // Step 5.1 - Position the loadingIndicatorDiv
         loadingIndicatorDiv.style.position = 'absolute';
@@ -780,13 +780,20 @@ async function makeRequestToProcess(points3D, scribbleAnnotationUID){
         const scribbleType = await getScribbleType();
         const processPayload = {[KEY_DATA]: {[KEY_POINTS_3D]: points3D, [KEY_SCRIB_TYPE]:scribbleType},[KEY_IDENTIFIER]: instanceName,}
         await showLoaderAnimation();
-        const response = await fetch(URL_PYTHON_SERVER + ENDPOINT_PROCESS, {method: METHOD_POST, headers: HEADERS_JSON, body: JSON.stringify(processPayload), credentials: 'include',}); // credentials: 'include' is important for cross-origin requests
-        const responseJSON = await response.json();
-        requestStatus = true;
         console.log(' \n ----------------- Python server (/process) ----------------- \n')
-        console.log('   -- [makeRequestToProcess()] processPayload: ', processPayload);
-        console.log('   -- [makeRequestToProcess()] response: ', response);
-        console.log('   -- [makeRequestToProcess()] response.json(): ', responseJSON);
+        try{
+            const response = await fetch(URL_PYTHON_SERVER + ENDPOINT_PROCESS, {method: METHOD_POST, headers: HEADERS_JSON, body: JSON.stringify(processPayload), credentials: 'include',}); // credentials: 'include' is important for cross-origin requests
+            const responseJSON = await response.json();
+            requestStatus = true;
+            
+            console.log('   -- [makeRequestToProcess()] processPayload: ', processPayload);
+            console.log('   -- [makeRequestToProcess()] response: ', response);
+            console.log('   -- [makeRequestToProcess()] response.json(): ', responseJSON);
+        } catch (error){
+            requestStatus = false;
+            console.log('   -- [makeRequestToProcess()] Error: ', error);
+            showToast('Python server - /process failed', 3000)
+        }
 
         // Step 2 - Remove old segmentation and add new segmentation
         console.log('\n --------------- Removing old segmentation ...  ---------------: ', scribbleAnnotationUID)
@@ -962,7 +969,7 @@ function setContouringButtonsLogic(){
                 toolGroup.setToolPassive(strEraserCircle);
                 toolGroup.setToolPassive(strBrushCircle);
                 toolGroup.setToolActive(planarFreehandROITool.toolName, { bindings: [ { mouseButton: cornerstone3DTools.Enums.MouseBindings.Primary, }, ], });
-                const {allSegIds, allSegUIDs} = await getSegmentationIdsAndUIDs();
+                // const {allSegIds, allSegUIDs} = await getSegmentationIdsAndUIDs(); // for debugging
                 const scribbleSegmentationUID = await getSegmentationUIDforScribbleSegmentationId();
                 cornerstone3DTools.segmentation.activeSegmentation.setActiveSegmentationRepresentation(toolGroupId, scribbleSegmentationUID);
 
@@ -993,6 +1000,7 @@ function setContouringButtonsLogic(){
                                 return getIndex(cornerstone3D.cache.getVolume(volumeIdCT), point);
                             });
                             const points3DInt = points3D.map(x => x.map(y => Math.floor(y)));
+                            console.log(cornerstone3DTools.annotation.state)
                             await makeRequestToProcess(points3DInt, scribbleAnnotationUID);
                         }
                     } else {
@@ -1126,7 +1134,7 @@ async function restart() {
     cornerstone3D.cache.purgeCache(); // cornerstone3D.cache.getVolumes(), cornerstone3D.cache.getCacheSize()
 
     // Step 4 - Other UI stuff
-    [noContouringButton, contourSegmentationToolButton, sculptorToolButton, editBaseContourViaBrushButton, showPETButton].forEach((buttonHTML) => {
+    [noContouringButton, contourSegmentationToolButton, sculptorToolButton, editBaseContourViaBrushButton, editBaseContourViaScribbleButton, showPETButton].forEach((buttonHTML) => {
         if (buttonHTML === null) return;
         setButtonBoundaryColor(buttonHTML, false);
     });
@@ -1214,8 +1222,10 @@ async function fetchAndLoadData(caseNumber){
                 await fetchAndLoadDCMSeg(searchObjRTS, imageIdsCT)
             }
             let { segReprUID: scribbleSegmentationUIDs } = await addSegmentationToState(scribbleSegmentationId, cornerstone3DTools.Enums.SegmentationRepresentations.Contour);
-            cornerstone3DTools.segmentation.activeSegmentation.setActiveSegmentationRepresentation(toolGroupId, scribbleSegmentationUIDs[0]);
-            editBaseContourViaScribbleButton.click(); // not doing this means clicking on the button twice
+            // cornerstone3DTools.segmentation.activeSegmentation.setActiveSegmentationRepresentation(toolGroupId, scribbleSegmentationUIDs[0]);
+            // editBaseContourViaScribbleButton.click(); // not doing this means clicking on the button twice
+            console.log(cornerstone3DTools.segmentation.config.color.setColorForSegmentIndex(toolGroupId, scribbleSegmentationUIDs[0], 0, [255,0,0,255]))
+            console.log(cornerstone3DTools.segmentation.config.color.getColorForSegmentIndex(toolGroupId, scribbleSegmentationUIDs[0], 0))
             
             // Step 6 - Set tools as active/passive
             const stackScrollMouseWheelTool = cornerstone3DTools.StackScrollMouseWheelTool;
@@ -1252,7 +1262,7 @@ async function setup(patientIdx){
 }
 
 const patientIdx = 2;
-const {showPETButton} = await otherHTMLElements(patientIdx);
+const {showPETButton} = await otherHTMLElements(patientIdx); // await for the dropdown menu
 setup(patientIdx)
 
 
