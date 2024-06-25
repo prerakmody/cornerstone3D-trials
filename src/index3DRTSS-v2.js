@@ -38,6 +38,7 @@ const noContouringButtonId            = 'NoContouring-Button';
 // Tools
 const strBrushCircle = 'circularBrush';
 const strEraserCircle = 'circularEraser';
+const INIT_BRUSH_SIZE = 5;
 
 // Rendering + Volume + Segmentation ids
 const renderingEngineId  = 'myRenderingEngine';
@@ -52,6 +53,21 @@ const scribbleSegmentationId = `SCRIBBLE_SEGMENTATION_ID`; // this should not ch
 let scribbleSegmentationUIDs;
 let oldSegmentationId;
 let oldSegmentationUIDs;
+
+// Python server
+const URL_PYTHON_SERVER = 'http://localhost:55000'
+const ENDPOINT_PREPARE  = '/prepare'
+const ENDPOINT_PROCESS  = '/process'
+const KEY_DATA          = 'data'
+const KEY_IDENTIFIER    = 'identifier'
+const KEY_POINTS_3D     = 'points3D'
+const KEY_SCRIB_TYPE    = 'scribbleType'
+const METHOD_POST       = 'POST'
+const HEADERS_JSON      = {'Content-Type': 'application/json',}
+
+// Tools
+const MODE_ACTIVE  = 'Active';
+const MODE_PASSIVE = 'Passive';
 
 // General
 let fusedPETCT   = false;
@@ -165,7 +181,6 @@ function createContouringHTML() {
     editBaseContourViaScribbleButton.id        = 'editBaseContourViaScribbleButton';
     editBaseContourViaScribbleButton.innerHTML = '(using AI-scribble)';
     choseContourToEditHTML.appendChild(editBaseContourViaScribbleButton);
-    setButtonBoundaryColor(editBaseContourViaScribbleButton, true);
     editBaseContourViaScribbleButton.addEventListener('click', function() {
         if (scribbleSegmentationUIDs != undefined){
             cornerstone3DTools.segmentation.activeSegmentation.setActiveSegmentationRepresentation(scribbleSegmentationUIDs[0]);
@@ -173,6 +188,66 @@ function createContouringHTML() {
             setButtonBoundaryColor(editBaseContourViaScribbleButton, true);
         }
     });
+
+    // Step 1.5.6 - Add checkboxes for fgd and bgd
+    const scribbleCheckboxDiv = document.createElement('div');
+    scribbleCheckboxDiv.style.display = 'flex';
+    scribbleCheckboxDiv.style.flexDirection = 'column';
+    choseContourToEditHTML.appendChild(scribbleCheckboxDiv);
+
+    const fgdChecBoxParentDiv = document.createElement('div');
+    fgdChecBoxParentDiv.style.display = 'flex';
+    fgdChecBoxParentDiv.style.flexDirection = 'row';
+    scribbleCheckboxDiv.appendChild(fgdChecBoxParentDiv);
+
+    const bgdCheckboxParentDiv = document.createElement('div');
+    bgdCheckboxParentDiv.style.display = 'flex';
+    bgdCheckboxParentDiv.style.flexDirection = 'row';
+    scribbleCheckboxDiv.appendChild(bgdCheckboxParentDiv);
+
+    // Step 1.5.6.1 - Add checkbox for fgd
+    const fgdCheckbox = document.createElement('input');
+    fgdCheckbox.type = 'checkbox';
+    fgdCheckbox.id = 'fgdCheckbox';
+    fgdCheckbox.name = 'Foreground Scribble';
+    fgdCheckbox.value = 'Foreground Scribble';
+    fgdCheckbox.checked = true;
+    fgdCheckbox.addEventListener('change', function() {
+        if (this.checked){
+            bgdCheckbox.checked = false;
+        }
+    });
+    fgdChecBoxParentDiv.appendChild(fgdCheckbox);
+
+    // Step 1.5.6.2 - Add label for fgd
+    const fgdLabel = document.createElement('label');
+    fgdLabel.htmlFor = 'fgdCheckbox';
+    fgdLabel.style.color = 'goldenrod'; // '#DAA520', 'rgb(218, 165, 32)'
+    fgdLabel.appendChild(document.createTextNode('Foreground Scribble'));
+    fgdChecBoxParentDiv.appendChild(fgdLabel);
+    
+
+    // Step 1.5.6.3 - Add checkbox for bgd
+    const bgdCheckbox = document.createElement('input');
+    bgdCheckbox.type = 'checkbox';
+    bgdCheckbox.id = 'bgdCheckbox';
+    bgdCheckbox.name = 'Background Scribble';
+    bgdCheckbox.value = 'Background Scribble';
+    bgdCheckbox.checked = false;
+    bgdCheckbox.addEventListener('change', function() {
+        if (this.checked){
+            fgdCheckbox.checked = false;
+        }
+    });
+    bgdCheckboxParentDiv.appendChild(bgdCheckbox);
+
+    // Step 1.5.6.4 - Add label for bgd
+    const bgdLabel = document.createElement('label');
+    bgdLabel.htmlFor = 'bgdCheckbox';
+    bgdLabel.style.color = 'blue';
+    bgdLabel.appendChild(document.createTextNode('Background Scribble'));
+    bgdCheckboxParentDiv.appendChild(bgdLabel);
+
 
     // Step 1.99 - Add buttons to contouringButtonDiv
     contouringButtonDiv.appendChild(para);
@@ -309,6 +384,81 @@ async function otherHTMLElements(patientIdx){
     return {caseSelectionHTML, resetViewButton, showPETButton};
 }
 
+async function getLoaderHTML(){
+
+    // Step 1 - Create a loaderDiv
+    const loaderDiv = document.getElementById('loaderDiv');
+    if (loaderDiv == null){
+        const loaderDiv = document.createElement('div');
+        loaderDiv.id = 'loaderDiv';
+        loaderDiv.style.display = 'none'; // Initially hidden
+
+        // Step 2 - Create the gray-out div
+        const grayOutDiv                 = document.createElement('div');
+        grayOutDiv.id                    = 'grayOutDiv';
+        grayOutDiv.style.position        = 'absolute';
+        grayOutDiv.style.backgroundColor = 'rgba(128, 128, 128, 0.5)'; // Semi-transparent gray
+        grayOutDiv.style.zIndex          = '999'; // Ensure it's below the loadingIndicator but above everything else
+        // grayOutDiv.style.display         = 'none'; // Initially hidden
+
+        // Step 3 - Create the loadingIndicatorDiv
+        const loadingIndicatorDiv = document.createElement('div');
+        loadingIndicatorDiv.id                 = 'loadingIndicatorDiv';
+        loadingIndicatorDiv.style.width        = '50px';
+        loadingIndicatorDiv.style.height       = '50px';
+        loadingIndicatorDiv.style.borderRadius = '50%';
+        loadingIndicatorDiv.style.border       = '5px solid #f3f3f3';
+        loadingIndicatorDiv.style.borderTop    = '5px solid #3498db';
+        loadingIndicatorDiv.style.animation    = 'spin 2s linear infinite';
+        loadingIndicatorDiv.style.margin       = 'auto';
+        loadingIndicatorDiv.style.zIndex       = '1000'; // Ensure it's on top
+        // loadingIndicatorDiv.style.display      = 'none'; // Initially hidden
+
+        // Step 4 - Add the children to the loaderDiv
+        loaderDiv.appendChild(grayOutDiv);
+        loaderDiv.appendChild(loadingIndicatorDiv);
+        document.body.appendChild(loaderDiv);
+        document.head.appendChild(document.createElement('style')).textContent = `
+            @keyframes spin {
+                0% { transform: rotate(0deg); }
+                100% { transform: rotate(360deg); }
+            }
+            `;
+
+        // Step 5 - Position the grayOutDiv and loadingIndicatorDiv 
+        const contentDiv = document.getElementById(contentDivId);
+        const contentDivRect = contentDiv.getBoundingClientRect();
+        console.log(' -- contentDivRect: ', contentDivRect);
+
+        // Step 5.1 - Position the loadingIndicatorDiv
+        loadingIndicatorDiv.style.position = 'absolute';
+        loadingIndicatorDiv.style.top = `${(contentDivRect.top + (contentDivRect.bottom - contentDivRect.top) / 2) - (loadingIndicatorDiv.offsetHeight / 2)}px`;
+        loadingIndicatorDiv.style.left = `${(contentDivRect.left + (contentDivRect.right - contentDivRect.left) / 2) - (loadingIndicatorDiv.offsetWidth / 2)}px`;
+        
+
+        // Step 5.2 - place the grououtdiv on top of contentDiv
+        grayOutDiv.style.top = `${contentDivRect.top}px`;
+        grayOutDiv.style.left = `${contentDivRect.left}px`;
+        grayOutDiv.style.width = `${contentDivRect.right - contentDivRect.left}px`;
+        grayOutDiv.style.height = `${contentDivRect.bottom - contentDivRect.top}px`;
+    }
+
+    return {loaderDiv};
+}
+
+async function showLoaderAnimation() {
+
+    const {loaderDiv} = await getLoaderHTML();
+    if (loaderDiv) loaderDiv.style.display = 'block';
+}
+
+
+async function unshowLoaderAnimation() {
+
+    const {loaderDiv} = await getLoaderHTML();
+    if (loaderDiv) loaderDiv.style.display = 'none';
+}
+
 function createDebuggingButtons(){
 
     // Step 1 - Get contentDiv
@@ -324,7 +474,7 @@ function createDebuggingButtons(){
     postButtonForPrepare.innerHTML = 'Prepare';
     postButtonForPrepare.addEventListener('click', async function() {
         const preparePayload = {'data': getDataURLs(1),'identifier': instanceName,}
-        const response = await fetch('http://localhost:5500/prepare', {method: 'POST', headers: {'Content-Type': 'application/json',},body: JSON.stringify(preparePayload), credentials: 'include',});
+        const response = await fetch('http://localhost:55000/prepare', {method: 'POST', headers: {'Content-Type': 'application/json',},body: JSON.stringify(preparePayload), credentials: 'include',});
         console.log(' \n ----------------- Python server stuff ----------------- \n')
         console.log('   -- [postButtonForPrepare] preparePayload: ', preparePayload);
         console.log('   -- [postButtonForPrepare] response: ', response);
@@ -337,7 +487,7 @@ function createDebuggingButtons(){
     postButtonForProcess.innerHTML = 'Process';
     postButtonForProcess.addEventListener('click', async function() {
         const processPayload = {'data': {'points3D': [[1,1,1]]},'identifier': instanceName,}
-        const response = await fetch('http://localhost:5500/process', {method: 'POST', headers: {'Content-Type': 'application/json',},body: JSON.stringify(processPayload),credentials: 'include',});
+        const response = await fetch('http://localhost:55000/process', {method: 'POST', headers: {'Content-Type': 'application/json',},body: JSON.stringify(processPayload),credentials: 'include',});
         console.log(' \n ----------------- Python server stuff ----------------- \n')
         console.log('   -- [postButtonForProcess] processPayload: ', processPayload);
         console.log('   -- [postButtonForProcess] response: ', response);
@@ -348,13 +498,13 @@ function createDebuggingButtons(){
     debuggingButtonsDiv.appendChild(postButtonForProcess);
     contentDiv.appendChild(debuggingButtonsDiv);
 }
-createDebuggingButtons();
+// createDebuggingButtons();
 
 /****************************************************************
 *                             UTILS  
 *****************************************************************/
 
-function getDataURLs(caseNumber){
+function getDataURLs(caseNumber, verbose = false){
 
     let searchObjCT  = {StudyInstanceUID: '', SeriesInstanceUID:'', SOPInstanceUID:'', wadoRsRoot: ''};
     let searchObjPET = {StudyInstanceUID: '', SeriesInstanceUID:'', SOPInstanceUID:'', wadoRsRoot: ''};
@@ -364,7 +514,8 @@ function getDataURLs(caseNumber){
     if (process.env.NETLIFY === "true"){
     // if (true){ //DEBUG
 
-        console.log(' - [getData()] Running on Netlify. Getting data from cloudfront for caseNumber: ', caseNumber);
+        if (verbose)        
+            console.log(' - [getData()] Running on Netlify. Getting data from cloudfront for caseNumber: ', caseNumber);
         if (caseNumber == 0){   
             caseName = 'C3D - CT + PET';
             // CT scan from cornerstone3D samples
@@ -413,7 +564,8 @@ function getDataURLs(caseNumber){
         }
     }
     else {
-        console.log(' - [getData()] Running on localhost. Getting data from local orthanc.')
+        if (verbose)
+            console.log(' - [getData()] Running on localhost. Getting data from local orthanc.')
 
         // ProstateX-004 (MR)
         if (caseNumber == 0){
@@ -455,18 +607,26 @@ function getDataURLs(caseNumber){
         // https://www.cornerstonejs.org/live-examples/segmentationvolume
         else if (caseNumber == 2){
             caseName = 'C3D - CT + RTSS';
-            searchObjCT = {
-                StudyInstanceUID:"1.3.6.1.4.1.14519.5.2.1.256467663913010332776401703474716742458",
-                SeriesInstanceUID:"1.3.6.1.4.1.14519.5.2.1.40445112212390159711541259681923198035",
-                wadoRsRoot: "https://d33do7qe4w26qo.cloudfront.net/dicomweb"
-                // wadoRsRoot: "https://d33do7qe4w26qo.cloudfront.net/dicomwebb"
-            },
-            searchObjRTS = {
-                StudyInstanceUID:"1.3.6.1.4.1.14519.5.2.1.256467663913010332776401703474716742458",
-                SeriesInstanceUID:"1.2.276.0.7230010.3.1.3.481034752.2667.1663086918.611582",
-                SOPInstanceUID:"1.2.276.0.7230010.3.1.4.481034752.2667.1663086918.611583",
-                wadoRsRoot: "https://d33do7qe4w26qo.cloudfront.net/dicomweb"
-            }
+            searchObjCT['StudyInstanceUID']  = '1.3.6.1.4.1.14519.5.2.1.256467663913010332776401703474716742458'
+            searchObjCT['SeriesInstanceUID'] = '1.3.6.1.4.1.14519.5.2.1.40445112212390159711541259681923198035'
+            searchObjCT['wadoRsRoot']        = "https://d33do7qe4w26qo.cloudfront.net/dicomweb"
+            // searchObjCT = {
+            //     StudyInstanceUID:"1.3.6.1.4.1.14519.5.2.1.256467663913010332776401703474716742458",
+            //     SeriesInstanceUID:"1.3.6.1.4.1.14519.5.2.1.40445112212390159711541259681923198035",
+            //     wadoRsRoot: "https://d33do7qe4w26qo.cloudfront.net/dicomweb"
+            //     // wadoRsRoot: "https://d33do7qe4w26qo.cloudfront.net/dicomwebb"
+            // },
+
+            searchObjRTS['StudyInstanceUID']  = "1.3.6.1.4.1.14519.5.2.1.256467663913010332776401703474716742458"
+            searchObjRTS['SeriesInstanceUID'] = "1.2.276.0.7230010.3.1.3.481034752.2667.1663086918.611582"
+            searchObjRTS['SOPInstanceUID']    = "1.2.276.0.7230010.3.1.4.481034752.2667.1663086918.611583"
+            searchObjRTS['wadoRsRoot']        = "https://d33do7qe4w26qo.cloudfront.net/dicomweb"
+            // searchObjRTS = {
+            //     StudyInstanceUID:"1.3.6.1.4.1.14519.5.2.1.256467663913010332776401703474716742458",
+            //     SeriesInstanceUID:"1.2.276.0.7230010.3.1.3.481034752.2667.1663086918.611582",
+            //     SOPInstanceUID:"1.2.276.0.7230010.3.1.4.481034752.2667.1663086918.611583",
+            //     wadoRsRoot: "https://d33do7qe4w26qo.cloudfront.net/dicomweb"
+            // }
         }  
         
     }
@@ -514,34 +674,46 @@ function setButtonBoundaryColor(button, shouldSet, color = 'red') {
     }
 }
 
-function showToast(message, duration = 1000) {
+function showToast(message, duration=1000, delayToast=false) {
 
     if (message === '') return;
-    // Create a new div element
-    const toast = document.createElement('div');
-  
-    // Set the text
-    toast.textContent = message;
-  
-    // Add some styles
-    toast.style.position = 'fixed';
-    toast.style.bottom = '20px';
-    toast.style.left = '50%';
-    toast.style.transform = 'translateX(-50%)';
-    toast.style.background = '#333';
-    toast.style.color = '#fff';
-    toast.style.padding = '10px';
-    toast.style.borderRadius = '5px';
-    toast.style.zIndex = '1000';
-  
-    // Add the toast to the body
-    document.body.appendChild(toast);
-    
-    // After 'duration' milliseconds, remove the toast
-    // console.log('   -- Toast: ', message);
+
     setTimeout(() => {
-      document.body.removeChild(toast);
-    }, duration);
+        // Create a new div element
+        const toast = document.createElement('div');
+    
+        // Set the text
+        toast.textContent = message;
+    
+        // Add some styles
+        toast.style.position = 'fixed';
+        toast.style.bottom = '20px';
+        toast.style.left = '50%';
+        toast.style.transform = 'translateX(-50%)';
+        toast.style.background = '#333';
+        toast.style.color = '#fff';
+        toast.style.padding = '10px';
+        toast.style.borderRadius = '5px';
+        toast.style.zIndex = '1000';
+        toast.style.border = '1px solid #fff';
+
+        toast.style.opacity = '1';
+        toast.style.transition = 'opacity 0.5s';
+    
+        // Add the toast to the body
+        document.body.appendChild(toast);
+        
+        // After 'duration' milliseconds, remove the toast
+        // console.log('   -- Toast: ', message);
+        setTimeout(() => {
+            toast.style.opacity = '0';
+        }, duration);
+        
+        setTimeout(() => {
+        document.body.removeChild(toast);
+        }, duration + 500);
+    }, delayToast ? 1000 : 0);
+
 }
 
 async function getSegmentationIdsAndUIDs() {
@@ -569,6 +741,65 @@ async function getSegmentationUIDforScribbleSegmentationId() {
         return undefined;
     }
     return allSegUIDs[idx];
+}
+
+async function getScribbleType() {
+    const fgdCheckbox = document.getElementById('fgdCheckbox');
+    const bgdCheckbox = document.getElementById('bgdCheckbox');
+    if (fgdCheckbox.checked) return 'fgd';
+    if (bgdCheckbox.checked) return 'bgd';
+    return '';
+}
+
+async function makeRequestToPrepare(caseNumber){
+
+    let requestStatus = false;
+    try{
+        const preparePayload = {[KEY_DATA]: getDataURLs(caseNumber),[KEY_IDENTIFIER]: instanceName,}
+        const response = await fetch(URL_PYTHON_SERVER + ENDPOINT_PREPARE, {method: METHOD_POST, headers: HEADERS_JSON, body: JSON.stringify(preparePayload), credentials: 'include',}); // credentials: 'include' is important for cross-origin requests
+        requestStatus = true;
+        console.log(' \n ----------------- Python server (/prepare) ----------------- \n')
+        console.log('   -- [makeRequestToPrepare()] preparePayload: ', preparePayload);
+        console.log('   -- [makeRequestToPrepare()] response: ', response);
+        console.log('   -- [makeRequestToPrepare()] response.json(): ', await response.json());
+    } catch (error){
+        requestStatus = false;
+        console.log('   -- [makeRequestToPrepare()] Error: ', error);
+        showToast('Python server - /prepare failed', 3000)
+    }
+
+    return requestStatus;
+}
+
+async function makeRequestToProcess(points3D, scribbleAnnotationUID){
+
+    let requestStatus = false;
+    try{
+
+        // Step 1 - Make a request to /process
+        const scribbleType = await getScribbleType();
+        const processPayload = {[KEY_DATA]: {[KEY_POINTS_3D]: points3D, [KEY_SCRIB_TYPE]:scribbleType},[KEY_IDENTIFIER]: instanceName,}
+        await showLoaderAnimation();
+        const response = await fetch(URL_PYTHON_SERVER + ENDPOINT_PROCESS, {method: METHOD_POST, headers: HEADERS_JSON, body: JSON.stringify(processPayload), credentials: 'include',}); // credentials: 'include' is important for cross-origin requests
+        const responseJSON = await response.json();
+        requestStatus = true;
+        console.log(' \n ----------------- Python server (/process) ----------------- \n')
+        console.log('   -- [makeRequestToProcess()] processPayload: ', processPayload);
+        console.log('   -- [makeRequestToProcess()] response: ', response);
+        console.log('   -- [makeRequestToProcess()] response.json(): ', responseJSON);
+
+        // Step 2 - Remove old segmentation and add new segmentation
+        console.log('\n --------------- Removing old segmentation ...  ---------------: ', scribbleAnnotationUID)
+        await cornerstone3DTools.annotation.state.removeAnnotation(scribbleAnnotationUID);
+        await unshowLoaderAnimation();
+
+    } catch (error){
+        requestStatus = false;
+        console.log('   -- [makeRequestToProcess()] Error: ', error);
+        showToast('Python server - /process failed', 3000)
+    }
+
+    return requestStatus;
 }
 
 /****************************************************************
@@ -626,6 +857,7 @@ async function getToolsAndToolGroup() {
     toolGroup.addTool(brushTool.toolName);
     toolGroup.addToolInstance(strBrushCircle, brushTool.toolName, { activeStrategy: 'FILL_INSIDE_CIRCLE', brushSize:5});
     toolGroup.addToolInstance(strEraserCircle, brushTool.toolName, { activeStrategy: 'ERASE_INSIDE_CIRCLE', brushSize:5});
+    cornerstone3DTools.utilities.segmentation.setBrushSizeForToolGroup(toolGroupId, INIT_BRUSH_SIZE);
     toolGroup.addTool(planarFreeHandRoiTool.toolName);
 
     // Step 5 - Set toolGroup elements as active/passive
@@ -654,17 +886,20 @@ async function getToolsAndToolGroup() {
     // Step 6 - Setup some event listeners
     // Listen for keydown event
     window.addEventListener('keydown', function(event) {
-        // For brush tool radius
-        const segUtils       = cornerstone3DTools.utilities.segmentation;
-        let initialBrushSize = segUtils.getBrushSizeForToolGroup(toolGroupId);
-        if (event.key === '+')
-            segUtils.setBrushSizeForToolGroup(toolGroupId, initialBrushSize + 1);
-        else if (event.key === '-'){
-            if (initialBrushSize > 1)
-                segUtils.setBrushSizeForToolGroup(toolGroupId, initialBrushSize - 1);
+        // For brush tool radius        
+        const toolGroup = cornerstone3DTools.ToolGroupManager.getToolGroup(toolGroupId);
+        if (toolGroup.toolOptions[strBrushCircle].mode === MODE_ACTIVE || toolGroup.toolOptions[strEraserCircle].mode === MODE_ACTIVE){
+            const segUtils       = cornerstone3DTools.utilities.segmentation;
+            let initialBrushSize = segUtils.getBrushSizeForToolGroup(toolGroupId);
+            if (event.key === '+')
+                segUtils.setBrushSizeForToolGroup(toolGroupId, initialBrushSize + 1);
+            else if (event.key === '-'){
+                if (initialBrushSize > 1)
+                    segUtils.setBrushSizeForToolGroup(toolGroupId, initialBrushSize - 1);
+            }
+            let newBrushSize = segUtils.getBrushSizeForToolGroup(toolGroupId);
+            showToast(`Brush size: ${newBrushSize}`);
         }
-        let newBrushSize = segUtils.getBrushSizeForToolGroup(toolGroupId);
-        showToast(`Brush size: ${newBrushSize}`);
     });
 
     return {toolGroup, windowLevelTool, panTool, zoomTool, stackScrollMouseWheelTool, probeTool, referenceLinesTool, segmentation, segmentationDisplayTool, brushTool, planarFreeHandRoiTool, toolState};
@@ -745,19 +980,24 @@ function setContouringButtonsLogic(){
     // Step 3 - Add event listeners for mouseup event
     [axialDiv, sagittalDiv, coronalDiv].forEach((viewportDiv, index) => {
         viewportDiv.addEventListener('mouseup', function() {
-            setTimeout(() => {
+            setTimeout(async () => {
                 const freehandRoiToolMode = toolGroup.toolOptions[planarFreehandROITool.toolName].mode;
-                if (freehandRoiToolMode === 'Active'){
+                if (freehandRoiToolMode === MODE_ACTIVE){
                     const allAnnotations = cornerstone3DTools.annotation.state.getAllAnnotations();
                     const scribbleAnnotations = allAnnotations.filter(x => x.metadata.toolName === planarFreehandROITool.toolName);
                     if (scribbleAnnotations.length > 0){
-                        const polyline           = scribbleAnnotations[0].data.contour.polyline;
-                        const points3D = polyline.map(function(point) {
-                            return getIndex(cornerstone3D.cache.getVolume(volumeIdCT), point);
-                        });
-                        // console.log('\n ---------------------------------------');
-                        // console.log(' - [setContouringButtonsLogic()] polyline: ', polyline);
-                        // console.log(' - [setContouringButtonsLogic()] points3D: ', points3D);
+                        const scribbleAnnotationUID = scribbleAnnotations[0].annotationUID;
+                        if (scribbleAnnotations.length > 0){
+                            const polyline           = scribbleAnnotations[0].data.contour.polyline;
+                            const points3D = polyline.map(function(point) {
+                                return getIndex(cornerstone3D.cache.getVolume(volumeIdCT), point);
+                            });
+                            const points3DInt = points3D.map(x => x.map(y => Math.floor(y)));
+                            await makeRequestToProcess(points3DInt, scribbleAnnotationUID);
+                        }
+                    } else {
+                        const allAnnotations = cornerstone3DTools.annotation.state.getAllAnnotations();
+                        console.log(' - [setContouringButtonsLogic()] allAnnotations: ', allAnnotations);
                     }
                 }
             }, 100);
@@ -890,8 +1130,7 @@ async function restart() {
         if (buttonHTML === null) return;
         setButtonBoundaryColor(buttonHTML, false);
     });
-    setButtonBoundaryColor(editBaseContourViaScribbleButton, true);
-
+    
     fusedPETCT   = false;
     petBool      = false;
     oldSegmentationId        = undefined;
@@ -916,14 +1155,19 @@ async function fetchAndLoadData(caseNumber){
     console.log(' \n ----------------- Getting .dcm data ----------------- \n')
     
     // Step 1 - Get search parameters
-    const {searchObjCT, searchObjPET, searchObjRTS} = getDataURLs(caseNumber);
+    const {searchObjCT, searchObjPET, searchObjRTS} = getDataURLs(caseNumber, true);
     console.log(' - [loadData()] searchObjCT: ', searchObjCT);
 
     // Step 2.1 - Create volume for CT
     if (searchObjCT.wadoRsRoot.length > 0){
 
+        // Step 2.1.0 - Init for CT load
         const renderingEngine = cornerstone3D.getRenderingEngine(renderingEngineId);
 
+        // Step 2.1.1 - Load CT data (in python server)
+        makeRequestToPrepare(caseNumber)
+
+        // Step 2.1.2 - Load CT data
         volumeIdCT     = volumeIdCTBase + cornerstone3D.utilities.uuidv4();
         let ctLoadBool = false;
         let imageIdsCT = [];
@@ -979,7 +1223,7 @@ async function fetchAndLoadData(caseNumber){
             toolGroup.setToolActive(stackScrollMouseWheelTool.toolName);
             
             // Step 99 - Done
-            showToast('Data loaded successfully', 3000);
+            showToast('Data loaded successfully', 3000, true);
         }
 
     }else{
@@ -1008,7 +1252,7 @@ async function setup(patientIdx){
 }
 
 const patientIdx = 2;
-const {caseSelectionHTML, resetViewButton, showPETButton} = await otherHTMLElements(patientIdx);
+const {showPETButton} = await otherHTMLElements(patientIdx);
 setup(patientIdx)
 
 

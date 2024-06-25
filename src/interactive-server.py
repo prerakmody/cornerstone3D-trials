@@ -1,9 +1,11 @@
-import logging
-logging.basicConfig(level=logging.DEBUG)
-
 import os
+import pdb
+import time
+import psutil
+import logging
 import platform
 import traceback
+from pathlib import Path
 
 import typing
 import fastapi
@@ -13,8 +15,35 @@ import starlette
 import fastapi.middleware.cors
 import starlette.middleware.sessions
 
-import psutil
 import torch
+import monai
+
+KEY_UNET_V1          = 'unet_v1'
+KEY_MODEL_STATE_DICT = 'model_state_dict'
+EPOCH_STR            = 'epoch_{:04d}'
+SHAPE_TENSOR         = (1, 5, 96, 96, 96)
+
+HOST = 'localhost'
+PORT = 55000
+
+#################################################################
+#                             UTILS
+#################################################################
+
+def configureFastAPIApp(app):
+    
+    # app.add_middleware(starlette.middleware.sessions.SessionMiddleware, secret_key="your-secret-key")
+    origins = [f"http://localhost:{port}" for port in range(49000, 60000)]  # Replace with your range of ports
+    app.add_middleware(
+        fastapi.middleware.cors.CORSMiddleware,
+        # allow_origins=["*"],  # Allows all origins
+        allow_origins=origins,
+        allow_credentials=True,
+        allow_methods=["*"],  # Allows all methods
+        allow_headers=["*"],  # Allows all headers
+    )
+
+    return app
 
 def getTorchDevice():
     device = torch.device('cpu')
@@ -25,7 +54,7 @@ def getTorchDevice():
     else:
         print (' - Unknown platform: {}'.format(platform.system()))
 
-    print ('\n - Device: {}\n'.format(device))
+    # print ('\n - Device: {}\n'.format(device))
 
     return device
 
@@ -43,21 +72,15 @@ def getMemoryUsage():
     
     print (' ** [{}] Memory usage: RAM ({:.2f} GB), GPU ({:.2f} GB)'.format(pid, ramUsageInGB, gpuUsageInGB))
 
-device = getTorchDevice()
-getMemoryUsage()
+def getRequestInfo(request):
+    print (request.headers)
+    userAgent = request.headers.get('user-agent', 'userAgentIsNone')
+    referer   = request.headers.get('referer', 'refererIsNone')
+    return userAgent, referer
 
-app = fastapi.FastAPI()
-# app.add_middleware(starlette.middleware.sessions.SessionMiddleware, secret_key="your-secret-key")
-
-origins = [f"http://localhost:{port}" for port in range(49000, 51000)]  # Replace with your range of ports
-app.add_middleware(
-    fastapi.middleware.cors.CORSMiddleware,
-    # allow_origins=["*"],  # Allows all origins
-    allow_origins=origins,
-    allow_credentials=True,
-    allow_methods=["*"],  # Allows all methods
-    allow_headers=["*"],  # Allows all headers
-)
+#################################################################
+#                        DATA MODELS
+#################################################################
 
 class SearchObj(pydantic.BaseModel):
     StudyInstanceUID: str = pydantic.Field(...)
@@ -77,19 +100,130 @@ class PayloadPrepare(pydantic.BaseModel):
 
 class ProcessData(pydantic.BaseModel):
     points3D: typing.List[typing.Tuple[int, int, int]] = pydantic.Field(...)
+    scribbleType: str = pydantic.Field(...)
 
 class PayloadProcess(pydantic.BaseModel):
     data: ProcessData = pydantic.Field(...)
     identifier: str = pydantic.Field(...)
 
+#################################################################
+#                        NNET MODELS
+#################################################################
+
+def getModel(modelName, device=None):
+
+    model = None
+
+    try:
+
+        # Step 1 - Get neural arch
+
+        ###################### RECONSTRUCTION MODELS ######################
+        if modelName == KEY_UNET_V1:
+            # https://docs.monai.io/en/stable/networks.html#unet
+            model = monai.networks.nets.UNet(in_channels=5, out_channels=1, spatial_dims=3, channels=[16, 32, 64, 128], strides=[2, 2, 2], num_res_units=2) # [CT,PET,Pred,Fgd,Bgd] --> [Refined-Pred] # 1.2M params
+
+        # Step 2 - Move to device
+        if device is not None:
+            model = model.to(device)
+
+    except:
+        traceback.print_exc()
+        pdb.set_trace()
+    
+    return model
+
+def loadModel(modelPath, modelName=None, model=None, device=None):
+    
+    loadedModel = None
+
+    try:
+
+        # Step 1 - Get model
+        if model is None and modelName is not None:
+            model = getModel(modelName)
+
+        # Step 2 - Load the model
+        checkpoint = None
+        if model is not None:
+
+            # Step 2.1 - Get checkpoint
+            checkpoint = torch.load(modelPath, map_location=device)
+
+            if KEY_MODEL_STATE_DICT in checkpoint:
+                model.load_state_dict(checkpoint[KEY_MODEL_STATE_DICT])
+            else:
+                model.load_state_dict(checkpoint)
+            
+            # Step 2.2 - Move to device
+            if device is not None:
+                loadedModel = model.to(device)
+
+    except:
+        traceback.print_exc()
+    
+    return loadedModel
+
+def loadModelUsingUserPath(device):
+
+    model = None
+    try:
+
+        print ('\n =========================== [loadModelUsingUserPath()] =========================== \n')
+        # Step 1 - Define paths
+        DIR_FILE  = Path(__file__).parent.absolute() # src/
+        DIR_MAIN  = DIR_FILE.parent.absolute() # ./visualizer/
+        DIR_MODELS = DIR_MAIN / '_models/'
+        if 1:
+            expName = 'UNetv1__DICE-LR1e3__Class1__Trial1'
+            epoch     = 100
+            modelType = KEY_UNET_V1
+        
+        # Step 2 - Load model
+        getMemoryUsage()
+        modelPath = Path(DIR_MODELS) / expName / EPOCH_STR.format(epoch) / EPOCH_STR.format(epoch)
+        if Path(modelPath).exists():
+            print (' - [loadModel()] Loading model from: ', modelPath)
+            print (' - [loadModel()] Device: ', device)
+            
+            model     = loadModel(modelPath, modelType, device=device)
+            if model is not None:
+                model.eval()
+                _ = model(torch.randn(SHAPE_TENSOR, device=device)) # warm-up
+                getMemoryUsage()
+            else:
+                print (' - [loadModel()] Model not loaded')
+                print (' - Exiting...')
+                exit(0)
+        
+            print ('\n =========================== [loadModelUsingUserPath()] =========================== \n')
+        
+        else:
+            print (' - [loadModel()] Model not found at: ', modelPath)
+            print (' - Exiting...')
+            exit(0)
+
+    except:
+        traceback.print_exc()
+        pdb.set_trace()
+    
+    return model
+
+#################################################################
+#                        API ENDPOINTS
+#################################################################
+
+# Step 1 - App related
+app     = fastapi.FastAPI()
+configureFastAPIApp(app)
+DEVICE  = getTorchDevice()
+DEVICE  = torch.device('cpu')
+
+# Step 2 - Global Vars-related
 sessionsGlobal = {}
+model          = loadModelUsingUserPath(DEVICE)
 
-def getRequestInfo(request):
-    print (request.headers)
-    userAgent = request.headers.get('user-agent', 'userAgentIsNone')
-    referer   = request.headers.get('referer', 'refererIsNone')
-    return userAgent, referer
-
+# Step 3 - API Endpoints
 @app.post("/prepare")
 async def prepare(payload: PayloadPrepare, request: starlette.requests.Request):
     
@@ -108,7 +242,7 @@ async def prepare(payload: PayloadPrepare, request: starlette.requests.Request):
         if sessionsGlobal[clientIdentifier]['data'] != preparedData:
             dataAlreadyPresent = False
             sessionsGlobal[clientIdentifier]['data'] = preparedData
-            sessionsGlobal[clientIdentifier]['torchData'] = torch.randn((1, 4, 196, 196, 196), device=device)
+            sessionsGlobal[clientIdentifier]['torchData'] = torch.randn(SHAPE_TENSOR, device=DEVICE)
         else:
             dataAlreadyPresent = True
         
@@ -127,11 +261,11 @@ async def prepare(payload: PayloadPrepare, request: starlette.requests.Request):
     except pydantic.ValidationError as e:
         print (' - /prepare (from {},{}): {}'.format(referer, userAgent, e))
         logging.error(e)
-        return {"status": "Error in /prepare:" + str(e)}
+        return {"status": "Error in /prepare => " + str(e)}
     
     except Exception as e:
         traceback.print_exc()
-        return {"status": "Error in /prepare:" + str(e)}
+        return {"status": "Error in /prepare => " + str(e)}
 
 @app.post("/process")
 async def process(payload: PayloadProcess, request: starlette.requests.Request):
@@ -159,16 +293,31 @@ async def process(payload: PayloadProcess, request: starlette.requests.Request):
         # Step 99 - Return
         getMemoryUsage()
         if dataAlreadyPresent:
-            return {"status": "[clientIdentifier={}] Data processed for python server".format(clientIdentifier)}
+            points3D = processData['points3D']
+            scribbleType = processData['scribbleType']
+            print ('  - [process()] preparedDataTorch:', preparedDataTorch.shape, preparedDataTorch.device)
+            print ('  - [process()] points3D:', points3D)
+            print ('  - [process()] scribbleType:', scribbleType)
+            t0 = time.time()
+            _ = model(preparedDataTorch)
+            totalInferenceTime = time.time() - t0
+            return {"status": "[clientIdentifier={}] Data processed for python server in {:.4f}s".format(clientIdentifier, totalInferenceTime)}
         else:
             return {"status": "[clientIdentifier={}] No data present in python server".format(clientIdentifier)}
     
     except pydantic.ValidationError as e:
         print (' - /process (from {},{}): {}'.format(referer, userAgent, e))
         logging.error(e)
-        return {"status": "Error in /process"}
+        return {"status": "Error in /process => " + str(e)}
+
+    except Exception as e:
+        traceback.print_exc()
+        return {"status": "Error in /prepare => " + str(e)}
+
+#################################################################
+#                           MAIN
+#################################################################
 
 if __name__ == "__main__":
-    # uvicorn.run(app, host="localhost", port=5500) # When running python interactive-server.py I get "WARNING:  You must pass the application as an import string to enable 'reload' or 'workers'."
-    os.execvp("uvicorn", ["uvicorn", "interactive-server:app", "--reload", "--host", "localhost", "--port", "5500"])
-    getMemoryUsage()
+
+    os.execvp("uvicorn", ["uvicorn", "interactive-server:app", "--reload", "--host", HOST, "--port", str(PORT)])
