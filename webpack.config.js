@@ -7,10 +7,10 @@ const webpack = require('webpack');
 module.exports = smp.wrap({
   // entry: './src/index3D.js',
   // entry: './src/index3DVolume.js',
-  // entry: './src/index3DContours.js',
+  entry: './src/index3DContours.js',
   // entry: './src/index3DBrush.js',
   // entry: './src/index3DRTSS.js',
-  entry: './src/index3DRTSS-v2.js',
+  // entry: './src/index3DRTSS-v2.js',
   output: {
     filename: 'main.js',
     path: path.resolve(__dirname, 'dist'),
@@ -55,6 +55,7 @@ module.exports = smp.wrap({
         type: 'javascript/auto',
       },
     ],
+    unknownContextCritical: false,
   },
   plugins: [
     new webpack.DefinePlugin({

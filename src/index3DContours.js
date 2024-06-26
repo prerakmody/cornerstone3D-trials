@@ -24,7 +24,7 @@ let segmentationRepresentationUID = '';
 let activeSegmentIndex = 0;
 
 const size = '500px';
-const content = document.getElementById('content');
+const content = document.getElementById('contentDiv');
 const viewportGrid = document.createElement('div');
 
 viewportGrid.style.display = 'flex';
