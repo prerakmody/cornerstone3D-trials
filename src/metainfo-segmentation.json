@@ -1,0 +1,37 @@
+{
+    "ContentCreatorName": "Reader1",
+    "ClinicalTrialSeriesID": "Session1",
+    "ClinicalTrialTimePointID": "1",
+    "SeriesDescription": "Segmentation",
+    "SeriesNumber": "3",
+    "InstanceNumber": "1",
+    "BodyPartExamined": "HEADNECK",
+    "segmentAttributes": [
+      [
+        {
+          "labelID": 1,
+          "SegmentDescription": "GTVp",
+          "SegmentAlgorithmType": "AUTOMATIC",
+          "SegmentAlgorithmName": "BaseAlgo",
+          "SegmentedPropertyCategoryCodeSequence": {
+            "CodeValue": "85756007",
+            "CodingSchemeDesignator": "SCT",
+            "CodeMeaning": "Tissue"
+          },
+          "SegmentedPropertyTypeCodeSequence": {
+            "CodeValue": "85756007",
+            "CodingSchemeDesignator": "SCT",
+            "CodeMeaning": "Tissue"
+          },
+          "recommendedDisplayRGBValue": [
+            175,
+            130,
+            136
+          ]
+        }
+      ]
+    ],
+    "ContentLabel": "SEGMENTATION",
+    "ContentDescription": "Image segmentation",
+    "ClinicalTrialCoordinatingCenterName": "dcmqi"
+  }

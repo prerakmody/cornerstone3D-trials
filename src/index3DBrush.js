@@ -575,6 +575,9 @@ async function setupSegmentation(segmentation){
         {segmentationId, type: cornerstone3DTools.Enums.SegmentationRepresentations.Labelmap,},
     ]);
 
+    segmentation.activeSegmentation.setActiveSegmentationRepresentation(toolGroupId,segmentationRepresentationUIDs[0]);
+
+
 }
 
 /****************************************************************

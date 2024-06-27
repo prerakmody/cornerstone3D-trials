@@ -7,10 +7,10 @@ const webpack = require('webpack');
 module.exports = smp.wrap({
   // entry: './src/index3D.js',
   // entry: './src/index3DVolume.js',
-  entry: './src/index3DContours.js',
+  // entry: './src/index3DContours.js',
   // entry: './src/index3DBrush.js',
   // entry: './src/index3DRTSS.js',
-  // entry: './src/index3DRTSS-v2.js',
+  entry: './src/index3DRTSS-v2.js',
   output: {
     filename: 'main.js',
     path: path.resolve(__dirname, 'dist'),
@@ -30,17 +30,22 @@ module.exports = smp.wrap({
       "Cross-Origin-Resource-Policy": "cross-origin",  
     },
     setupMiddlewares: function(middlewares, devServer) {
-      devServer.app.use(
-        '/dicom-web',
-        createProxyMiddleware({
-          target: 'http://localhost:8042/dicom-web',
-          changeOrigin: true,
-          onProxyRes: function(proxyRes) {
-            proxyRes.headers['Cross-Origin-Opener-Policy'] = 'same-origin';
-            proxyRes.headers['Cross-Origin-Embedder-Policy'] = 'require-corp';
-          },
-        })
-      );
+      
+      const endpoints = ['/dicom-web', '/patients', '/studies', '/series', '/instances']; // List your endpoints here
+      endpoints.forEach((endpoint) => {
+        devServer.app.use(
+          endpoint,
+          createProxyMiddleware({
+            target: `http://localhost:8042${endpoint}`,
+            changeOrigin: true,
+            onProxyRes: function(proxyRes) {
+              proxyRes.headers['Cross-Origin-Opener-Policy'] = 'same-origin';
+              proxyRes.headers['Cross-Origin-Embedder-Policy'] = 'require-corp';
+            },
+          })
+        );
+      });
+
       return middlewares;
     },
   },

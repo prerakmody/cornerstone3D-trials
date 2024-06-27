@@ -78,6 +78,10 @@ def getRequestInfo(request):
     referer   = request.headers.get('referer', 'refererIsNone')
     return userAgent, referer
 
+def getDicomServerData(dataParams):
+    pass
+
+
 #################################################################
 #                        DATA MODELS
 #################################################################
@@ -91,7 +95,8 @@ class SearchObj(pydantic.BaseModel):
 class PreparedData(pydantic.BaseModel):
     searchObjCT: SearchObj = pydantic.Field(...)
     searchObjPET: SearchObj = pydantic.Field(...)
-    searchObjRTS: SearchObj = pydantic.Field(...)
+    searchObjRTSGT: SearchObj = pydantic.Field(...)
+    searchObjRTSPred: SearchObj = pydantic.Field(...)
     caseName: str = pydantic.Field(...)
 
 class PayloadPrepare(pydantic.BaseModel):
