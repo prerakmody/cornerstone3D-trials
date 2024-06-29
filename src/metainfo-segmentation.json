@@ -9,7 +9,7 @@
     "segmentAttributes": [
       [
         {
-          "labelID": 1,
+          "labelID": 2,
           "SegmentDescription": "GTVp",
           "SegmentAlgorithmType": "AUTOMATIC",
           "SegmentAlgorithmName": "BaseAlgo",

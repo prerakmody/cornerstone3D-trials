@@ -192,7 +192,7 @@ def makeCTPTDicomSlices(imageArray, origin, spacing, patientName, studyUID, seri
                     pixelValueList.extend(pixelData[pixelData > 1.0].flatten().tolist())
 
                 # Step 1.3 - Save the dicom file
-                savePath = Path(pathFolder).joinpath(str(dsCT.SOPInstanceUID) + EXT_DCM)
+                savePath = Path(pathFolder).joinpath(modality + '{:03d}'.format(sliceIdx) + '.' + str(dsCT.SOPInstanceUID) + EXT_DCM)
                 dsCT.save_as(str(savePath), write_like_original=False)
                 pathsList.append(savePath)
 
@@ -212,6 +212,69 @@ def terminalPlotHist(values, bins=100, titleStr="Histogram Plot"):
         pltTerm.show()
         pltTerm.clf()
 
+    except:
+        traceback.print_exc()
+        pdb.set_trace()
+
+def studyDicomTags(ds): 
+    """
+    NOTES
+    -----
+    Modality=SEG
+        - Per-frame Functional Groups Sequence: 
+    """
+
+    try:
+        
+        # Loop over dicom tags and print only the top-level ones
+        for elem in ds:
+            print (elem.name, elem.VR)
+            if ds.Modality == 'SEG':
+                if elem.name in ['Referenced Series Sequence', 'Segment Sequence', 'Shared Functional Groups Sequence']: #, 'Per-frame Functional Groups Sequence'] :
+                    print (elem.name, elem.VR, elem.value)
+            # if elem.VR != "SQ":
+            #     print (elem.name, elem.VR)
+            # else:
+            #     print (elem.name, elem.VR, elem.value[0].name)
+        
+        pdb.set_trace()
+
+    except:
+        traceback.print_exc()
+        pdb.set_trace()
+
+def plot(ctArray, ptArray, maskPredArray=None, sliceIds=[]):
+    """
+    Params:
+        ctArray: [H, W, D]
+        ptArray: [H, W, D]
+        maskPredArray: [H, W, D]
+    """
+    
+    try:
+        if len(sliceIds) == 0:
+            randomSliceIds = np.random.choice(ctArray.shape[2], 3)
+        else:
+            randomSliceIds = sliceIds
+        f,axarr = plt.subplots(len(randomSliceIds),3,figsize=(15,15))
+
+        for i, sliceId in enumerate(randomSliceIds):
+
+            # Plot CT
+            axarr[i,0].imshow(ctArray[:,:,sliceId], cmap='gray')
+            axarr[i,0].set_ylabel('Slice: ' + str(sliceId))
+
+            # Plot PT
+            axarr[i,1].imshow(ptArray[:,:,sliceId], cmap='gray')
+
+            # Plot Mask
+            axarr[i,2].imshow(ctArray[:,:,sliceId], cmap='gray')
+            axarr[i,2].imshow(ptArray[:,:,sliceId], cmap='gray', alpha=0.5)
+            if maskPredArray is not None:
+                axarr[i,2].contour(maskPredArray[:,:,sliceId])
+        
+        plt.show()
+    
     except:
         traceback.print_exc()
         pdb.set_trace()
@@ -239,12 +302,17 @@ class DICOMConverterHecktor:
             self.maskPredArray, self.maskPredHeader, self.maskPredSpacing, self.maskPredOrigin = readVolume(self.pathMaskPred)
             
             # Step 1.1 - Some custom processing
-            if 1:
+            if 0:
                 self.ctArray  = self.ctArray[:,:,:-1]
                 self.ptArray = self.ptArray[:,:,:-1]
-            assert self.ctArray.shape == self.ptArray.shape == self.maskArray.shape == self.maskPredArray.shape, " - [DICOMConverterHecktor] Shape mismatch: CT: {}, PET: {}, Mask: {}, MaskPred: {}".format(self.ctArray.shape, self.ptArray.shape, self.maskArray.shape, self.maskPredArray.shape)
+            # assert self.ctArray.shape == self.ptArray.shape == self.maskArray.shape == self.maskPredArray.shape, " - [DICOMConverterHecktor] Shape mismatch: CT: {}, PET: {}, Mask: {}, MaskPred: {}".format(self.ctArray.shape, self.ptArray.shape, self.maskArray.shape, self.maskPredArray.shape)
 
             # Step 1.2 - Check Spacing
+            floatify = lambda x: [float(i) for i in x] 
+            self.ctSpacing = floatify(self.ctSpacing)
+            self.ptSpacing = floatify(self.ptSpacing)
+            self.maskSpacing = floatify(self.maskSpacing)
+            self.maskPredSpacing = floatify(self.maskPredSpacing)
             assert self.ctSpacing == self.ptSpacing == self.maskSpacing == self.maskPredSpacing, " - [DICOMConverterHecktor] Spacing mismatch: CT: {}, PET: {}, Mask: {}, MaskPred: {}".format(self.ctSpacing, self.ptSpacing, self.maskSpacing, self.maskPredSpacing)
 
             # Step 3 - Get origins
@@ -295,7 +363,7 @@ class DICOMConverterHecktor:
                 # terminalPlotHist(ctPixelValueList, bins=100, titleStr="CT Histogram Plot")
 
             # Step 2 - Convert PT
-            if 1:
+            if 0:
                 ptSeriesUID = pydicom.uid.generate_uid()
                 ptSeriesNum = 2
                 ptPixelValueList = makeCTPTDicomSlices(self.ptArray, self.ptOrigin, self.ptSpacing, self.patientName, self.studyUID, ptSeriesUID, ptSeriesNum, self.pathFolderPT, MODALITY_PT)
@@ -303,12 +371,16 @@ class DICOMConverterHecktor:
 
             # Step 3 - Convert Mask
             if 1:
-                maskImage = sitk.GetImageFromArray(self.maskArray.astype(np.uint8))
-                maskImage = sitk.GetImageFromArray(np.moveaxis(self.maskArray, [0,1,2], [2,1,0]).astype(np.uint8)) # np([H,W,D]) -> np([D,W,H]) -> sitk([H,W,D])
                 
+                self.maskArray[self.maskArray == 1] = 2
+                # maskImage = sitk.GetImageFromArray(self.maskArray.astype(np.uint8))
+                maskImage = sitk.GetImageFromArray(np.moveaxis(self.maskArray, [0,1,2], [2,1,0]).astype(np.uint8)) # np([H,W,D]) -> np([D,W,H]) -> sitk([H,W,D])
+                # SITK is (Width, Height, Depth) and np is 
                 maskImage.SetSpacing(self.maskSpacing)
                 maskImage.SetOrigin(self.maskOrigin)
+                # print (' - [maskImage] rows: {}, cols: {}, slices: {}'.format(maskImage.GetHeight(), maskImage.GetWidth(), maskImage.GetDepth()))
 
+                
                 import pydicom_seg
                 template = pydicom_seg.template.from_dcmqi_metainfo(Path(DIR_FILE) / 'metainfo-segmentation.json')
                 template.SeriesDescription = self.patientName + '-Series-SEG-GT'
@@ -317,9 +389,26 @@ class DICOMConverterHecktor:
                 writer = pydicom_seg.MultiClassWriter(template=template, inplane_cropping=False, skip_empty_slices=False, skip_missing_segment=False)
                 ctDcmsList = [pydicom.dcmread(dcmPath, stop_before_pixels=True) for dcmPath in ctPathsList]
                 dcm = writer.write(maskImage, ctDcmsList)
+                
                 dcm.StudyInstanceUID  = self.studyUID
-                dcm.save_as(str(self.pathFolderMask / "mask.dcm"))
+                print (' - rows: {} | cols: {} | numberofframes:{}'.format(dcm.Rows, dcm.Columns, dcm.NumberOfFrames))
+                # dcm.Rows = 144
+                # dcm.Columns = 144
+                # print (dcm.Rows, dcm.Columns, dcm.NumberOfFrames)
 
+                
+                # dcm.PixelData = np.moveaxis(self.maskArray, [0,1,2], [2,1,0]).astype(np.uint8).tobytes()
+                dcm.save_as(str(self.pathFolderMask / "mask.dcm"))
+                
+                # decodedMaskArray = dcm.pixel_array
+                # print (decodedMaskArray.shape, self.maskArray.shape)
+                # plot(self.ctArray, self.ptArray, decodedMaskArray, sliceIds=[20, 54, 90])
+                # plot(self.ctArray, self.ptArray, self.maskArray, sliceIds=[20, 54, 90])
+                # bytes_array = np.frombuffer(dcm.PixelData, dtype=np.uint8)
+                # unpacked_bits = np.unpackbits(bytes_array, bitorder='little')
+                
+                # studyDicomTags(dcm)
+                pdb.set_trace()
 
 
 
@@ -338,8 +427,23 @@ if __name__ == "__main__":
         patientName  = "CHMR001"
         pathCT       = DIR_CLINIC / "CHMR001_ct.nii.gz"      # "nrrd_CHMR001_img1.nrrd"
         pathPT       = DIR_CLINIC / "CHMR001_pt.nii.gz"      # "nrrd_CHMR001_img2.nrrd"
-        pathMask     = DIR_CLINIC / "nrrd_CHMR001_mask.nrrd" # ["nrrd_CHMR001_mask.nrrd", "CHMR001_gtvt.nii.gz"]
+        pathMask     = DIR_CLINIC / "CHMR001_gtvt.nii.gz"    # ["nrrd_CHMR001_mask.nrrd", "CHMR001_gtvt.nii.gz"]
         pathMaskPred = DIR_CLINIC / "nrrd_CHMR001_maskpred.nrrd"
     
     converterClass = DICOMConverterHecktor(patientName, pathCT, pathPT, pathMask, pathMaskPred)
     converterClass.convertToDICOM()
+
+"""
+1. pydicom_seg.MultiClassWriter
+ - rows=?, cols=?
+     - https://github.com/razorx89/pydicom-seg/blob/v0.4.1/pydicom_seg/writer.py#L153
+ - height
+     - https://github.com/razorx89/pydicom-seg/blob/v0.4.1/pydicom_seg/writer.py#L183
+        - min_z, max_z = 0, segmentation.GetDepth()
+ - add_frame
+    - https://github.com/razorx89/pydicom-seg/blob/v0.4.1/pydicom_seg/writer.py#L193
+        - slice_idx in range(min_z, max_z)
+        - frame_data = np.equal( buffer[slice_idx, min_y:max_y, min_x:max_x], segment )
+ - Encoding 3D Array
+    - https://github.com/razorx89/pydicom-seg/blob/v0.4.1/pydicom_seg/segmentation_dataset.py#L200
+"""

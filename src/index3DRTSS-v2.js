@@ -82,6 +82,8 @@ const MODE_PASSIVE = 'Passive';
 // General
 let fusedPETCT   = false;
 let petBool      = false;
+let totalImagesIdsCT = undefined;
+let totalImagesIdsPET = undefined;
 
 // Orthan Data
 let orthanDataURLS = []
@@ -347,20 +349,27 @@ async function otherHTMLElements(){
     viewportIds.forEach((viewportId_, index) => {
         const viewportDiv = document.getElementById(viewportIds[index]);
         viewportDiv.addEventListener('mousemove', function(evt) {
-            if (volumeIdCT != undefined && volumeIdPET != undefined){
+            if (volumeIdCT != undefined){
                 const volumeCTThis = cornerstone3D.cache.getVolume(volumeIdCT);
-                const volumePTThis = cornerstone3D.cache.getVolume(volumeIdPET);
                 if (volumeCTThis != undefined){
                     const renderingEngine = cornerstone3D.getRenderingEngine(renderingEngineId);
                     const rect        = viewportDiv.getBoundingClientRect();
                     const canvasPos   = [Math.floor(evt.clientX - rect.left),Math.floor(evt.clientY - rect.top),];
                     const viewPortTmp = renderingEngine.getViewport(viewportIds[index]);
                     const worldPos    = viewPortTmp.canvasToWorld(canvasPos);
-
-                    canvasPosHTML.innerText = `Canvas position: (${viewportIds[index]}) => (${canvasPos[0]}, ${canvasPos[1]})`;
-                    ctValueHTML.innerText = `CT value: ${getValue(volumeCTThis, worldPos)}`;
-                    if (volumePTThis != undefined)
-                        {ptValueHTML.innerText = `PT value: ${getValue(volumePTThis, worldPos)}`;}
+                    let index3D       = getIndex(volumeCTThis, worldPos) //.forEach((val) => Math.round(val));
+                    if (canvasPos != undefined && index3D != undefined && worldPos != undefined){
+                        index3D       = index3D.map((val) => Math.round(val));
+                        canvasPosHTML.innerText = `Canvas position: (${viewportIds[index]}) => (${canvasPos[0]}, ${canvasPos[1]}) || (${index3D[0]}, ${index3D[1]}, ${index3D[2]})`;
+                        ctValueHTML.innerText = `CT value: ${getValue(volumeCTThis, worldPos)}`;
+                        if (volumeIdPET != undefined){
+                            const volumePTThis = cornerstone3D.cache.getVolume(volumeIdPET);
+                            ptValueHTML.innerText = `PT value: ${getValue(volumePTThis, worldPos)}`;
+                        }
+                    }else{
+                        showToast('Mousemove Event: Error in getting canvasPos, index3D, worldPos')
+                    }                    
+                    
                 }
             }
         });
@@ -376,7 +385,6 @@ async function otherHTMLElements(){
     caseSelectionHTML.innerHTML = 'Case Selection';
     caseSelectionHTML.addEventListener('change', async function() {
         const caseNumber = parseInt(this.value);
-        console.log('   -- caseNumber (for caseSelectionHTML): ', caseNumber);
         await fetchAndLoadData(caseNumber);
     });
 
@@ -433,36 +441,77 @@ async function getLoaderHTML(){
             `;
 
         // Step 5 - Position the grayOutDiv and loadingIndicatorDiv 
-        const contentDiv = document.getElementById(contentDivId);
-        const contentDivRect = contentDiv.getBoundingClientRect();
-        // console.log(' -- contentDivRect: ', contentDivRect);
+        await setLoaderHTMLPosition();
+        // const contentDiv = document.getElementById(contentDivId);
+        // const contentDivRect = contentDiv.getBoundingClientRect();
+        // // console.log(' -- contentDivRect: ', contentDivRect);
 
-        // Step 5.1 - Position the loadingIndicatorDiv
-        loadingIndicatorDiv.style.position = 'absolute';
-        loadingIndicatorDiv.style.top = `${(contentDivRect.top + (contentDivRect.bottom - contentDivRect.top) / 2) - (loadingIndicatorDiv.offsetHeight / 2)}px`;
-        loadingIndicatorDiv.style.left = `${(contentDivRect.left + (contentDivRect.right - contentDivRect.left) / 2) - (loadingIndicatorDiv.offsetWidth / 2)}px`;
+        // // Step 5.1 - Position the loadingIndicatorDiv
+        // loadingIndicatorDiv.style.position = 'absolute';
+        // loadingIndicatorDiv.style.top = `${(contentDivRect.top + (contentDivRect.bottom - contentDivRect.top) / 2) - (loadingIndicatorDiv.offsetHeight / 2)}px`;
+        // loadingIndicatorDiv.style.left = `${(contentDivRect.left + (contentDivRect.right - contentDivRect.left) / 2) - (loadingIndicatorDiv.offsetWidth / 2)}px`;
         
 
-        // Step 5.2 - place the grououtdiv on top of contentDiv
-        grayOutDiv.style.top = `${contentDivRect.top}px`;
-        grayOutDiv.style.left = `${contentDivRect.left}px`;
-        grayOutDiv.style.width = `${contentDivRect.right - contentDivRect.left}px`;
-        grayOutDiv.style.height = `${contentDivRect.bottom - contentDivRect.top}px`;
+        // // Step 5.2 - place the grayOutDiv on top of contentDiv
+        // grayOutDiv.style.top = `${contentDivRect.top}px`;
+        // grayOutDiv.style.left = `${contentDivRect.left}px`;
+        // grayOutDiv.style.width = `${contentDivRect.right - contentDivRect.left}px`;
+        // grayOutDiv.style.height = `${contentDivRect.bottom - contentDivRect.top}px`;
     }
 
     return {loaderDiv};
 }
 
+async function setLoaderHTMLPosition(set=true){
+
+    // Step 1 - Get divs
+    const contentDiv          = document.getElementById(contentDivId);
+    const loadingIndicatorDiv = document.getElementById('loadingIndicatorDiv');
+    const grayOutDiv          = document.getElementById('grayOutDiv');
+
+    if (set){
+        // Step 2 - Get the bounding rect of contentDiv
+        const contentDivRect = contentDiv.getBoundingClientRect();
+        // console.log(' -- contentDivRect: ', contentDivRect);
+
+        // Step 3 - Position the loadingIndicatorDiv
+        loadingIndicatorDiv.style.position = 'absolute';
+        loadingIndicatorDiv.style.top = `${(contentDivRect.top + (contentDivRect.bottom - contentDivRect.top) / 2) - (loadingIndicatorDiv.offsetHeight / 2)}px`;
+        loadingIndicatorDiv.style.left = `${(contentDivRect.left + (contentDivRect.right - contentDivRect.left) / 2) - (loadingIndicatorDiv.offsetWidth / 2)}px`;
+        
+        // Step 4 - place the grayOutDiv on top of contentDiv
+        grayOutDiv.style.top = `${contentDivRect.top}px`;
+        grayOutDiv.style.left = `${contentDivRect.left}px`;
+        grayOutDiv.style.width = `${contentDivRect.right - contentDivRect.left}px`;
+        grayOutDiv.style.height = `${contentDivRect.bottom - contentDivRect.top}px`;
+    }else {
+        loadingIndicatorDiv.style.position = 'absolute';
+        loadingIndicatorDiv.style.top = `0`;
+        loadingIndicatorDiv.style.left = `0`;
+
+        grayOutDiv.width = '0';
+        grayOutDiv.height = '0';
+    }
+    
+
+}
+
 async function showLoaderAnimation() {
 
     const {loaderDiv} = await getLoaderHTML();
-    if (loaderDiv) loaderDiv.style.display = 'block';
+    if (loaderDiv) {
+        loaderDiv.style.display = 'block';
+        setLoaderHTMLPosition(true);
+    }
 }
 
 async function unshowLoaderAnimation() {
 
     const {loaderDiv} = await getLoaderHTML();
-    if (loaderDiv) loaderDiv.style.display = 'none';
+    if (loaderDiv) {
+        loaderDiv.style.display = 'none';
+        setLoaderHTMLPosition(false);
+    }
 }
 
 /****************************************************************
@@ -574,83 +623,110 @@ async function getOrthancPatientIds() {
 
 async function getDataURLs(verbose = false){
 
-    if (process.env.NETLIFY === "true"){
-    // if (true){ //DEBUG
+    // Example 1 (C3D - CT + PET)
+    orthanDataURLS.push({
+        caseName : 'C3D - CT + PET',
+        reverseImageIds  : true,
+        searchObjCT: {
+            StudyInstanceUID : '1.3.6.1.4.1.14519.5.2.1.7009.2403.334240657131972136850343327463',
+            SeriesInstanceUID:'1.3.6.1.4.1.14519.5.2.1.7009.2403.226151125820845824875394858561',
+            wadoRsRoot       : 'https://d3t6nz73ql33tx.cloudfront.net/dicomweb',
+        }, searchObjPET:{
+            StudyInstanceUID : '1.3.6.1.4.1.14519.5.2.1.7009.2403.334240657131972136850343327463',
+            SeriesInstanceUID: '1.3.6.1.4.1.14519.5.2.1.7009.2403.879445243400782656317561081015',
+            wadoRsRoot       : 'https://d3t6nz73ql33tx.cloudfront.net/dicomweb',
+        }, searchObjRTSGT:{
+            StudyInstanceUID: '',
+            SeriesInstanceUID:'',
+            SOPInstanceUID:'',
+            wadoRsRoot: '',
+        }, searchObjRTSPred:{
+            StudyInstanceUID: '',
+            SeriesInstanceUID:'',
+            SOPInstanceUID:'',
+            wadoRsRoot: '',
+        },
+    });
 
+    // Example 2 (C3D - Abdominal CT + RTSS) (StageII-Colorectal-CT-005: ) - https://www.cornerstonejs.org/live-examples/segmentationvolume
+    orthanDataURLS.push({
+        caseName :'C3D - Abdominal CT + RTSS',
+        reverseImageIds  : true,
+        searchObjCT:{
+            StudyInstanceUID : "1.3.6.1.4.1.14519.5.2.1.256467663913010332776401703474716742458",
+            SeriesInstanceUID: "1.3.6.1.4.1.14519.5.2.1.40445112212390159711541259681923198035",
+            wadoRsRoot       : "https://d33do7qe4w26qo.cloudfront.net/dicomweb"
+        }, searchObjPET:{
+            StudyInstanceUID: '',
+            SeriesInstanceUID:'',
+            wadoRsRoot: '',
+        },searchObjRTSGT : {
+            StudyInstanceUID : "1.3.6.1.4.1.14519.5.2.1.256467663913010332776401703474716742458",
+            SeriesInstanceUID: "1.2.276.0.7230010.3.1.3.481034752.2667.1663086918.611582",
+            SOPInstanceUID   : "1.2.276.0.7230010.3.1.4.481034752.2667.1663086918.611583",
+            wadoRsRoot       : "https://d33do7qe4w26qo.cloudfront.net/dicomweb"
+        }, searchObjRTSPred:{
+            StudyInstanceUID: '',
+            SeriesInstanceUID:'',
+            SOPInstanceUID:'',
+            wadoRsRoot: '',
+        },
+    });
+    // Try in postman - https://d33do7qe4w26qo.cloudfront.net/dicomweb/studies/1.3.6.1.4.1.14519.5.2.1.256467663913010332776401703474716742458/series/1.3.6.1.4.1.14519.5.2.1.40445112212390159711541259681923198035/metadata
+
+    // Example 3 (C3D - MR + RTSS) - https://www.cornerstonejs.org/live-examples/segmentationvolume
+    orthanDataURLS.push({
+        caseName : 'C3D - MR + RTSS',
+        reverseImageIds  : true,
+        searchObjCT : {
+            StudyInstanceUID : "1.3.12.2.1107.5.2.32.35162.30000015050317233592200000046",
+            SeriesInstanceUID: "1.3.12.2.1107.5.2.32.35162.1999123112191238897317963.0.0.0",
+            wadoRsRoot       : "https://d33do7qe4w26qo.cloudfront.net/dicomweb"
+        }, searchObjPET:{
+            StudyInstanceUID: '',
+            SeriesInstanceUID:'',
+            wadoRsRoot: '',
+        }, searchObjRTSGT : {
+            StudyInstanceUID : "1.3.12.2.1107.5.2.32.35162.30000015050317233592200000046",
+            SeriesInstanceUID: "1.2.276.0.7230010.3.1.3.296485376.8.1542816659.201008",
+            SOPInstanceUID   : "1.2.276.0.7230010.3.1.4.296485376.8.1542816659.201009",
+            wadoRsRoot       : "https://d33do7qe4w26qo.cloudfront.net/dicomweb"
+        }, searchObjRTSPred:{
+            StudyInstanceUID: '',
+            SeriesInstanceUID:'',
+            SOPInstanceUID:'',
+            wadoRsRoot: '',
+        },
+    });
+
+    // Example 4 (C3D - CT + RTSS) (HCC-TACE-SEG -- HCC_004) (no e.g. figured out from https://d33do7qe4w26qo.cloudfront.net/dicomweb/studies)
+    orthanDataURLS.push({
+        caseName : 'C3D - HCC - CT + RTSS',
+        reverseImageIds  : true,
+        searchObjCT : {
+            StudyInstanceUID : "1.3.6.1.4.1.14519.5.2.1.1706.8374.643249677828306008300337414785",
+            SeriesInstanceUID: "1.3.6.1.4.1.14519.5.2.1.1706.8374.285388762605622963541285440661",
+            wadoRsRoot       : "https://d33do7qe4w26qo.cloudfront.net/dicomweb"
+        }, searchObjPET:{
+            StudyInstanceUID: '',
+            SeriesInstanceUID:'',
+            wadoRsRoot: '',
+        }, searchObjRTSGT : {
+            StudyInstanceUID : "1.3.6.1.4.1.14519.5.2.1.1706.8374.643249677828306008300337414785",
+            SeriesInstanceUID: "1.2.276.0.7230010.3.1.3.8323329.773.1600928601.639561",
+            SOPInstanceUID   : "1.2.276.0.7230010.3.1.4.8323329.773.1600928601.639562",
+            wadoRsRoot       : "https://d33do7qe4w26qo.cloudfront.net/dicomweb"
+        }, searchObjRTSPred:{
+            StudyInstanceUID: '',
+            SeriesInstanceUID:'',
+            SOPInstanceUID:'',
+            wadoRsRoot: '',
+        },
+    });
+
+    if (process.env.NETLIFY === "true"){
         if (verbose)        
             console.log(' - [getData()] Running on Netlify. Getting data from cloudfront for caseNumber: ', caseNumber);   
-        
-        // Example 1
-        orthanDataURLS.push({
-            caseName : 'C3D - CT + PET',
-            searchObjCT: {
-                StudyInstanceUID : '1.3.6.1.4.1.14519.5.2.1.7009.2403.334240657131972136850343327463',
-                SeriesInstanceUID:'1.3.6.1.4.1.14519.5.2.1.7009.2403.226151125820845824875394858561',
-                wadoRsRoot       : 'https://d3t6nz73ql33tx.cloudfront.net/dicomweb',
-            }, searchObjPET:{
-                StudyInstanceUID : '1.3.6.1.4.1.14519.5.2.1.7009.2403.334240657131972136850343327463',
-                SeriesInstanceUID: '1.3.6.1.4.1.14519.5.2.1.7009.2403.879445243400782656317561081015',
-                wadoRsRoot       : 'https://d3t6nz73ql33tx.cloudfront.net/dicomweb',
-            }, searchObjRTSGT:{
-                StudyInstanceUID: '',
-                SeriesInstanceUID:'',
-                SOPInstanceUID:'',
-                wadoRsRoot: '',
-            }, searchObjRTSPred:{
-                StudyInstanceUID: '',
-                SeriesInstanceUID:'',
-                SOPInstanceUID:'',
-                wadoRsRoot: '',
-            },
-        });
-
-        // Example 2 - https://www.cornerstonejs.org/live-examples/segmentationvolume
-        orthanDataURLS.push({
-            caseName :'C3D - Abdominal CT + RTSS',
-            searchObjCT:{
-                StudyInstanceUID : "1.3.6.1.4.1.14519.5.2.1.256467663913010332776401703474716742458",
-                SeriesInstanceUID: "1.3.6.1.4.1.14519.5.2.1.40445112212390159711541259681923198035",
-                wadoRsRoot       : "https://d33do7qe4w26qo.cloudfront.net/dicomweb"
-            }, searchObjPET:{
-                StudyInstanceUID: '',
-                SeriesInstanceUID:'',
-                wadoRsRoot: '',
-            },searchObjRTSGT : {
-                StudyInstanceUID : "1.3.6.1.4.1.14519.5.2.1.256467663913010332776401703474716742458",
-                SeriesInstanceUID: "1.2.276.0.7230010.3.1.3.481034752.2667.1663086918.611582",
-                SOPInstanceUID   : "1.2.276.0.7230010.3.1.4.481034752.2667.1663086918.611583",
-                wadoRsRoot       : "https://d33do7qe4w26qo.cloudfront.net/dicomweb"
-            }, searchObjRTSPred:{
-                StudyInstanceUID: '',
-                SeriesInstanceUID:'',
-                SOPInstanceUID:'',
-                wadoRsRoot: '',
-            },
-        });
-
-        // Example 3 - https://www.cornerstonejs.org/live-examples/segmentationvolume
-        orthanDataURLS.push({
-            caseName : 'C3D - MR + RTSS',
-            searchObjCT : {
-                StudyInstanceUID : "1.3.12.2.1107.5.2.32.35162.30000015050317233592200000046",
-                SeriesInstanceUID: "1.3.12.2.1107.5.2.32.35162.1999123112191238897317963.0.0.0",
-                wadoRsRoot       : "https://d33do7qe4w26qo.cloudfront.net/dicomweb"
-            }, searchObjPET:{
-                StudyInstanceUID: '',
-                SeriesInstanceUID:'',
-                wadoRsRoot: '',
-            }, searchObjRTSGT : {
-                StudyInstanceUID : "1.3.12.2.1107.5.2.32.35162.30000015050317233592200000046",
-                SeriesInstanceUID: "1.2.276.0.7230010.3.1.3.296485376.8.1542816659.201008",
-                SOPInstanceUID   : "1.2.276.0.7230010.3.1.4.296485376.8.1542816659.201009",
-                wadoRsRoot       : "https://d33do7qe4w26qo.cloudfront.net/dicomweb"
-            }, searchObjRTSPred:{
-                StudyInstanceUID: '',
-                SeriesInstanceUID:'',
-                SOPInstanceUID:'',
-                wadoRsRoot: '',
-            },
-        });
         
     }
     else {
@@ -731,6 +807,7 @@ async function getDataURLs(verbose = false){
                 },
             });     
         }else{
+            
             const orthancData = await getOrthancPatientIds();
             for (let patientId in orthancData) {
                 let patientObj = { caseName : patientId, 
@@ -761,6 +838,14 @@ async function getDataURLs(verbose = false){
                                 patientObj.searchObjRTSPred.SeriesInstanceUID = series[KEY_SERIES_UID];
                                 patientObj.searchObjRTSPred.SOPInstanceUID    = series[KEY_INSTANCE_UID];
                                 patientObj.searchObjRTSPred.wadoRsRoot        = `${window.location.origin}/dicom-web`;
+                            }
+                            else {
+                                console.error(' - [getDataURLs()] Unknown series description: ', series[KEY_SERIES_DESC]);
+                                patientObj.searchObjRTSGT.StudyInstanceUID  = study[KEY_STUDY_UID];
+                                patientObj.searchObjRTSGT.SeriesInstanceUID = series[KEY_SERIES_UID];
+                                patientObj.searchObjRTSGT.SOPInstanceUID    = series[KEY_INSTANCE_UID];
+                                patientObj.searchObjRTSGT.wadoRsRoot        = `${window.location.origin}/dicom-web`;
+                                patientObj.reverseImageIds = true;
                             }
                         }
                     }
@@ -1240,6 +1325,8 @@ async function fetchAndLoadDCMSeg(searchObj, imageIds){
 
     const {derivedVolume, segReprUID} = await addSegmentationToState(predSegmentationId, cornerstone3DTools.Enums.SegmentationRepresentations.Labelmap);
     const derivedVolumeScalarData = derivedVolume.getScalarData();
+    console.log('\n - [fetchAndLoadDCMSeg()] generateToolState: ', generateToolState)
+
     derivedVolumeScalarData.set(new Uint8Array(generateToolState.labelmapBufferArray[0]));
     
     predSegmentationUIDs = segReprUID;
@@ -1275,6 +1362,7 @@ async function addSegmentationToState(segmentationIdParam, segType){
         segmentation.segmentIndex.setActiveSegmentIndex(segmentationIdParam, 1);
     }
     
+    
     return {derivedVolume, segReprUID}
 
 }
@@ -1307,7 +1395,7 @@ async function restart() {
     });
 
     // Step 3 - Clear cache (images and volumes)
-    cornerstone3D.cache.purgeCache(); // cornerstone3D.cache.getVolumes(), cornerstone3D.cache.getCacheSize()
+    cornerstone3D.cache.purgeCache(); // does cache.removeVolumeLoadObject() and cache.removeImageLoadObject() inside // cornerstone3D.cache.getVolumes(), cornerstone3D.cache.getCacheSize()
 
     // Step 4 - Other UI stuff
     [windowLevelButton, contourSegmentationToolButton, sculptorToolButton, editBaseContourViaBrushButton, editBaseContourViaScribbleButton, showPETButton].forEach((buttonHTML) => {
@@ -1324,6 +1412,8 @@ async function restart() {
     scribbleSegmentationUIDs = undefined;
     volumeIdCT  = undefined;
     volumeIdPET = undefined;
+    totalImagesIdsCT  = undefined;
+    totalImagesIdsPET = undefined;
 
 
     // Step 5 - Other stuff
@@ -1343,9 +1433,8 @@ async function fetchAndLoadData(caseNumber){
     // Step 1 - Get search parameters
     if (orthanDataURLS.length >= caseNumber+1){
         await showLoaderAnimation();
-        const {searchObjCT, searchObjPET, searchObjRTSGT, searchObjRTSPred} = orthanDataURLS[caseNumber];
-        console.log(' - [loadData()] searchObjCT: ', searchObjCT);
-
+        const {caseName, reverseImageIds, searchObjCT, searchObjPET, searchObjRTSGT, searchObjRTSPred} = orthanDataURLS[caseNumber];
+        
         // Step 2.1 - Create volume for CT
         if (searchObjCT.wadoRsRoot.length > 0){
 
@@ -1355,41 +1444,58 @@ async function fetchAndLoadData(caseNumber){
             // Step 2.1.1 - Load CT data (in python server)
             makeRequestToPrepare(caseNumber)
 
-            // Step 2.1.2 - Load CT data
+            // Step 2.1.2 - Fetch CT data
             volumeIdCT     = volumeIdCTBase + cornerstone3D.utilities.uuidv4();
-            let ctLoadBool = false;
+            let ctFetchBool = false;
             let imageIdsCT = [];
             try{
                 imageIdsCT = await createImageIdsAndCacheMetaData(searchObjCT);
-                ctLoadBool = true;
+                ctFetchBool = true;
             } catch (error){
                 console.error(' - [loadData()] Error in createImageIdsAndCacheMetaData(searchObjCT): ', error);
                 showToast('Error in loading CT data', 3000);
             }
             
-            if (ctLoadBool){
+            // Step 2.1.3 - Load CT data
+            if (ctFetchBool){
                 try{
-                    const volumeCT   = await cornerstone3D.volumeLoader.createAndCacheVolume(volumeIdCT, { imageIds:imageIdsCT });
+                    if (reverseImageIds){
+                        imageIdsCT = imageIdsCT.reverse();
+                        console.log(' - [loadData()] Reversed imageIdsCT');
+                    }
+                    totalImagesIdsCT = imageIdsCT.length;
+                    const volumeCT   = await cornerstone3D.volumeLoader.createAndCacheVolume(volumeIdCT, { imageIds:imageIdsCT});
                     volumeCT.load();
                 } catch (error){
                     console.error(' - [loadData()] Error in createAndCacheVolume(volumeIdCT, { imageIds:imageIdsCT }): ', error);
                     showToast('Error in creating volume for CT data', 3000);
                 }
+
                 // Step 2.2 - Create volume for PET
                 if (searchObjPET.wadoRsRoot.length > 0){
+                    
+                    // Step 2.2.1 - Fetch PET data
                     volumeIdPET      = volumeIdPETBase + cornerstone3D.utilities.uuidv4();
-                    let petLoadBool  = false;
+                    let petFetchBool  = false;
                     let imageIdsPET  = [];
                     try{
                         imageIdsPET = await createImageIdsAndCacheMetaData(searchObjPET);
-                        petLoadBool = true;
+                        petFetchBool = true;
                     } catch(error){
                         console.error(' - [loadData()] Error in createImageIdsAndCacheMetaData(searchObjPET): ', error);
                         showToast('Error in loading PET data', 3000);
                     }
-                    if (petLoadBool){
+
+                    // Step 2.2.2 - Load PET data
+                    if (petFetchBool){
 
                         try{
+                            if (reverseImageIds){
+                                imageIdsPET = imageIdsPET.reverse();
+                            }
+                            totalImagesIdsPET = imageIdsPET.length;
+                            if (totalImagesIdsPET != totalImagesIdsCT)
+                                showToast(`CT (${totalImagesIdsCT}) and PET (${totalImagesIdsPET}) have different number of imageIds`, 5000);
                             const volumePT    = await cornerstone3D.volumeLoader.createAndCacheVolume(volumeIdPET, { imageIds: imageIdsPET });
                             volumePT.load();
                             petBool = true;
@@ -1407,7 +1513,8 @@ async function fetchAndLoadData(caseNumber){
                 await renderingEngine.renderViewports(viewportIds);
 
                 // Step 5 - setup segmentation
-                console.log(' \n ----------------- Segmentation stuff ----------------- \n')
+                console.log(' \n ----------------- Segmentation stuff (',caseName, ' - CT slices:',totalImagesIdsCT,') ----------------- \n')
+                console.log(orthanDataURLS[caseNumber])
                 if (searchObjRTSGT.wadoRsRoot.length > 0){
                     try{
                         await fetchAndLoadDCMSeg(searchObjRTSGT, imageIdsCT)
@@ -1426,7 +1533,7 @@ async function fetchAndLoadData(caseNumber){
                 // Step 99 - Done
                 caseSelectionHTML.selectedIndex = caseNumber;
                 unshowLoaderAnimation();
-                showToast('Data loaded successfully', 3000, true);
+                showToast(`Data loaded successfully (CT=${totalImagesIdsCT} slices)`, 3000, true);
                 
             }
 
@@ -1446,8 +1553,8 @@ async function setup(patientIdx){
     // Step 0 - Load orthanc data
     await getDataURLs();
     setupDropDownMenu(orthanDataURLS, patientIdx);
-    showLoaderAnimation()
-    unshowLoaderAnimation()
+    await showLoaderAnimation()
+    await unshowLoaderAnimation()
     
     // -------------------------------------------------> Step 1 - Init
     await cornerstoneInit();
@@ -1464,7 +1571,7 @@ async function setup(patientIdx){
 
 }
 
-const patientIdx = 2;
+const patientIdx = 7;
 setup(patientIdx)
 
 
@@ -1476,4 +1583,11 @@ TO-DO
 3. [D] Make segmentation uneditable.
 4. [P] Add fgd and bgd buttons
 5. [P] Check why 'C3D - CT + RTSS' has a slightly displaced RTSS
+6. [P] Check if scan order is Axia IS (inferior to Superior)
 */
+
+/**
+1. https://github.com/cornerstonejs/cornerstone3D/blob/v1.81.0/packages/adapters/src/adapters/Cornerstone/Segmentation_4X.js#L1082
+    - segmentsOnFrame[imageIdIndex].push(segmentIndex);
+ * 
+ */
