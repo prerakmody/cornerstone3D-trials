@@ -1312,29 +1312,29 @@ async function fetchAndLoadDCMSeg(searchObj, imageIds){
         sopInstanceUID: searchObj.SOPInstanceUID
     });
 
-    // Step 2 - Add it to GUI
-    predSegmentationId = "LOAD_SEGMENTATION_ID:" + cornerstone3D.utilities.uuidv4();
-
-    // Step 3 - Generate tool state
+    // Step 2 - Read dicom tags and generate a "toolState".
+    // Important keys here are toolState.segmentsOnFrame (for debugging) and toolState.labelmapBufferArray
     const generateToolState =
         await cornerstoneAdapters.adaptersSEG.Cornerstone3D.Segmentation.generateToolState(
             imageIds,
             arrayBuffer,
             cornerstone3D.metaData
         );
-
+    
+    // Step 3 - Add a new segmentation to cornerstone3D
+    predSegmentationId                = "LOAD_SEGMENTATION_ID:" + cornerstone3D.utilities.uuidv4();
     const {derivedVolume, segReprUID} = await addSegmentationToState(predSegmentationId, cornerstone3DTools.Enums.SegmentationRepresentations.Labelmap);
-    const derivedVolumeScalarData = derivedVolume.getScalarData();
+    const derivedVolumeScalarData     = derivedVolume.getScalarData();
+    predSegmentationUIDs              = segReprUID;
     console.log('\n - [fetchAndLoadDCMSeg()] generateToolState: ', generateToolState)
 
+    // Step 4 - Add the dicom buffer to cornerstone3D segmentation 
     derivedVolumeScalarData.set(new Uint8Array(generateToolState.labelmapBufferArray[0]));
-    
-    predSegmentationUIDs = segReprUID;
 
 }
 
 async function addSegmentationToState(segmentationIdParam, segType){
-    // segType = cornerstone3DTools.Enums.SegmentationRepresentations.{Labelmap, Contour}
+    // NOTE: segType = cornerstone3DTools.Enums.SegmentationRepresentations.{Labelmap, Contour}
 
     // Step 0 - Init
     let derivedVolume;
@@ -1353,7 +1353,6 @@ async function addSegmentationToState(segmentationIdParam, segType){
     const segReprUID = await cornerstone3DTools.segmentation.addSegmentationRepresentations(toolGroupId, [
         {segmentationId:segmentationIdParam, type: segType,},
     ]);
-    // console.log(' - [addSegmentationToState()] segType: ', segType, ' || segmentationIdParam: ',segmentationIdParam, ' || derivedVolume: ', derivedVolume, ' || segReprUID: ', segReprUID)
 
     // Step 4 - More stuff for Contour
     if (segType === cornerstone3DTools.Enums.SegmentationRepresentations.Contour){
@@ -1362,9 +1361,7 @@ async function addSegmentationToState(segmentationIdParam, segType){
         segmentation.segmentIndex.setActiveSegmentIndex(segmentationIdParam, 1);
     }
     
-    
     return {derivedVolume, segReprUID}
-
 }
 
 // (Sub) MAIN FUNCTION

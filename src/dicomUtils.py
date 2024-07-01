@@ -152,7 +152,7 @@ def addCTPETDicomTags(ds, spacing, rows, cols):
         traceback.print_exc()
         pdb.set_trace()
 
-def makeCTPTDicomSlices(imageArray, origin, spacing, patientName, studyUID, seriesUID, seriesNum, pathFolder, modality):
+def makeCTPTDicomSlices(imageArray, origin, spacing, patientName, studyUID, seriesUID, seriesNum, pathFolder, modality, rotFunc):
 
     pixelValueList = []
     pathsList      = []
@@ -166,7 +166,7 @@ def makeCTPTDicomSlices(imageArray, origin, spacing, patientName, studyUID, seri
                 # Step 1.0 - Create a basic dicom dataset
                 dsCT = getBasicDicomDataset(patientName, studyUID, seriesUID, seriesNum, modality)
                 addCTPETDicomTags(dsCT, spacing, imageArray.shape[0], imageArray.shape[1])
-
+                
                 # Step 1.1 - Set sliceIdx and origin
                 dsCT.InstanceNumber       = str(sliceIdx+1)
                 volOriginTmp              = list(copy.deepcopy(origin))
@@ -174,7 +174,8 @@ def makeCTPTDicomSlices(imageArray, origin, spacing, patientName, studyUID, seri
                 dsCT.ImagePositionPatient = volOriginTmp
 
                 # Step 1.2 - Set pixel data
-                pixelData      = np.rot90(imageArray[:,:,sliceIdx], k=3) # anti-clockwise rotation x 3
+                # pixelData      = np.rot90(imageArray[:,:,sliceIdx], k=3) # anti-clockwise rotation x 3
+                pixelData        = rotFunc(imageArray[:,:,sliceIdx]) ## NOTE: helps to set right --> left orientation for .dcm files, refer: https://blog.redbrickai.com/blog-posts/introduction-to-dicom-coordinate
                 if modality == MODALITY_CT:
                     pixelData = pixelData.astype(np.int16)
                 if modality == MODALITY_PT:
@@ -281,13 +282,14 @@ def plot(ctArray, ptArray, maskPredArray=None, sliceIds=[]):
 
 class DICOMConverterHecktor:
 
-    def __init__(self, patientName, pathCT, pathPT, pathMask, pathMaskPred):
+    def __init__(self, patientName, pathCT, pathPT, pathMask, pathMaskPred, rotFunc):
         
         self.patientName      = patientName
         self.pathCT       = pathCT
         self.pathPT       = pathPT
         self.pathMask     = pathMask
         self.pathMaskPred = pathMaskPred
+        self.rotFunc      = rotFunc
 
         self._readFiles()
 
@@ -359,20 +361,20 @@ class DICOMConverterHecktor:
             if 1:
                 ctSeriesUID = pydicom.uid.generate_uid()
                 ctSeriesNum = 1
-                ctPixelValueList, ctPathsList = makeCTPTDicomSlices(self.ctArray, self.ctOrigin, self.ctSpacing, self.patientName, self.studyUID, ctSeriesUID, ctSeriesNum, self.pathFolderCT, MODALITY_CT)
+                ctPixelValueList, ctPathsList = makeCTPTDicomSlices(self.ctArray, self.ctOrigin, self.ctSpacing, self.patientName, self.studyUID, ctSeriesUID, ctSeriesNum, self.pathFolderCT, MODALITY_CT, self.rotFunc)
                 # terminalPlotHist(ctPixelValueList, bins=100, titleStr="CT Histogram Plot")
 
             # Step 2 - Convert PT
-            if 0:
+            if 1:
                 ptSeriesUID = pydicom.uid.generate_uid()
                 ptSeriesNum = 2
-                ptPixelValueList = makeCTPTDicomSlices(self.ptArray, self.ptOrigin, self.ptSpacing, self.patientName, self.studyUID, ptSeriesUID, ptSeriesNum, self.pathFolderPT, MODALITY_PT)
+                ptPixelValueList = makeCTPTDicomSlices(self.ptArray, self.ptOrigin, self.ptSpacing, self.patientName, self.studyUID, ptSeriesUID, ptSeriesNum, self.pathFolderPT, MODALITY_PT, self.rotFunc)
                 # terminalPlotHist(ptPixelValueList, bins=100, titleStr="PT Histogram Plot")
 
             # Step 3 - Convert Mask
             if 1:
                 
-                self.maskArray[self.maskArray == 1] = 2
+                # self.maskArray[self.maskArray == 1] = 2
                 # maskImage = sitk.GetImageFromArray(self.maskArray.astype(np.uint8))
                 maskImage = sitk.GetImageFromArray(np.moveaxis(self.maskArray, [0,1,2], [2,1,0]).astype(np.uint8)) # np([H,W,D]) -> np([D,W,H]) -> sitk([H,W,D])
                 # SITK is (Width, Height, Depth) and np is 
@@ -429,8 +431,9 @@ if __name__ == "__main__":
         pathPT       = DIR_CLINIC / "CHMR001_pt.nii.gz"      # "nrrd_CHMR001_img2.nrrd"
         pathMask     = DIR_CLINIC / "CHMR001_gtvt.nii.gz"    # ["nrrd_CHMR001_mask.nrrd", "CHMR001_gtvt.nii.gz"]
         pathMaskPred = DIR_CLINIC / "nrrd_CHMR001_maskpred.nrrd"
+        rotFunc      = lambda x: np.fliplr(np.rot90(x, k=3))    # [x, np.rot90(x, k=3)] ## NOTE: helps to set right --> left orientation for .dcm files, refer: https://blog.redbrickai.com/blog-posts/introduction-to-dicom-coordinate
     
-    converterClass = DICOMConverterHecktor(patientName, pathCT, pathPT, pathMask, pathMaskPred)
+    converterClass = DICOMConverterHecktor(patientName, pathCT, pathPT, pathMask, pathMaskPred, rotFunc)
     converterClass.convertToDICOM()
 
 """
@@ -446,4 +449,9 @@ if __name__ == "__main__":
         - frame_data = np.equal( buffer[slice_idx, min_y:max_y, min_x:max_x], segment )
  - Encoding 3D Array
     - https://github.com/razorx89/pydicom-seg/blob/v0.4.1/pydicom_seg/segmentation_dataset.py#L200
+
+
+OHIF in Orthanc
+ - ReferencedSeriesSequence is missing for the SEG 
+
 """
