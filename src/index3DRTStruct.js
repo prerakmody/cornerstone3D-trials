@@ -25,9 +25,9 @@ console.log(' ------------ instanceName: ', instanceName)
 // HTML ids
 const contentDivId            = 'contentDiv';
 const interactionButtonsDivId = 'interactionButtonsDiv'
-const axialID                 = 'Axial';
-const sagittalID              = 'Sagittal';
-const coronalID               = 'Coronal';
+const axialID                 = 'ViewPortId-Axial';
+const sagittalID              = 'ViewPortId-Sagittal';
+const coronalID               = 'ViewPortId-Coronal';
 const viewportIds             = [axialID, sagittalID, coronalID];
 const viewPortDivId           = 'viewportDiv';
 const otherButtonsDivId       = 'otherButtonsDiv';
@@ -44,7 +44,7 @@ const INIT_BRUSH_SIZE = 5;
 
 // Rendering + Volume + Segmentation ids
 const renderingEngineId  = 'myRenderingEngine';
-const toolGroupId        = 'STACK_TOOL_GROUP_ID';
+const toolGroupId        = 'MY_TOOL_GROUP_ID';
 const volumeLoaderScheme = 'cornerstoneStreamingImageVolume';
 const volumeIdPETBase      = `${volumeLoaderScheme}:myVolumePET`; //+ cornerstone3D.utilities.uuidv4()
 const volumeIdCTBase       = `${volumeLoaderScheme}:myVolumeCT`;
@@ -85,6 +85,14 @@ let fusedPETCT   = false;
 let petBool      = false;
 let totalImagesIdsCT = undefined;
 let totalImagesIdsPET = undefined;
+let totalROIsRTSTRUCT = undefined;
+
+let axialSliceId = undefined;
+let sagittalSliceId = undefined;
+let coronalSliceId = undefined;
+let maxAxialId = undefined;
+let maxSagittalId = undefined;
+let maxCoronalId = undefined;
 
 // Orthan Data
 let orthanDataURLS = []
@@ -121,15 +129,55 @@ async function createViewPortsHTML() {
     coronalDiv.style.height = '500px';
     coronalDiv.id = coronalID;
 
+    // On the  top-right of axialDiv add a div for the slice number
+    axialDiv.style.position = 'relative';
+    const axialSliceDiv = document.createElement('div');
+    axialSliceDiv.style.position = 'absolute'; // Change to absolute
+    axialSliceDiv.style.top = '0';
+    axialSliceDiv.style.right = '20';
+    axialSliceDiv.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
+    axialSliceDiv.style.color = 'white';
+    axialSliceDiv.style.padding = '5px';
+    axialSliceDiv.style.zIndex = '1000'; // Ensure zIndex is a string
+    axialSliceDiv.id = 'axialSliceDiv';
+    axialDiv.appendChild(axialSliceDiv);
+
+    // On the  top-right of sagittalDiv add a div for the slice number
+    sagittalDiv.style.position = 'relative';
+    const sagittalSliceDiv = document.createElement('div');
+    sagittalSliceDiv.style.position = 'absolute'; // Change to absolute
+    sagittalSliceDiv.style.top = '0';
+    sagittalSliceDiv.style.right = '20';
+    sagittalSliceDiv.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
+    sagittalSliceDiv.style.color = 'white';
+    sagittalSliceDiv.style.padding = '5px';
+    sagittalSliceDiv.style.zIndex = '1000'; // Ensure zIndex is a string
+    sagittalSliceDiv.id = 'sagittalSliceDiv';
+    sagittalDiv.appendChild(sagittalSliceDiv);
+
+    // On the  top-right of coronalDiv add a div for the slice number
+    coronalDiv.style.position = 'relative';
+    const coronalSliceDiv = document.createElement('div');
+    coronalSliceDiv.style.position = 'absolute'; // Change to absolute
+    coronalSliceDiv.style.top = '0';
+    coronalSliceDiv.style.right = '20';
+    coronalSliceDiv.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
+    coronalSliceDiv.style.color = 'white';
+    coronalSliceDiv.style.padding = '5px';
+    coronalSliceDiv.style.zIndex = '1000'; // Ensure zIndex is a string
+    coronalSliceDiv.id = 'coronalSliceDiv';
+    coronalDiv.appendChild(coronalSliceDiv);
+
+
     viewportGridDiv.appendChild(axialDiv);
     viewportGridDiv.appendChild(sagittalDiv);
     viewportGridDiv.appendChild(coronalDiv);
 
     contentDiv.appendChild(viewportGridDiv);
 
-    return {contentDiv, viewportGridDiv, axialDiv, sagittalDiv, coronalDiv};
+    return {contentDiv, viewportGridDiv, axialDiv, sagittalDiv, coronalDiv, axialSliceDiv, sagittalSliceDiv, coronalSliceDiv};
 }
-const {axialDiv, sagittalDiv, coronalDiv} = await createViewPortsHTML();
+const {axialDiv, sagittalDiv, coronalDiv, axialSliceDiv, sagittalSliceDiv, coronalSliceDiv} = await createViewPortsHTML();
 
 async function createContouringHTML() {
 
@@ -704,7 +752,12 @@ async function getDataURLs(verbose = false){
         },
     });
 
-    // Example 4 (C3D - CT + SEG) (HCC-TACE-SEG --> HCC_004) (no e.g. figured out from https://d33do7qe4w26qo.cloudfront.net/dicomweb/studies)
+    // Example 4 (C3D - HCC - CT + SEG) (HCC-TACE-SEG --> HCC_004) (no e.g. figured out from https://d33do7qe4w26qo.cloudfront.net/dicomweb/studies)
+    // CT: https://d33do7qe4w26qo.cloudfront.net/dicomweb/studies/1.3.6.1.4.1.14519.5.2.1.1706.8374.643249677828306008300337414785/series/1.3.6.1.4.1.14519.5.2.1.1706.8374.285388762605622963541285440661/metadata
+    // SEG: https://d33do7qe4w26qo.cloudfront.net/dicomweb/studies/1.3.6.1.4.1.14519.5.2.1.1706.8374.643249677828306008300337414785/series/1.2.276.0.7230010.3.1.3.8323329.773.1600928601.639561/metadata (Ctrl+F="instances")
+    //  - https://d33do7qe4w26qo.cloudfront.net/dicomweb/studies/1.3.6.1.4.1.14519.5.2.1.1706.8374.643249677828306008300337414785/series/1.2.276.0.7230010.3.1.3.8323329.773.1600928601.639561/instances
+    //  - [Works] https://d33do7qe4w26qo.cloudfront.net/dicomweb/studies/1.3.6.1.4.1.14519.5.2.1.1706.8374.643249677828306008300337414785/series/1.2.276.0.7230010.3.1.3.8323329.773.1600928601.639561/instances/1.2.276.0.7230010.3.1.4.8323329.773.1600928601.639562/metadata
+    //  - [downloads] https://d33do7qe4w26qo.cloudfront.net/dicomweb/studies/1.3.6.1.4.1.14519.5.2.1.1706.8374.643249677828306008300337414785/series/1.2.276.0.7230010.3.1.3.8323329.773.1600928601.639561/instances/1.2.276.0.7230010.3.1.4.8323329.773.1600928601.639562
     orthanDataURLS.push({
         caseName : 'C3D - HCC - CT + SEG',
         reverseImageIds  : true,
@@ -758,6 +811,10 @@ async function getDataURLs(verbose = false){
     ////////////////// RTSTRUCT Datasets //////////////////
     // Example 6 (C3D - Lung CT + RTSTruct) (NSCLC-Radiomics --> LUNG1-008)
     // Note: Unable to find RTSTRUCT on cloudfront.net
+    // RTSTRUCT: https://d33do7qe4w26qo.cloudfront.net/dicomweb/studies/1.3.6.1.4.1.32722.99.99.62087908186665265759322018723889952421/series/1.3.6.1.4.1.32722.99.99.305113343545091133620858778081884399262
+    // -- https://d33do7qe4w26qo.cloudfront.net/dicomweb/studies/1.3.6.1.4.1.32722.99.99.62087908186665265759322018723889952421/series/1.3.6.1.4.1.32722.99.99.305113343545091133620858778081884399262/instances
+    // -- [Works] https://d33do7qe4w26qo.cloudfront.net/dicomweb/studies/1.3.6.1.4.1.32722.99.99.62087908186665265759322018723889952421/series/1.3.6.1.4.1.32722.99.99.305113343545091133620858778081884399262/instances/1.3.6.1.4.1.32722.99.99.220766358736397890612249814518504349204/metadata
+    // -- [Nope]  https://d33do7qe4w26qo.cloudfront.net/dicomweb/studies/1.3.6.1.4.1.32722.99.99.62087908186665265759322018723889952421/series/1.3.6.1.4.1.32722.99.99.305113343545091133620858778081884399262/instances/1.3.6.1.4.1.32722.99.99.220766358736397890612249814518504349204
     const lungCTRTSTRUCTObj = {
         caseName :'C3D - Lung CT + RTSTruct',
         reverseImageIds  : true,
@@ -781,7 +838,7 @@ async function getDataURLs(verbose = false){
             wadoRsRoot: '',
         },
     }
-    // orthanDataURLS.push(lungCTRTSTRUCTObj);
+    orthanDataURLS.push(lungCTRTSTRUCTObj);
 
     if (process.env.NETLIFY === "true"){
         if (verbose)        
@@ -1015,8 +1072,7 @@ async function getSegmentationIdsAndUIDs() {
     let allSegIds=[], allSegUIDs=[];
     if (allSegRepsList != undefined){
         allSegIds  = allSegRepsList.map(x => x.segmentationId)
-        allSegUIDs = allSegRepsList.map(x => x.segmentationRepresentationUID
-        )
+        allSegUIDs = allSegRepsList.map(x => x.segmentationRepresentationUID)
     }
     
     return {allSegIds, allSegUIDs}
@@ -1164,8 +1220,9 @@ async function getToolsAndToolGroup() {
     const probeTool                 = cornerstone3DTools.ProbeTool;
     const referenceLinesTool        = cornerstone3DTools.ReferenceLines;
     const segmentationDisplayTool   = cornerstone3DTools.SegmentationDisplayTool;
-    const brushTool                 = cornerstone3DTools.BrushTool;
     const planarFreeHandRoiTool     = cornerstone3DTools.PlanarFreehandROITool;
+    const planarFreeHandContourTool = cornerstone3DTools.PlanarFreehandContourSegmentationTool; 
+    const sculptorTool              = cornerstone3DTools.SculptorTool;
     const toolState      = cornerstone3DTools.state;
     const {segmentation} = cornerstone3DTools;
 
@@ -1177,9 +1234,10 @@ async function getToolsAndToolGroup() {
     cornerstone3DTools.addTool(probeTool);
     cornerstone3DTools.addTool(referenceLinesTool);
     cornerstone3DTools.addTool(segmentationDisplayTool);
-    cornerstone3DTools.addTool(brushTool);
-    cornerstone3DTools.addTool(planarFreeHandRoiTool);
-    
+    cornerstone3DTools.addTool(planarFreeHandRoiTool); 
+    cornerstone3DTools.addTool(planarFreeHandContourTool);
+    cornerstone3DTools.addTool(sculptorTool); 
+
     // Step 4 - Make toolGroup
     const toolGroup = cornerstone3DTools.ToolGroupManager.createToolGroup(toolGroupId);
     toolGroup.addTool(windowLevelTool.toolName);
@@ -1189,11 +1247,9 @@ async function getToolsAndToolGroup() {
     toolGroup.addTool(probeTool.toolName);
     toolGroup.addTool(referenceLinesTool.toolName);
     toolGroup.addTool(segmentationDisplayTool.toolName);
-    toolGroup.addTool(brushTool.toolName);
-    toolGroup.addToolInstance(strBrushCircle, brushTool.toolName, { activeStrategy: 'FILL_INSIDE_CIRCLE', brushSize:5});
-    toolGroup.addToolInstance(strEraserCircle, brushTool.toolName, { activeStrategy: 'ERASE_INSIDE_CIRCLE', brushSize:5});
-    cornerstone3DTools.utilities.segmentation.setBrushSizeForToolGroup(toolGroupId, INIT_BRUSH_SIZE);
     toolGroup.addTool(planarFreeHandRoiTool.toolName);
+    toolGroup.addTool(planarFreeHandContourTool.toolName);
+    toolGroup.addTool(sculptorTool.toolName);
 
     // Step 5 - Set toolGroup elements as active/passive
     toolGroup.setToolPassive(windowLevelTool.toolName);// Left Click
@@ -1205,9 +1261,9 @@ async function getToolsAndToolGroup() {
     toolGroup.setToolConfiguration(referenceLinesTool.toolName, {sourceViewportId: axialID,});
 
     toolGroup.setToolEnabled(segmentationDisplayTool.toolName);
-    toolGroup.setToolPassive(strBrushCircle); // , { bindings: [ { mouseButton: cornerstone3DTools.Enums.MouseBindings.Primary, }, ], });
-    toolGroup.setToolPassive(strEraserCircle); // , { bindings: [ { mouseButton: cornerstone3DTools.Enums.MouseBindings.Primary, }, ], });
     toolGroup.setToolActive(planarFreeHandRoiTool.toolName);
+    toolGroup.setToolPassive(planarFreeHandContourTool.toolName);
+    toolGroup.setToolPassive(sculptorTool.toolName);
     toolGroup.setToolConfiguration(planarFreeHandRoiTool.toolName, {calculateStats: false});
 
     // Step 6 - Add events
@@ -1216,39 +1272,43 @@ async function getToolsAndToolGroup() {
             toolGroup.setToolConfiguration(referenceLinesTool.toolName, {sourceViewportId: viewportIds[index]});
         });
     });
-    
 
-    // Step 6 - Setup some event listeners
-    // Listen for keydown event
-    window.addEventListener('keydown', function(event) {
-        // For brush tool radius        
-        const toolGroup = cornerstone3DTools.ToolGroupManager.getToolGroup(toolGroupId);
-        if (toolGroup.toolOptions[strBrushCircle].mode === MODE_ACTIVE || toolGroup.toolOptions[strEraserCircle].mode === MODE_ACTIVE){
-            const segUtils       = cornerstone3DTools.utilities.segmentation;
-            let initialBrushSize = segUtils.getBrushSizeForToolGroup(toolGroupId);
-            if (event.key === '+')
-                segUtils.setBrushSizeForToolGroup(toolGroupId, initialBrushSize + 1);
-            else if (event.key === '-'){
-                if (initialBrushSize > 1)
-                    segUtils.setBrushSizeForToolGroup(toolGroupId, initialBrushSize - 1);
+    return {toolGroup, windowLevelTool, panTool, zoomTool, stackScrollMouseWheelTool, probeTool, referenceLinesTool, segmentation, segmentationDisplayTool, sculptorTool, planarFreeHandRoiTool, toolState};
+}
+
+function setMouseAndKeyboardEvents(){
+
+    // handle scroll event
+    document.addEventListener('wheel', function(evt) {
+        if (evt.target.className == 'cornerstone-canvas') {
+            const {viewport: activeViewport, viewportId: activeViewportId} = cornerstone3D.getEnabledElement(evt.target.offsetParent.parentElement);
+            // console.log(activeViewport, activeViewportId)
+            const imageIdxForViewport = activeViewport.getCurrentImageIdIndex()
+            const totalImagesForViewPort = activeViewport.getNumberOfSlices()
+            if (activeViewportId == axialID){
+                // console.log('Axial: ', imageIdxForViewport, totalImagesForViewPort)
+                axialSliceDiv.innerHTML = `Axial: ${imageIdxForViewport+1}/${totalImagesForViewPort}`
+            } else if (activeViewportId == sagittalID){
+                // console.log('Sagittal: ', imageIdxForViewport, totalImagesForViewPort)
+                sagittalSliceDiv.innerHTML = `Sagittal: ${imageIdxForViewport+1}/${totalImagesForViewPort}`
+            } else if (activeViewportId == coronalID){
+                // console.log('Coronal: ', imageIdxForViewport, totalImagesForViewPort)
+                coronalSliceDiv.innerHTML = `Coronal: ${imageIdxForViewport+1}/${totalImagesForViewPort}`
             }
-            let newBrushSize = segUtils.getBrushSizeForToolGroup(toolGroupId);
-            showToast(`Brush size: ${newBrushSize}`);
         }
     });
-
-    return {toolGroup, windowLevelTool, panTool, zoomTool, stackScrollMouseWheelTool, probeTool, referenceLinesTool, segmentation, segmentationDisplayTool, brushTool, planarFreeHandRoiTool, toolState};
 }
 
 // function setContouringButtonsLogic(scribbleSegmentationUIDs, oldSegmentationUIDs){
 function setContouringButtonsLogic(){
 
     // Step 0 - Init
-    const planarFreehandROITool = cornerstone3DTools.PlanarFreehandROITool;
-    const windowLevelTool       = cornerstone3DTools.WindowLevelTool;
-    const toolGroup             = cornerstone3DTools.ToolGroupManager.getToolGroup(toolGroupId);
-    // console.log(' - [setContouringButtonsLogic()] scribbleSegmentationUIDs: ', scribbleSegmentationUIDs, '|| oldSegmentationUIDs: ', oldSegmentationUIDs);
-
+    const planarFreehandROITool     = cornerstone3DTools.PlanarFreehandROITool;
+    const planarFreeHandContourTool = cornerstone3DTools.PlanarFreehandContourSegmentationTool;
+    const sculptorTool              = cornerstone3DTools.SculptorTool;
+    const windowLevelTool           = cornerstone3DTools.WindowLevelTool;
+    const toolGroup                 = cornerstone3DTools.ToolGroupManager.getToolGroup(toolGroupId);
+    
     // Step 2 - Add event listeners to buttons        
     [windowLevelButton, contourSegmentationToolButton, sculptorToolButton, editBaseContourViaScribbleButton].forEach((buttonHTML, buttonId) => {
         if (buttonHTML === null) return;
@@ -1256,8 +1316,8 @@ function setContouringButtonsLogic(){
         buttonHTML.addEventListener('click', async function() {
             if (buttonId === 0) { // windowLevelButton
                 toolGroup.setToolPassive(planarFreehandROITool.toolName);
-                toolGroup.setToolPassive(strEraserCircle);
-                toolGroup.setToolPassive(strBrushCircle);
+                toolGroup.setToolPassive(planarFreeHandContourTool.toolName);
+                toolGroup.setToolPassive(sculptorTool);
                 toolGroup.setToolActive(windowLevelTool.toolName, { bindings: [ { mouseButton: cornerstone3DTools.Enums.MouseBindings.Primary, }, ], });                    
                 
                 setButtonBoundaryColor(editBaseContourViaBrushButton, false);
@@ -1269,8 +1329,13 @@ function setContouringButtonsLogic(){
             else if (buttonId === 1) { // contourSegmentationToolButton
                 toolGroup.setToolPassive(planarFreehandROITool.toolName);
                 toolGroup.setToolPassive(windowLevelTool.toolName);
-                toolGroup.setToolPassive(strEraserCircle);
-                toolGroup.setToolActive(strBrushCircle, { bindings: [ { mouseButton: cornerstone3DTools.Enums.MouseBindings.Primary, }, ], });    
+                toolGroup.setToolPassive(sculptorTool.toolName);
+                toolGroup.setToolActive(planarFreeHandContourTool, { bindings: [ { mouseButton: cornerstone3DTools.Enums.MouseBindings.Primary, }, ], });
+
+
+                console.log(' - [setContouringButtonsLogic()] predSegmentationUIDs: ', predSegmentationUIDs);    
+                const {allSegIds, allSegUIDs} = await getSegmentationIdsAndUIDs()
+                console.log(' - [setContouringButtonsLogic()] allSegIds: ', allSegIds, ' || allSegUIDs: ', allSegUIDs);
                 cornerstone3DTools.segmentation.activeSegmentation.setActiveSegmentationRepresentation(toolGroupId, predSegmentationUIDs[0]);
                 
                 setButtonBoundaryColor(editBaseContourViaBrushButton, true);
@@ -1282,8 +1347,8 @@ function setContouringButtonsLogic(){
             else if (buttonId === 2) { // sculptorToolButton
                 toolGroup.setToolPassive(planarFreehandROITool.toolName);
                 toolGroup.setToolPassive(windowLevelTool.toolName);
-                toolGroup.setToolPassive(strBrushCircle);
-                toolGroup.setToolActive(strEraserCircle, { bindings: [ { mouseButton: cornerstone3DTools.Enums.MouseBindings.Primary, }, ], }); 
+                toolGroup.setToolPassive(planarFreeHandContourTool.toolName);
+                toolGroup.setToolActive(sculptorTool.toolName, { bindings: [ { mouseButton: cornerstone3DTools.Enums.MouseBindings.Primary, }, ], }); 
                 cornerstone3DTools.segmentation.activeSegmentation.setActiveSegmentationRepresentation(toolGroupId, predSegmentationUIDs[0]);
                 
                 setButtonBoundaryColor(editBaseContourViaBrushButton, true);
@@ -1294,8 +1359,8 @@ function setContouringButtonsLogic(){
             }
             else if (buttonId === 3) { // editBaseContourViaScribbleButton
                 toolGroup.setToolPassive(windowLevelTool.toolName);
-                toolGroup.setToolPassive(strEraserCircle);
-                toolGroup.setToolPassive(strBrushCircle);
+                toolGroup.setToolPassive(sculptorTool.toolName);
+                toolGroup.setToolPassive(planarFreeHandContourTool.toolName);
                 toolGroup.setToolActive(planarFreehandROITool.toolName, { bindings: [ { mouseButton: cornerstone3DTools.Enums.MouseBindings.Primary, }, ], });
                 setScribbleColor()
                 const scribbleSegmentationUID = await getSegmentationUIDforScribbleSegmentationId();
@@ -1340,11 +1405,6 @@ function setContouringButtonsLogic(){
     });
 }
 
-function setScribbleButtonsLogic(){
-
-    const toolGroup = cornerstone3DTools.ToolGroupManager.getToolGroup(toolGroupId);
-}
-
 function setRenderingEngineAndViewports(){
 
     const renderingEngine = new cornerstone3D.RenderingEngine(renderingEngineId);
@@ -1353,6 +1413,8 @@ function setRenderingEngineAndViewports(){
     const viewportInputs = [
         {element: axialDiv   , viewportId: axialID   , type: cornerstone3D.Enums.ViewportType.ORTHOGRAPHIC, defaultOptions: { orientation: cornerstone3D.Enums.OrientationAxis.AXIAL},},
         {element: sagittalDiv, viewportId: sagittalID, type: cornerstone3D.Enums.ViewportType.ORTHOGRAPHIC, defaultOptions: { orientation: cornerstone3D.Enums.OrientationAxis.SAGITTAL},},
+        // {element: sagittalDiv, viewportId: sagittalID, type: cornerstone3D.Enums.ViewportType.ORTHOGRAPHIC, defaultOptions: { orientation: cornerstone3D.Enums.OrientationAxis.AXIAL},},  // doing this screws up RTSTRUCT. Why is RTSTRUCT always displaying on the first viewportID
+        // {element: axialDiv   , viewportId: axialID   , type: cornerstone3D.Enums.ViewportType.ORTHOGRAPHIC, defaultOptions: { orientation: cornerstone3D.Enums.OrientationAxis.SAGITTAL},},
         {element: coronalDiv , viewportId: coronalID , type: cornerstone3D.Enums.ViewportType.ORTHOGRAPHIC, defaultOptions: { orientation: cornerstone3D.Enums.OrientationAxis.CORONAL},},
     ]
     renderingEngine.setViewports(viewportInputs);
@@ -1382,30 +1444,55 @@ function formatPoints(data){
 
 async function fetchAndLoadDCMSeg(searchObj, imageIds){
 
-    // Step 1 - Get search parameters
+    // Step 1.1 - Create client Obj
     const client = new dicomWebClient.api.DICOMwebClient({
         url: searchObj.wadoRsRoot
     });
-    const arrayBuffer = await client.retrieveInstance({
-        studyInstanceUID: searchObj.StudyInstanceUID,
-        seriesInstanceUID: searchObj.SeriesInstanceUID,
-        sopInstanceUID: searchObj.SOPInstanceUID
-    });
-    const dicomData = dcmjs.data.DicomMessage.readFile(arrayBuffer);
-    const dataset   = dcmjs.data.DicomMetaDictionary.naturalizeDataset(dicomData.dict); 
-    dataset._meta   = dcmjs.data.DicomMetaDictionary.namifyDataset(dicomData.meta);
-    console.log('\n - [fetchAndLoadDCMSeg()] dataset: ', dataset)
 
+    // Step 1.2 - Fetch and created seg/rtstruct dataset
+    let arrayBuffer;
+    let dataset;
+    try{
+        console.log('   -- [fetchAndLoadDCMSeg()] Trying client.retrieveInstance');
+        arrayBuffer = await client.retrieveInstance({
+            studyInstanceUID: searchObj.StudyInstanceUID,
+            seriesInstanceUID: searchObj.SeriesInstanceUID,
+            sopInstanceUID: searchObj.SOPInstanceUID
+        });
+        const dicomData = dcmjs.data.DicomMessage.readFile(arrayBuffer);
+        dataset         = dcmjs.data.DicomMetaDictionary.naturalizeDataset(dicomData.dict); 
+        dataset._meta   = dcmjs.data.DicomMetaDictionary.namifyDataset(dicomData.meta);
+
+    } catch (error){
+        try{
+            console.log('   -- [fetchAndLoadDCMSeg()] Trying client.retrieveInstanceMetadata');
+            const dicomMetaData = await client.retrieveInstanceMetadata({
+                studyInstanceUID: searchObj.StudyInstanceUID,
+                seriesInstanceUID: searchObj.SeriesInstanceUID,
+                sopInstanceUID: searchObj.SOPInstanceUID
+            });
+
+            dataset         = dcmjs.data.DicomMetaDictionary.naturalizeDataset(dicomMetaData); 
+
+        } catch (error){
+            console.log('   -- [fetchAndLoadDCMSeg()] Error: ', error);
+            return;
+        }
+    }
+
+    if (dataset === undefined){
+        console.log('   -- [fetchAndLoadDCMSeg()] dataset is undefined. Returning ...');
+        return;
+    }
+    
+    console.log('\n - [fetchAndLoadDCMSeg()] dataset: ', dataset)
     if (dataset.Modality === 'RTSTRUCT'){
         
         // Step 2 - Get main RTSTRUCT tags
         const roiSequence = dataset.StructureSetROISequence; // (3006,0020) -- contains ROI name, number, algorithm
         const roiObservationSequence = dataset.RTROIObservationsSequence; // (3006,0080) -- contains ROI name, number and type={ORGAN,PTV,CTV etc}
         const contourData = dataset.ROIContourSequence; // (3006,0039) -- contains the polyline data
-        console.log(' - [fetchAndLoadDCMSeg()] roiSequence: ', roiSequence)
-        console.log(' - [fetchAndLoadDCMSeg()] roiObservationSequence: ', roiObservationSequence)
-        console.log(' - [fetchAndLoadDCMSeg()] contourData: ', contourData)
-
+        
         // Step 3 - Loop over roiSequence and get the ROI name, number and color
         let thisROISequence = [];
         let thisROINumbers  = [];
@@ -1429,25 +1516,22 @@ async function fetchAndLoadDCMSeg(searchObj, imageIds){
 			
 			thisROINumbers.push(ROINumber);
 		})
-        console.log(' - [fetchAndLoadDCMSeg()] thisROISequence: ', thisROISequence)
-        console.log(' - [fetchAndLoadDCMSeg()] thisROINumbers: ', thisROINumbers)
-
+        
         // Step 4 - Loop over contourData(points)
         contourData.forEach((item, index) => {
-			console.log(item)
 			let color    = item.ROIDisplayColor
             let number   = item.ReferencedROINumber;		
 			let sequence = item.ContourSequence;
-			console.log(' ---> ', number, sequence)
 			
 			let data = [];
 			sequence.forEach(s => {
-				let ContourGeomrtricType = s.ContourGeomrtricType;
-				let ContourPoints        = s.ContourPoints;
+				let ContourGeometricType = s.ContourGeometricType; // e.g. "CLOSED_PLANAR"
+				let ContourPoints        = s.NumberOfContourPoints;
 				let ContourData          = s.ContourData;
 				let obj = {
 					points: formatPoints(ContourData),
-					type: ContourGeomrtricType
+					type: ContourGeometricType,
+                    count: ContourPoints
 				};
 				data.push(obj);
 			})
@@ -1457,29 +1541,31 @@ async function fetchAndLoadDCMSeg(searchObj, imageIds){
 				id: "contour_" + number,
 				color: color,
 				number: number,
+                name: thisROISequence[thisROINumbers.indexOf(number)].ROIName,
 				segmentIndex: number
 			}
 			
 			contourSets.push(contour);
 		})
+        
         console.log(' - [fetchAndLoadDCMSeg()] contourSets: ', contourSets)
-
         // Ste p5 - Create geometries
         let geometryIds = [];
+        let annotationUIDsMap = {}; // annotationUIDsMap?: Map<number, Set<string>>; annotation --> data.segmentation.segmentIndex, metadata.{viewPlaneNormal, viewUp, sliceIdx}, interpolationUID
         const promises = contourSets.map((contourSet) => {
 		
             const geometryId = contourSet.id;
             geometryIds.push(geometryId);
             return cornerstone3D.geometryLoader.createAndCacheGeometry(geometryId, {
                 type: cornerstone3D.Enums.GeometryType.CONTOUR,
-                geometryData: contourSet,
+                geometryData: contourSet, // [{data: [{points: [[x1,y1,z1], [x2,y2,z2], ...], type:<str> count: <int>}, {}, ...], id: <str>, color: [], number: <int>, name: <str>, segmentIndex: <int>}, {},  ...]
             });
         });
         await Promise.all(promises);
-        console.log(' - [fetchAndLoadDCMSeg()] geometryIds: ', geometryIds)
+        totalROIsRTSTRUCT = thisROISequence.length;
 
         // Step 5 - Add new segmentation to cornerstone3D
-        predSegmentationId   = "LOAD_SEGMENTATION_ID:" + cornerstone3D.utilities.uuidv4();
+        predSegmentationId   = "LOAD_SEGMENTATION_ID:" + MODALITY_RTSTRUCT + ':' + cornerstone3D.utilities.uuidv4();
         const {segReprUID}   = await addSegmentationToState(predSegmentationId, cornerstone3DTools.Enums.SegmentationRepresentations.Contour, geometryIds);
         predSegmentationUIDs = segReprUID;
 
@@ -1496,7 +1582,7 @@ async function fetchAndLoadDCMSeg(searchObj, imageIds){
         console.log('\n - [fetchAndLoadDCMSeg()] generateToolState: ', generateToolState)
 
         // Step 3 - Add a new segmentation to cornerstone3D
-        predSegmentationId                = "LOAD_SEGMENTATION_ID:" + cornerstone3D.utilities.uuidv4();
+        predSegmentationId                = "LOAD_SEGMENTATION_ID:" + MODALITY_SEG + ':' + cornerstone3D.utilities.uuidv4();
         const {derivedVolume, segReprUID} = await addSegmentationToState(predSegmentationId, cornerstone3DTools.Enums.SegmentationRepresentations.Labelmap);
         const derivedVolumeScalarData     = derivedVolume.getScalarData();
         predSegmentationUIDs              = segReprUID;
@@ -1522,14 +1608,20 @@ async function addSegmentationToState(segmentationIdParam, segType, geometryIds=
     if (segType === cornerstone3DTools.Enums.SegmentationRepresentations.Labelmap)
         cornerstone3DTools.segmentation.addSegmentations([{ segmentationId:segmentationIdParam, representation: { type: segType, data: { volumeId: segmentationIdParam, }, }, },]);
     else if (segType === cornerstone3DTools.Enums.SegmentationRepresentations.Contour)
-        if (geometryIds.length === 0)
+        if (geometryIds.length === 0){
             cornerstone3DTools.segmentation.addSegmentations([{ segmentationId:segmentationIdParam, representation: { type: segType, }, },]);
-        else
-            cornerstone3DTools.segmentation.addSegmentations([{ segmentationId:segmentationIdParam, representation: { type: segType, data:{geometryIds},}, },]);
-
+        } else {
+            console.log(' - [addSegmentationToState()] geometryIds: ', geometryIds)
+            cornerstone3DTools.segmentation.addSegmentations([
+                { segmentationId:segmentationIdParam, representation: { type: segType, data:{geometryIds},}, },
+            ]);
+        }
     // Step 3 - Set the segmentation representation to the toolGroup
+    console.log(' - [addSegmentationToState()] segType: ', segType)
+    console.log(' - [addSegmentationToState()] allSegReps: ', cornerstone3DTools.segmentation.state.getAllSegmentationRepresentations())
     const segReprUID = await cornerstone3DTools.segmentation.addSegmentationRepresentations(toolGroupId, [
-        {segmentationId:segmentationIdParam, type: segType,}, //options: { polySeg: { enabled: true, }, },
+        // {segmentationId:segmentationIdParam, type: segType,}, //options: { polySeg: { enabled: true, }, },
+        {segmentationId:segmentationIdParam, type: segType, }, // options: { polySeg: { enabled: true, }, },
     ]);
 
     // Step 4 - More stuff for Contour
@@ -1545,38 +1637,73 @@ async function addSegmentationToState(segmentationIdParam, segType, geometryIds=
 // (Sub) MAIN FUNCTION
 async function restart() {
     
-    console.log(' \n ----------------- restart() ----------------- \n')
+    try{
+        console.log(' \n ----------------- restart() ----------------- \n')
 
-    // Step 1.0 - Get all segmentationIds
-    const {allSegIds} = await getSegmentationIdsAndUIDs(); // call this before removing segmentations from toolGroup
+        // Step 1.0 - Get all segmentationIds
+        try{
+            const {allSegIds, allSegUIDs} = await getSegmentationIdsAndUIDs(); // call this before removing segmentations from toolGroup
+            
+            // Step 1.1 - Remove segmentations from toolGroup
+            const segReps = cornerstone3DTools.segmentation.state.getSegmentationRepresentations(toolGroupId);
+            if (segReps != undefined){
+                console.log(' - [restart()] No segmentations found in toolGroup:', toolGroupId)
+                cornerstone3DTools.segmentation.removeSegmentationsFromToolGroup(toolGroupId);
+            }
+            
+            // Step 1.2 - Remove segmentations from state
+            if (allSegUIDs.length == 0){
+                console.log(' - [restart()] No segmentationsUIds found.')
+            }
+            if (allSegIds.length == 0){
+                console.log(' - [restart()] No segmentationsIds found.')
+            }
+            
 
-    // Step 1.1 - Remove segmentations from toolGroup
-    cornerstone3DTools.segmentation.removeSegmentationsFromToolGroup(toolGroupId);
+            allSegUIDs.forEach(segmentationUIDs => {
+                console.log(' - [restart()] Removing segmentationUID: ', segmentationUIDs)
+                cornerstone3DTools.segmentation.state.removeSegmentationRepresentation(toolGroupId, segmentationUIDs[0]);
+            });
 
-    // Step 1.2 - Remove segmentations from state
-    allSegIds.forEach(segmentationId => {
-        console.log(' - [restart()] Removing segmentationId: ', segmentationId)
-        cornerstone3DTools.segmentation.state.removeSegmentation(segmentationId);
-    });
+            allSegIds.forEach(segmentationId => {
+                console.log(' - [restart()] Removing segmentationId: ', segmentationId)
+                cornerstone3DTools.segmentation.state.removeSegmentation(segmentationId);
+            });
+            
 
-    // Step 2.1 - Remove volumeActors from viewports
-    const renderingEngine = cornerstone3D.getRenderingEngine(renderingEngineId);
-    viewportIds.forEach((viewportId) => {
-        const viewportTmp = renderingEngine.getViewport(viewportId);
-        if (volumeIdCT != undefined)
-            viewportTmp.removeVolumeActors([volumeIdCT], true);
-        if (volumeIdPET != undefined)
-            viewportTmp.removeVolumeActors([volumeIdPET], true);
-    });
+        } catch (error){
+            console.error(' - [restart()] Error in removing segmentations: ', error);
+            showToast('Error in removing segmentations', 3000);
+        }
 
-    // Step 3 - Clear cache (images and volumes)
-    cornerstone3D.cache.purgeCache(); // does cache.removeVolumeLoadObject() and cache.removeImageLoadObject() inside // cornerstone3D.cache.getVolumes(), cornerstone3D.cache.getCacheSize()
+        // Step 2.1 - Remove volumeActors from viewports
+        try{
+            const renderingEngine = cornerstone3D.getRenderingEngine(renderingEngineId);
+            viewportIds.forEach((viewportId) => {
+                const viewportTmp = renderingEngine.getViewport(viewportId);
+                if (volumeIdCT != undefined)
+                    viewportTmp.removeVolumeActors([volumeIdCT], true);
+                if (volumeIdPET != undefined)
+                    viewportTmp.removeVolumeActors([volumeIdPET], true);
+            });
+        } catch (error){
+            console.error(' - [restart()] Error in removing volumeActors from viewports: ', error);
+            showToast('Error in removing volumeActors from viewports', 3000);
+        }
 
-    // Step 4 - Other UI stuff
-    [windowLevelButton, contourSegmentationToolButton, sculptorToolButton, editBaseContourViaBrushButton, editBaseContourViaScribbleButton, showPETButton].forEach((buttonHTML) => {
-        if (buttonHTML === null) return;
-        setButtonBoundaryColor(buttonHTML, false);
-    });
+        // Step 3 - Clear cache (images and volumes)
+        cornerstone3D.cache.purgeCache(); // does cache.removeVolumeLoadObject() and cache.removeImageLoadObject() inside // cornerstone3D.cache.getVolumes(), cornerstone3D.cache.getCacheSize()
+
+        // Step 4 - Other UI stuff
+        [windowLevelButton, contourSegmentationToolButton, sculptorToolButton, editBaseContourViaBrushButton, editBaseContourViaScribbleButton, showPETButton].forEach((buttonHTML) => {
+            if (buttonHTML === null) return;
+            setButtonBoundaryColor(buttonHTML, false);
+        });
+
+    } catch (error){
+        console.error(' - [restart()] Error: ', error);
+        showToast('Error in restart()', 3000);
+    }
     
     fusedPETCT   = false;
     petBool      = false;
@@ -1589,13 +1716,14 @@ async function restart() {
     volumeIdPET = undefined;
     totalImagesIdsCT  = undefined;
     totalImagesIdsPET = undefined;
+    totalROIsRTSTRUCT = undefined;
 
 
     // Step 5 - Other stuff
     // setToolsAsActivePassive(true);
-    const stackScrollMouseWheelTool = cornerstone3DTools.StackScrollMouseWheelTool;
-    const toolGroup = cornerstone3DTools.ToolGroupManager.getToolGroup(toolGroupId);
-    toolGroup.setToolPassive(stackScrollMouseWheelTool.toolName);
+    // const stackScrollMouseWheelTool = cornerstone3DTools.StackScrollMouseWheelTool;
+    // const toolGroup = cornerstone3DTools.ToolGroupManager.getToolGroup(toolGroupId);
+    // toolGroup.setToolPassive(stackScrollMouseWheelTool.toolName);
 
 }
 
@@ -1698,22 +1826,26 @@ async function fetchAndLoadData(caseNumber){
                         showToast('Error in loading GT segmentation data', 3000);
                     }
                 }
-                let { segReprUID: scribbleSegmentationUIDs } = await addSegmentationToState(scribbleSegmentationId, cornerstone3DTools.Enums.SegmentationRepresentations.Contour);
-                
+                try{
+                    let { segReprUID: scribbleSegmentationUIDs } = await addSegmentationToState(scribbleSegmentationId, cornerstone3DTools.Enums.SegmentationRepresentations.Contour);
+                } catch (error){
+                    console.error(' - [loadData()] Error in addSegmentationToState(scribbleSegmentationId, cornerstone3DTools.Enums.SegmentationRepresentations.Contour): ', error);
+                }
                 // Step 6 - Set tools as active/passive
-                const stackScrollMouseWheelTool = cornerstone3DTools.StackScrollMouseWheelTool;
-                const toolGroup = cornerstone3DTools.ToolGroupManager.getToolGroup(toolGroupId);
-                toolGroup.setToolActive(stackScrollMouseWheelTool.toolName);
+                // const stackScrollMouseWheelTool = cornerstone3DTools.StackScrollMouseWheelTool;
+                // const toolGroup = cornerstone3DTools.ToolGroupManager.getToolGroup(toolGroupId);
+                // toolGroup.setToolActive(stackScrollMouseWheelTool.toolName);
                 
                 // Step 99 - Done
                 caseSelectionHTML.selectedIndex = caseNumber;
                 unshowLoaderAnimation();
-                showToast(`Data loaded successfully (CT=${totalImagesIdsCT} slices)`, 3000, true);
-                
+                showToast(`Data loaded successfully (CT=${totalImagesIdsCT} slices, ROIs=${totalROIsRTSTRUCT})`, 3000, true);
+
             }
 
         }else{
             showToast('No CT data available')
+            await unshowLoaderAnimation()
         }
     }else{
         showToast('Default case not available. Select another case.')
@@ -1743,10 +1875,11 @@ async function setup(patientIdx){
     // -------------------------------------------------> Step 4 - Get .dcm data
     await fetchAndLoadData(patientIdx);
     setContouringButtonsLogic();
+    setMouseAndKeyboardEvents();
 
 }
 
-const patientIdx = 10;
+const patientIdx = 5;
 setup(patientIdx)
 
 
