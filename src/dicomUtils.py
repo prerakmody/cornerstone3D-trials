@@ -204,6 +204,76 @@ def makeCTPTDicomSlices(imageArray, origin, spacing, patientName, studyUID, seri
     
     return pixelValueList, pathsList
 
+
+
+def set_segment_color(ds, segment_index, rgb_color):
+
+    def rgb_to_cielab(rgb):
+        import skimage
+        import skimage.color
+        # Normalize RGB values to the range 0-1
+        rgb_normalized = np.array(rgb) / 255.0
+        # Convert RGB to CIELab
+        cielab = skimage.color.rgb2lab(np.array([rgb_normalized]))
+        return cielab.flatten()
+    
+    # Convert RGB to DICOM CIELab
+    cielab = rgb_to_cielab(rgb_color)
+    # DICOM CIELab values need to be scaled and converted to unsigned 16-bit integers
+    L_star = int((cielab[0] / 100) * 65535)  # L* from 0 to 100
+    a_star = int(((cielab[1] + 128) / 255) * 65535)  # a* from -128 to +127
+    b_star = int(((cielab[2] + 128) / 255) * 65535)  # b* from -128 to +127
+    
+    # Set the color for the specified segment
+    if 'SegmentSequence' in ds:
+        segment = ds.SegmentSequence[segment_index]
+        segment.RecommendedDisplayCIELabValue = [L_star, a_star, b_star]
+    
+    # Save the modified DICOM file
+    return ds
+
+def makeSEGDicom(maskArray, maskSpacing, maskOrigin, metaInfoJsonPath, ctPathsList, patientName, maskType, studyUID, seriesNumber, contentCreatorName, pathFolderMask):
+
+    try:
+
+        # Step 1 - Convert to sitk image
+        maskImage = sitk.GetImageFromArray(np.moveaxis(maskArray, [0,1,2], [2,1,0]).astype(np.uint8)) # np([H,W,D]) -> np([D,W,H]) -> sitk([H,W,D]) 
+        maskImage.SetSpacing(maskSpacing)
+        maskImage.SetOrigin(maskOrigin)
+        # print (' - [maskImage] rows: {}, cols: {}, slices: {}'.format(maskImage.GetHeight(), maskImage.GetWidth(), maskImage.GetDepth())) ## SITK is (Width, Height, Depth)
+
+        # Step 2 - Create a basic dicom dataset        
+        import pydicom_seg
+        template                    = pydicom_seg.template.from_dcmqi_metainfo(metaInfoJsonPath)
+        template.SeriesDescription  = '-'.join([patientName, maskType])
+        template.SeriesNumber       = seriesNumber
+        template.ContentCreatorName = contentCreatorName
+        # template.ContentLabel       = maskType
+        writer                      = pydicom_seg.MultiClassWriter(template=template, inplane_cropping=False, skip_empty_slices=False, skip_missing_segment=False)
+        ctDcmsList                  = [pydicom.dcmread(dcmPath, stop_before_pixels=True) for dcmPath in ctPathsList]
+        dcm                         = writer.write(maskImage, ctDcmsList)
+        # print (' - rows: {} | cols: {} | numberofframes:{}'.format(dcm.Rows, dcm.Columns, dcm.NumberOfFrames))
+        
+        # Step 3 - Save the dicom file
+        print (dcm.SegmentSequence[0])
+        set_segment_color(dcm, 0, [0, 255, 0])
+        print (dcm.SegmentSequence[0])
+        dcm.StudyInstanceUID        = studyUID
+        dcm.save_as(str(pathFolderMask / "mask.dcm"))
+        
+        # Step 99 - Meh
+        # decodedMaskArray = dcm.pixel_array
+        # print (decodedMaskArray.shape, self.maskArray.shape)
+        # plot(self.ctArray, self.ptArray, decodedMaskArray, sliceIds=[20, 54, 90])
+        # plot(self.ctArray, self.ptArray, self.maskArray, sliceIds=[20, 54, 90])
+        # bytes_array = np.frombuffer(dcm.PixelData, dtype=np.uint8)
+        # unpacked_bits = np.unpackbits(bytes_array, bitorder='little')        
+        # studyDicomTags(dcm)
+
+    except:
+        traceback.print_exc()
+        pdb.set_trace()
+
 def terminalPlotHist(values, bins=100, titleStr="Histogram Plot"):
 
     try:
@@ -282,14 +352,24 @@ def plot(ctArray, ptArray, maskPredArray=None, sliceIds=[]):
 
 class DICOMConverterHecktor:
 
-    def __init__(self, patientName, pathCT, pathPT, pathMask, pathMaskPred, rotFunc):
+    def __init__(self, patientName, pathCT, pathPT, pathMask, pathMaskPred
+                 , rotFunc, maskMetaInfoPath
+                , maskGTSeriesDescSuffix, maskPredSeriesDescSuffix, maskGTCreatorName, maskPredCreatorName):
         
-        self.patientName      = patientName
+        # Step 1 - Basic info and paths
+        self.patientName  = patientName
         self.pathCT       = pathCT
         self.pathPT       = pathPT
         self.pathMask     = pathMask
         self.pathMaskPred = pathMaskPred
-        self.rotFunc      = rotFunc
+
+        # Step 2 - Additional info 
+        self.rotFunc          = rotFunc
+        self.maskMetaInfoPath = maskMetaInfoPath
+        self.maskGTSeriesDescSuffix   = maskGTSeriesDescSuffix
+        self.maskPredSeriesDescSuffix = maskPredSeriesDescSuffix
+        self.maskGTCreatorName        = maskGTCreatorName
+        self.maskPredCreatorName      = maskPredCreatorName
 
         self._readFiles()
 
@@ -304,9 +384,11 @@ class DICOMConverterHecktor:
             self.maskPredArray, self.maskPredHeader, self.maskPredSpacing, self.maskPredOrigin = readVolume(self.pathMaskPred)
             
             # Step 1.1 - Some custom processing
-            if 0:
+            if 1:
                 self.ctArray  = self.ctArray[:,:,:-1]
                 self.ptArray = self.ptArray[:,:,:-1]
+                self.maskArray = self.maskArray[:,:,:-1]
+                print (' - [DICOMConverterHecktor] CT: {}, PT: {}, Mask: {}, MaskPred: {}'.format(self.ctArray.shape, self.ptArray.shape, self.maskArray.shape, self.maskPredArray.shape))
             # assert self.ctArray.shape == self.ptArray.shape == self.maskArray.shape == self.maskPredArray.shape, " - [DICOMConverterHecktor] Shape mismatch: CT: {}, PET: {}, Mask: {}, MaskPred: {}".format(self.ctArray.shape, self.ptArray.shape, self.maskArray.shape, self.maskPredArray.shape)
 
             # Step 1.2 - Check Spacing
@@ -373,45 +455,21 @@ class DICOMConverterHecktor:
 
             # Step 3 - Convert Mask
             if 1:
-                
-                # self.maskArray[self.maskArray == 1] = 2
-                # maskImage = sitk.GetImageFromArray(self.maskArray.astype(np.uint8))
-                maskImage = sitk.GetImageFromArray(np.moveaxis(self.maskArray, [0,1,2], [2,1,0]).astype(np.uint8)) # np([H,W,D]) -> np([D,W,H]) -> sitk([H,W,D])
-                # SITK is (Width, Height, Depth) and np is 
-                maskImage.SetSpacing(self.maskSpacing)
-                maskImage.SetOrigin(self.maskOrigin)
-                # print (' - [maskImage] rows: {}, cols: {}, slices: {}'.format(maskImage.GetHeight(), maskImage.GetWidth(), maskImage.GetDepth()))
 
+                # Step 3.1 - Mask (GT)
+                print ('\n - [convertToDICOM()] Making SEG Dicom for GT Masks...')
+                seriesNumber            = 3
+                makeSEGDicom(self.maskArray, self.maskSpacing, self.maskOrigin, self.maskMetaInfoPath, ctPathsList
+                             , self.patientName,  self.maskGTSeriesDescSuffix, self.studyUID, seriesNumber, self.maskGTCreatorName, self.pathFolderMask)
                 
-                import pydicom_seg
-                template = pydicom_seg.template.from_dcmqi_metainfo(Path(DIR_FILE) / 'metainfo-segmentation.json')
-                template.SeriesDescription = self.patientName + '-Series-SEG-GT'
-                template.SeriesNumber       = 3
-                template.ContentCreatorName = 'Hecktor2022' # ['Modys AI model']
-                writer = pydicom_seg.MultiClassWriter(template=template, inplane_cropping=False, skip_empty_slices=False, skip_missing_segment=False)
-                ctDcmsList = [pydicom.dcmread(dcmPath, stop_before_pixels=True) for dcmPath in ctPathsList]
-                dcm = writer.write(maskImage, ctDcmsList)
+                # Step 3.2 - Mask (Pred)
+                print ('\n - [convertToDICOM()] Making SEG Dicom for Predicted Masks...')
+                seriesNumber            = 4
+                makeSEGDicom(self.maskPredArray, self.maskPredSpacing, self.maskPredOrigin, self.maskMetaInfoPath, ctPathsList
+                             , self.patientName,  self.maskPredSeriesDescSuffix, self.studyUID, seriesNumber, self.maskPredCreatorName, self.pathFolderMaskPred)
                 
-                dcm.StudyInstanceUID  = self.studyUID
-                print (' - rows: {} | cols: {} | numberofframes:{}'.format(dcm.Rows, dcm.Columns, dcm.NumberOfFrames))
-                # dcm.Rows = 144
-                # dcm.Columns = 144
-                # print (dcm.Rows, dcm.Columns, dcm.NumberOfFrames)
-
-                
-                # dcm.PixelData = np.moveaxis(self.maskArray, [0,1,2], [2,1,0]).astype(np.uint8).tobytes()
-                dcm.save_as(str(self.pathFolderMask / "mask.dcm"))
-                
-                # decodedMaskArray = dcm.pixel_array
-                # print (decodedMaskArray.shape, self.maskArray.shape)
-                # plot(self.ctArray, self.ptArray, decodedMaskArray, sliceIds=[20, 54, 90])
-                # plot(self.ctArray, self.ptArray, self.maskArray, sliceIds=[20, 54, 90])
-                # bytes_array = np.frombuffer(dcm.PixelData, dtype=np.uint8)
-                # unpacked_bits = np.unpackbits(bytes_array, bitorder='little')
-                
-                # studyDicomTags(dcm)
-                pdb.set_trace()
-
+            
+            pdb.set_trace()
 
 
         except:
@@ -431,9 +489,18 @@ if __name__ == "__main__":
         pathPT       = DIR_CLINIC / "CHMR001_pt.nii.gz"      # "nrrd_CHMR001_img2.nrrd"
         pathMask     = DIR_CLINIC / "CHMR001_gtvt.nii.gz"    # ["nrrd_CHMR001_mask.nrrd", "CHMR001_gtvt.nii.gz"]
         pathMaskPred = DIR_CLINIC / "nrrd_CHMR001_maskpred.nrrd"
-        rotFunc      = lambda x: np.fliplr(np.rot90(x, k=3))    # [x, np.rot90(x, k=3)] ## NOTE: helps to set right --> left orientation for .dcm files, refer: https://blog.redbrickai.com/blog-posts/introduction-to-dicom-coordinate
-    
-    converterClass = DICOMConverterHecktor(patientName, pathCT, pathPT, pathMask, pathMaskPred, rotFunc)
+        
+        rotFunc              = lambda x: np.fliplr(np.rot90(x, k=3))    # [x, np.rot90(x, k=3)] ## NOTE: helps to set right --> left orientation for .dcm files, refer: https://blog.redbrickai.com/blog-posts/introduction-to-dicom-coordinate
+        maskMetaInfoPath     = DIR_FILE / 'metainfo-segmentation.json'
+        maskGTSeriesDescSuffix   = 'Series-SEG-GT'
+        maskPredSeriesDescSuffix = 'Series-SEG-Pred'
+        maskGTCreatorName        = 'Hecktor2022'
+        maskPredCreatorName      = 'Modys AI model'
+
+
+    converterClass = DICOMConverterHecktor(patientName, pathCT, pathPT, pathMask, pathMaskPred
+                                           , rotFunc, maskMetaInfoPath
+                                           , maskGTSeriesDescSuffix, maskPredSeriesDescSuffix, maskGTCreatorName, maskPredCreatorName)
     converterClass.convertToDICOM()
 
 """
@@ -453,5 +520,5 @@ if __name__ == "__main__":
 
 OHIF in Orthanc
  - ReferencedSeriesSequence is missing for the SEG 
-
+ - for elem in ds: print (elem.name, elem.VR) if elem.VR == "SQ": pass
 """

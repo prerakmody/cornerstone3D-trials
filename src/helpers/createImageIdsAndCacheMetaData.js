@@ -42,8 +42,7 @@ export default async function createImageIdsAndCacheMetaData({
 
   client = client || new api.DICOMwebClient({ url: wadoRsRoot });
   let instances = await client.retrieveSeriesMetadata(studySearchOptions);
-  // console.log(' - [createImageIdsAndCacheMetaData.js] instances: ', instances);
-
+  
   // if sop instance is provided we should filter the instances to only include the one we want
   if (SOPInstanceUID) {
     instances = instances.filter((instance) => {
