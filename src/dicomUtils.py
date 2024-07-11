@@ -204,8 +204,6 @@ def makeCTPTDicomSlices(imageArray, origin, spacing, patientName, studyUID, seri
     
     return pixelValueList, pathsList
 
-
-
 def set_segment_color(ds, segment_index, rgb_color):
 
     def rgb_to_cielab(rgb):
@@ -404,6 +402,7 @@ class DICOMConverterHecktor:
             self.ptOrigin = [0, 0, 0]
             self.maskOrigin = [0, 0, 0]
             self.maskPredOrigin = [0, 0, 0]
+            print (' - [DICOMConverterHecktor] Setting all origins to (0,0,0)')
 
             # Step 4 - Create folders and make UIDs
             self._createFolders()
