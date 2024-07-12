@@ -1181,6 +1181,7 @@ async function makeRequestToProcess(points3D, scribbleAnnotationUID){
 
     let requestStatus = false;
     let responseData  = {}
+    const now = new Date();
     try{
 
         // Step 0 - Init=
@@ -1236,6 +1237,9 @@ async function makeRequestToProcess(points3D, scribbleAnnotationUID){
                 console.error(' - [loadData()] Error in makeRequestToProcess(responseData, global.imageIdsCT, MASK_TYPE_PRED): ', error);
                 showToast('Error in loading refined segmentation data', 3000);
             }
+
+            const seconds = (new Date() - now) / 1000;
+            showToast(`AI Processing completed in ${seconds} s`, 3000);
 
         } catch (error){
             requestStatus = false;
@@ -2005,21 +2009,6 @@ async function restart() {
         
         // Step 2 - Remove all segmentationIds
         try{
-            // console.log(' - [restart()](before) allSegIdsAndUIDs: ', cornerstone3DTools.segmentation.state.getAllSegmentationRepresentations());
-            // cornerstone3DTools.segmentation.removeSegmentationsFromToolGroup(toolGroupIdContours);
-            // const allSegIdsAndUIDs =  cornerstone3DTools.segmentation.state.getAllSegmentationRepresentations();
-            // console.log(' - [restart()](after) allSegIdsAndUIDs: ', allSegIdsAndUIDs);
-            // console.log(' - segIds: ', cornerstone3DTools.segmentation.state.getSegmentations())
-            // // Step 1.1 - Remove segmentations from toolGroup
-            // Object.keys(allSegIdsAndUIDs).forEach(toolGroupId => {
-            //     console.log(' - [restart()] getSegmentationRepresentations(toolGroupId): ', cornerstone3DTools.segmentation.state.getSegmentationRepresentations(toolGroupId));
-            //     allSegIdsAndUIDs[toolGroupId].forEach(segmentationObj => {
-            //         console.log(' - [restart()] Removing segmentationObj: ', segmentationObj);    
-            //         cornerstone3DTools.segmentation.state.removeSegmentation(segmentationObj.segmentationId);
-            //         if (segmentationObj.type == SEG_TYPE_LABELMAP)
-            //             cornerstone3D.cache.removeVolumeLoadObject(segmentationObj.segmentationId);
-            //     });
-            // });
 
             const allSegObjs     = cornerstone3DTools.segmentation.state.getSegmentations();
             const allSegRepsObjs = cornerstone3DTools.segmentation.state.getAllSegmentationRepresentations()[toolGroupIdContours];

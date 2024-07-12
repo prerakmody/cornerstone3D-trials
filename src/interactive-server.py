@@ -7,6 +7,7 @@ import warnings
 import platform
 import datetime
 import traceback
+import setproctitle
 import numpy as np
 from pathlib import Path
 
@@ -18,6 +19,9 @@ import pydantic
 import starlette
 import fastapi.middleware.cors
 import starlette.middleware.sessions
+
+import threading
+from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
 
 import pydicom
 import requests
@@ -47,6 +51,8 @@ KEY_CLIENT_IDENTIFIER    = 'clientIdentifier'
 KEY_DCM_LIST             = 'dcmList'
 KEY_SCRIBBLE_COUNTER     = 'scribbleCounter'
 KEY_DATETIME             = 'dateTime'
+KEY_PATH_SAVE            = 'pathSave'
+KEY_SEG_ARRAY_GT         = 'segArrayGT'
 KEY_SEG_SOP_INSTANCE_UID    = 'segSOPInstanceUID'
 KEY_SEG_SERIES_INSTANCE_UID = 'segSeriesInstanceUID'
 KEY_SEG_ORTHANC_ID          = 'segOrthancID'
@@ -64,16 +70,24 @@ KEY_SEARCH_OBJ_PET     = 'searchObjPET'
 KEY_SEARCH_OBJ_RTSGT   = 'searchObjRTSGT'
 KEY_SEARCH_OBJ_RTSPRED = 'searchObjRTSPred'
 
-
 # Keys - For response json
 KEY_STATUS = 'status'
 KEY_RESPONSE_DATA = 'responseData'
+
+# Keys - For saving
+fileNameForSave = lambda name, counter: '-'.join([str(name), SERIESDESC_SUFFIX_REFINE, str(counter)])
 
 # Key - for views
 KEY_AXIAL = 'Axial'
 KEY_CORONAL = 'Coronal'
 KEY_SAGITTAL = 'Sagittal'
 
+# Keys - for colors
+COLORSTR_RED   = 'red'
+COLORSTR_GREEN = 'green'
+COLORSTR_PINK  = 'pink'
+COLORSTR_GRAY  = 'gray'
+SAVE_DPI = 200
 ######################## User-defined settings ########################
 
 # Settings - Python server
@@ -102,15 +116,6 @@ SERIESDESC_SUFFIX_REFINE   = 'Series-SEG-Refine'
 CREATORNAME_REFINE         = 'Modys Refinement model: ' + str(KEY_UNET_V1)
 SERIESNUM_REFINE           = 5
 SUFIX_REFINE               = 'Refine'
-
-######################## Experiment-wise settings ########################
-
-if 1:
-    expName = 'UNetv1__DICE-LR1e3__Class1__Trial1'
-    epoch     = 100
-    modelType = KEY_UNET_V1
-
-DEVICE  = torch.device('cpu')
 
 #################################################################
 #                             UTILS
@@ -293,12 +298,12 @@ def doInference(model, preparedDataTorch):
 
     segArrayRefinedNumpy = None
     try:
-        
-        segArrayRefinedTorch  = model(preparedDataTorch)
-        segArrayRefinedTorch  = torch.sigmoid(segArrayRefinedTorch)
-        segArrayRefinedTorch[segArrayRefinedTorch <= 0.5] = 0
-        segArrayRefinedTorch[segArrayRefinedTorch > 0.5] = 1
-        segArrayRefinedNumpy = segArrayRefinedTorch.detach().cpu().numpy()[0,0]
+        if model is not None:
+            segArrayRefinedTorch  = model(preparedDataTorch)
+            segArrayRefinedTorch  = torch.sigmoid(segArrayRefinedTorch)
+            segArrayRefinedTorch[segArrayRefinedTorch <= 0.5] = 0
+            segArrayRefinedTorch[segArrayRefinedTorch > 0.5] = 1
+            segArrayRefinedNumpy = segArrayRefinedTorch.detach().cpu().numpy()[0,0]
 
     except:
         traceback.print_exc()
@@ -459,12 +464,15 @@ def getSEGs(client, patientData): # preparedData, sessionsGlobal, clientIdentifi
         if segArrayPred is not None:
             patientData[KEY_TORCH_DATA][0, 2, :, :, :] = torch.tensor(segArrayPred, dtype=torch.float32, device=DEVICE)
         
+        if segArrayGT is not None:
+            patientData[KEY_SEG_ARRAY_GT] = segArrayGT # store as numpy array
+        
     except:
         traceback.print_exc()
     
     return segArrayGT, segArrayPred, patientData
 
-def makeSEGDicom(maskArray, clientIdentifier, patientSessionData):
+def makeSEGDicom(maskArray, patientSessionData):
 
     makeDICOMStatus = False
     try:
@@ -504,7 +512,7 @@ def makeSEGDicom(maskArray, clientIdentifier, patientSessionData):
             floatify = lambda x: [float(each) for each in x] 
             patientName       = patientSessionData[KEY_DATA][KEY_CASE_NAME]
             ctDicomsList      = patientSessionData[KEY_DCM_LIST]
-            pathFolderMask    = Path(DIR_EXPERIMENTS).joinpath(patientSessionData[KEY_DATETIME] + ' -- ' + clientIdentifier)
+            pathFolderMask    = patientSessionData[KEY_PATH_SAVE]
             counter           = patientSessionData[KEY_SCRIBBLE_COUNTER]
             sopInstanceUID    = patientSessionData[KEY_SEG_SOP_INSTANCE_UID]
             seriesInstanceUID = patientSessionData[KEY_SEG_SERIES_INSTANCE_UID]
@@ -520,7 +528,10 @@ def makeSEGDicom(maskArray, clientIdentifier, patientSessionData):
 
             # Step 2 - Create a basic dicom dataset        
             template                    = pydicom_seg.template.from_dcmqi_metainfo(Path(DIR_SRC) / FILENAME_METAINFO_SEG_JSON)
-            template.SeriesDescription  = '-'.join([patientName, SERIESDESC_SUFFIX_REFINE, Path(pathFolderMask).parts[-1], str(counter)])
+            if MODE_DEBUG:
+                template.SeriesDescription  = fileNameForSave(patientName, counter) # '-'.join([patientName, SERIESDESC_SUFFIX_REFINE, str(counter)])
+            else:
+                template.SeriesDescription  = '-'.join([patientName, SERIESDESC_SUFFIX_REFINE, Path(pathFolderMask).parts[-1], str(counter)])
             template.SeriesNumber       = SERIESNUM_REFINE
             template.ContentCreatorName = CREATORNAME_REFINE
             # template.ContentLabel       = maskType
@@ -540,6 +551,7 @@ def makeSEGDicom(maskArray, clientIdentifier, patientSessionData):
         # Step 4 - Post to DICOM server
         if 1:
             instanceOrthanID = patientSessionData[KEY_SEG_ORTHANC_ID]
+            global DCMCLIENT
             if DCMCLIENT is not None:
                 requestBaseURL = str(DCMCLIENT.protocol) + '://' + str(DCMCLIENT.host) + ':' + str(DCMCLIENT.port)
 
@@ -709,14 +721,15 @@ def getDistanceMap(preparedDataTorch, scribbleType, points3D, distMapZ, distMapS
     
     return preparedDataTorch
 
-def plotData(ctArray, ptArray, gtArray, predArray, sliceId=None, caseName='', points3D=None, scribbleType=None, extraSlices=7):
+def plotData(ctArray, ptArray, gtArray, predArray, refineArray=None, sliceId=None, caseName='', counter=-1, points3D=None, scribbleType=None, extraSlices=7, saveFolderPath=False):
     """
     Params
     ------
-    ctArray, ptArray, gtArray, predArray: np.ndarray, [H,W,depth]
+    ctArray, ptArray, gtArray, predArray, refineArray: np.ndarray, [H,W,depth]
     """
     try:
 
+        print (' - [plotData()] caseName: {}, counter: {}, scribbleType: {}'.format(caseName, counter, scribbleType))
         import matplotlib.colors
         import skimage.morphology
         import matplotlib.pyplot as plt
@@ -754,58 +767,73 @@ def plotData(ctArray, ptArray, gtArray, predArray, sliceId=None, caseName='', po
 
             # Step 2.1 - Axial slice
             axarr[0,0].set_ylabel('Axial')
-            axarr[0,0].imshow(ctArray[:, :, sliceId], cmap='gray')
-            axarr[0,1].imshow(ptArray[:, :, sliceId], cmap='gray')
+            axarr[0,0].imshow(ctArray[:, :, sliceId], cmap=COLORSTR_GRAY)
+            axarr[0,1].imshow(ptArray[:, :, sliceId], cmap=COLORSTR_GRAY)
             if gtArray is not None:
-                axarr[0,0].contour(gtArray[:, :, sliceId], colors='g')
-                axarr[0,1].contour(gtArray[:, :, sliceId], colors='g')
+                axarr[0,0].contour(gtArray[:, :, sliceId], colors=COLORSTR_GREEN)
+                axarr[0,1].contour(gtArray[:, :, sliceId], colors=COLORSTR_GREEN)
             if predArray is not None:
-                axarr[0,0].contour(predArray[:, :, sliceId], colors='r')
-                axarr[0,1].contour(predArray[:, :, sliceId], colors='r')
+                axarr[0,0].contour(predArray[:, :, sliceId], colors=COLORSTR_RED)
+                axarr[0,1].contour(predArray[:, :, sliceId], colors=COLORSTR_RED)
+            if refineArray is not None:
+                axarr[0,0].contour(refineArray[:, :, sliceId], colors=COLORSTR_PINK, linestyle='dashed')
+                axarr[0,1].contour(refineArray[:, :, sliceId], colors=COLORSTR_PINK, linestyle='dashed')
             for (sliceNeighborId, columnId) in extraSliceIdsAndColumnIds:
-                axarr[0,columnId].imshow(ctArray[:, :, sliceNeighborId], cmap='gray')
-                axarr[0,columnId].imshow(ptArray[:, :, sliceNeighborId], cmap='gray', alpha=0.3)
+                axarr[0,columnId].imshow(ctArray[:, :, sliceNeighborId], cmap=COLORSTR_GRAY)
+                axarr[0,columnId].imshow(ptArray[:, :, sliceNeighborId], cmap=COLORSTR_GRAY, alpha=0.3)
                 if gtArray is not None:
-                    axarr[0,columnId].contour(gtArray[:, :, sliceNeighborId], colors='g')
+                    axarr[0,columnId].contour(gtArray[:, :, sliceNeighborId], colors=COLORSTR_GREEN)
                 if predArray is not None:
-                    axarr[0,columnId].contour(predArray[:, :, sliceNeighborId], colors='r')
+                    axarr[0,columnId].contour(predArray[:, :, sliceNeighborId], colors=COLORSTR_RED)
+                if refineArray is not None:
+                    axarr[0,columnId].contour(refineArray[:, :, sliceNeighborId], colors=COLORSTR_PINK, linestyle='dashed')
                 axarr[0,columnId].set_title('Slice: {}'.format(sliceNeighborId+1))
             
             # Step 2.2 - Sagittal slice
             axarr[1,0].set_ylabel('Coronal')
-            axarr[1,0].imshow(rotSagittal(ctArray[:, sliceId, :]), cmap='gray')
-            axarr[1,1].imshow(rotSagittal(ptArray[:, sliceId, :]), cmap='gray')
+            axarr[1,0].imshow(rotSagittal(ctArray[:, sliceId, :]), cmap=COLORSTR_GRAY)
+            axarr[1,1].imshow(rotSagittal(ptArray[:, sliceId, :]), cmap=COLORSTR_GRAY)
             if gtArray is not None:
-                axarr[1,0].contour(rotSagittal(gtArray[:, sliceId, :]), colors='g')
-                axarr[1,1].contour(rotSagittal(gtArray[:, sliceId, :]), colors='g')
+                axarr[1,0].contour(rotSagittal(gtArray[:, sliceId, :]), colors=COLORSTR_GREEN)
+                axarr[1,1].contour(rotSagittal(gtArray[:, sliceId, :]), colors=COLORSTR_GREEN)
             if predArray is not None:
-                axarr[1,0].contour(rotSagittal(predArray[:, sliceId, :]), colors='r')
-                axarr[1,1].contour(rotSagittal(predArray[:, sliceId, :]), colors='r')
+                axarr[1,0].contour(rotSagittal(predArray[:, sliceId, :]), colors=COLORSTR_RED)
+                axarr[1,1].contour(rotSagittal(predArray[:, sliceId, :]), colors=COLORSTR_RED)
+            if refineArray is not None:
+                axarr[1,0].contour(rotSagittal(refineArray[:, sliceId, :]), colors=COLORSTR_PINK, linestyle='dashed')
+                axarr[1,1].contour(rotSagittal(refineArray[:, sliceId, :]), colors=COLORSTR_PINK, linestyle='dashed')
             for (sliceNeighborId, columnId) in extraSliceIdsAndColumnIds:
-                axarr[1,columnId].imshow(rotSagittal(ctArray[:, sliceNeighborId, :]), cmap='gray')
-                axarr[1,columnId].imshow(rotSagittal(ptArray[:, sliceNeighborId, :]), cmap='gray', alpha=0.3)
+                axarr[1,columnId].imshow(rotSagittal(ctArray[:, sliceNeighborId, :]), cmap=COLORSTR_GRAY)
+                axarr[1,columnId].imshow(rotSagittal(ptArray[:, sliceNeighborId, :]), cmap=COLORSTR_GRAY, alpha=0.3)
                 if gtArray is not None:
-                    axarr[1,columnId].contour(rotSagittal(gtArray[:, sliceNeighborId, :]), colors='g')
+                    axarr[1,columnId].contour(rotSagittal(gtArray[:, sliceNeighborId, :]), colors=COLORSTR_GREEN)
                 if predArray is not None:
-                    axarr[1,columnId].contour(rotSagittal(predArray[:, sliceNeighborId, :]), colors='r')
+                    axarr[1,columnId].contour(rotSagittal(predArray[:, sliceNeighborId, :]), colors=COLORSTR_RED)
+                if refineArray is not None:
+                    axarr[1,columnId].contour(rotSagittal(refineArray[:, sliceNeighborId, :]), colors=COLORSTR_PINK, linestyle='dashed')
 
             # Step 2.3 - Coronal slice
             axarr[2,0].set_ylabel('Sagittal')
-            axarr[2,0].imshow(rotCoronal(ctArray[sliceId, :, :]), cmap='gray')
-            axarr[2,1].imshow(rotCoronal(ptArray[sliceId, :, :]), cmap='gray')
+            axarr[2,0].imshow(rotCoronal(ctArray[sliceId, :, :]), cmap=COLORSTR_GRAY)
+            axarr[2,1].imshow(rotCoronal(ptArray[sliceId, :, :]), cmap=COLORSTR_GRAY)
             if gtArray is not None:
-                axarr[2,0].contour(rotCoronal(gtArray[sliceId, :, :]), colors='g')
-                axarr[2,1].contour(rotCoronal(gtArray[sliceId, :, :]), colors='g')
+                axarr[2,0].contour(rotCoronal(gtArray[sliceId, :, :]), colors=COLORSTR_GREEN)
+                axarr[2,1].contour(rotCoronal(gtArray[sliceId, :, :]), colors=COLORSTR_GREEN)
             if predArray is not None:
-                axarr[2,0].contour(rotCoronal(predArray[sliceId, :, :]), colors='r')
-                axarr[2,1].contour(rotCoronal(predArray[sliceId, :, :]), colors='r')
+                axarr[2,0].contour(rotCoronal(predArray[sliceId, :, :]), colors=COLORSTR_RED)
+                axarr[2,1].contour(rotCoronal(predArray[sliceId, :, :]), colors=COLORSTR_RED)
+            if refineArray is not None:
+                axarr[2,0].contour(rotCoronal(refineArray[sliceId, :, :]), colors=COLORSTR_PINK, linestyle='dashed')
+                axarr[2,1].contour(rotCoronal(refineArray[sliceId, :, :]), colors=COLORSTR_PINK, linestyle='dashed')
             for (sliceNeighborId, columnId) in extraSliceIdsAndColumnIds:
-                axarr[2,columnId].imshow(rotCoronal(ctArray[sliceNeighborId, :, :]), cmap='gray')
-                axarr[2,columnId].imshow(rotCoronal(ptArray[sliceNeighborId, :, :]), cmap='gray', alpha=0.3)
+                axarr[2,columnId].imshow(rotCoronal(ctArray[sliceNeighborId, :, :]), cmap=COLORSTR_GRAY)
+                axarr[2,columnId].imshow(rotCoronal(ptArray[sliceNeighborId, :, :]), cmap=COLORSTR_GRAY, alpha=0.3)
                 if gtArray is not None:
-                    axarr[2,columnId].contour(rotCoronal(gtArray[sliceNeighborId, :, :]), colors='g')
+                    axarr[2,columnId].contour(rotCoronal(gtArray[sliceNeighborId, :, :]), colors=COLORSTR_GREEN)
                 if predArray is not None:
-                    axarr[2,columnId].contour(rotCoronal(predArray[sliceNeighborId, :, :]), colors='r')
+                    axarr[2,columnId].contour(rotCoronal(predArray[sliceNeighborId, :, :]), colors=COLORSTR_RED)
+                if refineArray is not None:
+                    axarr[2,columnId].contour(rotCoronal(refineArray[sliceNeighborId, :, :]), colors=COLORSTR_PINK, linestyle='dashed')
         
         # Step 3 - Show distance map
         if 1:
@@ -814,8 +842,10 @@ def plotData(ctArray, ptArray, gtArray, predArray, sliceId=None, caseName='', po
                 # Step 3.1 - Get colormaps
                 if scribbleType == KEY_SCRIBBLE_FGD:
                     scribbleColor = RGBA_ARRAY_YELLOW
+                    scribbleColorStr = 'yellow'
                 elif scribbleType == KEY_SCRIBBLE_BGD:
                     scribbleColor = RGBA_ARRAY_BLUE
+                    scribbleColorStr = 'blue'
                 scribbleColorMapBase = matplotlib.colors.ListedColormap([scribbleColor for _ in range(256)])
                 scribbleColorMap, scribbleNorm = getScribbleColorMap(scribbleColorMapBase, opacityBoolForScribblePoints=True)
                 cmapScribbleDist, normScribbleDist = getScribbleColorMap(CMAP_DEFAULT, opacityBoolForScribblePoints=False)
@@ -828,6 +858,9 @@ def plotData(ctArray, ptArray, gtArray, predArray, sliceId=None, caseName='', po
                     axial2DSlice = skimage.morphology.binary_dilation(points3DDistanceMapBinary[:, :, sliceId])
                     axarr[0,0].imshow(axial2DSlice, cmap=scribbleColorMap, norm=scribbleNorm)
                     axarr[0,1].imshow(axial2DSlice, cmap=scribbleColorMap, norm=scribbleNorm)
+                    # axial2DSlice = points3DDistanceMapBinary[:, :, sliceId]
+                    # axarr[0,0].contour(axial2DSlice, color=scribbleColorStr)
+                    # axarr[0,1].contour(axial2DSlice, color=scribbleColorStr)
                     for (sliceNeighborId, columnId) in extraSliceIdsAndColumnIds:
                         axarr[0,columnId].imshow(points3DDistanceMap[:, :, sliceNeighborId], cmap=cmapScribbleDist, norm=normScribbleDist)
                 elif viewType == KEY_SAGITTAL:
@@ -843,27 +876,40 @@ def plotData(ctArray, ptArray, gtArray, predArray, sliceId=None, caseName='', po
                     for (sliceNeighborId, columnId) in extraSliceIdsAndColumnIds:
                         axarr[2,columnId].imshow(rotCoronal(points3DDistanceMap[sliceNeighborId, :, :]), cmap=cmapScribbleDist, norm=normScribbleDist)
         
-        supTitleStr = 'CaseName: {} | SliceIdx: {} | SlideID: (per GUI): {}'.format(caseName, sliceId+1)
+        supTitleStr = 'CaseName: {} | SliceIdx: {} | SlideID: (per GUI): {}'.format(caseName, sliceId, sliceId+1)
         if points3D is not None:
             supTitleStr += '\n ( scribbleType: {} in view: {})'.format(scribbleType, viewType) 
         plt.suptitle(supTitleStr)
-        plt.show()
+        
+        # if saveFolderPath is None:
+        #     plt.show()
+        if saveFolderPath is not None:
+            Path(saveFolderPath).mkdir(parents=True, exist_ok=True)
+            saveFigPath = Path(saveFolderPath).joinpath('{}.png'.format(fileNameForSave(caseName, counter)))
+            plt.savefig(str(saveFigPath), bbox_inches='tight', dpi=SAVE_DPI)
+            plt.close()
 
     except:
+        plt.close()
         traceback.print_exc()
+        if MODE_DEBUG: pdb.set_trace()
 
-def plot(preparedDataTorch, caseName, points3D, scribbleType):
+def plot(preparedDataTorch, segArrayGT, caseName, counter, points3D, scribbleType, refineArray=None, saveFolderPath=None):
 
+    print (' - [plot()] caseName: {}, counter: {}, scribbleType: {}'.format(caseName, counter, scribbleType))
     try:
         ctArray      = np.array(preparedDataTorch[0,0])
         ptArray      = np.array(preparedDataTorch[0,1])
-        segArrayGT   = None
         segArrayPred = np.array(preparedDataTorch[0,2])
-        plotData(ctArray, ptArray, segArrayGT, segArrayPred, None, caseName, points3D, scribbleType)
+        plotData(ctArray, ptArray, segArrayGT, segArrayPred, refineArray, None, caseName, counter, points3D, scribbleType, saveFolderPath=saveFolderPath)
 
     except:
         traceback.print_exc()
         if MODE_DEBUG: pdb.set_trace()
+
+def run_executor_in_thread(func, *args):
+    with ProcessPoolExecutor() as executor:
+        future= executor.submit(func, *args)
 
 #################################################################
 #                        API ENDPOINTS
@@ -872,16 +918,36 @@ def plot(preparedDataTorch, caseName, points3D, scribbleType):
 # Step 1 - App related
 app     = fastapi.FastAPI()
 configureFastAPIApp(app)
+setproctitle.setproctitle("interactive-server.py") # set process name
 
 # Step 2 - Global Vars-related
-# DEVICE  = getTorchDevice()
 SESSIONSGLOBAL = {}
 DCMCLIENT      = None
-MODEL          = loadModelUsingUserPath(DEVICE, expName, epoch, modelType)
+MODEL          = None
+DEVICE         = None
+
+@app.on_event("startup")
+def startup_event():
+    global DEVICE
+    global MODEL
+
+    DEVICE  = getTorchDevice()
+    
+    ######################## Experiment-wise settings ########################
+    if 1:
+        expName = 'UNetv1__DICE-LR1e3__Class1__Trial1'
+        epoch     = 100
+        modelType = KEY_UNET_V1
+        DEVICE  = torch.device('cpu')
+
+    MODEL = loadModelUsingUserPath(DEVICE, expName, epoch, modelType)
+
+
 
 # Step 3 - API Endpoints
 @app.post("/prepare")
 async def prepare(payload: PayloadPrepare, request: starlette.requests.Request):
+    
     global DCMCLIENT
     global SESSIONSGLOBAL
 
@@ -903,8 +969,13 @@ async def prepare(payload: PayloadPrepare, request: starlette.requests.Request):
                                                 , KEY_SEG_SOP_INSTANCE_UID: pydicom.uid.generate_uid(), KEY_SEG_SERIES_INSTANCE_UID: pydicom.uid.generate_uid()
                                                 , KEY_SEG_ORTHANC_ID: None
                                                 , KEY_DATETIME: datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                                                , KEY_SEG_ARRAY_GT: None
                                                 }
-        
+            SESSIONSGLOBAL[clientIdentifier][patientName][KEY_PATH_SAVE] = Path(DIR_EXPERIMENTS).joinpath(SESSIONSGLOBAL[clientIdentifier][patientName][KEY_DATETIME] + ' -- ' + clientIdentifier)
+            if MODE_DEBUG:
+                SESSIONSGLOBAL[clientIdentifier][patientName][KEY_SEG_SERIES_INSTANCE_UID] = '1.2.826.0.1.3680043.8.498.34877500930222447338868826875966216464'
+                SESSIONSGLOBAL[clientIdentifier][patientName][KEY_SEG_SOP_INSTANCE_UID]    = '1.2.826.0.1.3680043.8.498.19269429515399130451320550305889352775'
+
         # Step 1 - Check if new scans are selected on the client side
         dataAlreadyPresent = True
         patientData = SESSIONSGLOBAL[clientIdentifier][patientName]
@@ -957,6 +1028,7 @@ async def prepare(payload: PayloadPrepare, request: starlette.requests.Request):
 @app.post("/process")
 async def process(payload: PayloadProcess, request: starlette.requests.Request):
 
+    global MODEL
     global DCMCLIENT
     global SESSIONSGLOBAL
 
@@ -979,7 +1051,7 @@ async def process(payload: PayloadProcess, request: starlette.requests.Request):
     
         # Step 2 - Logging
         print ('----------------------------------------------')
-        print (' - /process (for {}): {}'.format(clientIdentifier, patientName))
+        print (' - /process (for {}): {} with MODEL: '.format(clientIdentifier, patientName, MODEL))
         print ('----------------------------------------------')
         getMemoryUsage()
 
@@ -999,23 +1071,28 @@ async def process(payload: PayloadProcess, request: starlette.requests.Request):
 
             # Step 3.2 - Get distance map
             preparedDataTorch = getDistanceMap(preparedDataTorch, scribbleType, points3D, DISTMAP_Z, DISTMAP_SIGMA)
-            
-            # Step 3.99 - Plot
-            if 0:
-                plot(preparedDataTorch, patientName, points3D, scribbleType)
 
             # Step 4.1 - Get refined segmentation
             tModel               = time.time()
             segArrayRefinedNumpy = doInference(MODEL, preparedDataTorch)
             totalInferenceTime   = time.time() - tModel
-
+            if segArrayRefinedNumpy is None:
+                raise fastapi.HTTPException(status_code=500, detail="Error in /process => doInference() failed")
+            
             # Step 4.2 - Update counter for patient
             patientData[KEY_SCRIBBLE_COUNTER] += 1
             
             # Step 4.2 - Save refined segmentation
-            makeSEGDICOMStatus, patientData = makeSEGDicom(segArrayRefinedNumpy, clientIdentifier, patientData)
+            makeSEGDICOMStatus, patientData = makeSEGDicom(segArrayRefinedNumpy, patientData)
             SESSIONSGLOBAL[clientIdentifier][patientName] = patientData
             
+            # Step 4.99 - Plot refined segmentation
+            if 1: 
+                segArrayGT = patientData[KEY_SEG_ARRAY_GT]
+                thread = threading.Thread(target=run_executor_in_thread, args=(plot, preparedDataTorch, segArrayGT, patientName, patientData[KEY_SCRIBBLE_COUNTER], points3D, scribbleType, segArrayRefinedNumpy, patientData[KEY_PATH_SAVE]))
+                thread.daemon = True  # This makes the thread a daemon thread
+                thread.start()
+
             if not makeSEGDICOMStatus:
                 raise fastapi.HTTPException(status_code=500, detail="Error in /process => makeSEGDicom failed")
             
@@ -1041,6 +1118,10 @@ async def process(payload: PayloadProcess, request: starlette.requests.Request):
         traceback.print_exc()
         raise fastapi.HTTPException(status_code=500, detail=" [clientIdentifier={}, patientName={}] Error in /process => {}".format(clientIdentifier, patientName, str(e)))
 
+@app.on_event("shutdown")
+def shutdown_event():
+    print (' - [on_shutdown()] Nothing here!')
+
 #################################################################
 #                           MAIN
 #################################################################
@@ -1048,3 +1129,12 @@ async def process(payload: PayloadProcess, request: starlette.requests.Request):
 if __name__ == "__main__":
 
     os.execvp("uvicorn", ["uvicorn", "interactive-server:app", "--reload", "--host", HOST, "--port", str(PORT)])
+
+"""
+To-Do
+1. Model training
+ - [P] train the model with random sequence of 90 deg rotations along random axes
+ - [P] train the model to do nothing when the scribble is made in a random region in the background.
+ - [P] Change the Z-value of the distance map (randomly)
+ - [P] include obedience loss in the model
+"""
