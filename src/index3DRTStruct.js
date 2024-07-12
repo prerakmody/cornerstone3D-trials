@@ -1203,52 +1203,55 @@ async function makeRequestToProcess(points3D, scribbleAnnotationUID){
             requestStatus = true;
             console.log('   -- [makeRequestToProcess()] response: ', response);
             console.log('   -- [makeRequestToProcess()] response.json(): ', responseJSON);
-            responseData = responseJSON.responseData
-
+            
             // Step 2 - Remove old scribble annotation
             console.log('\n --------------- Removing old annotation ...  ---------------: ', scribbleAnnotationUID)
-            await cornerstone3DTools.annotation.state.removeAnnotation(scribbleAnnotationUID);
+            cornerstone3DTools.annotation.state.removeAnnotation(scribbleAnnotationUID);
+            renderNow();
             await unshowLoaderAnimation();
 
-            // Step 3 - Remove old segmentation
-            console.log('\n --------------- Removing old segmentation ...  ---------------: ')
-            const allSegObjs = cornerstone3DTools.segmentation.state.getSegmentations();
-            const allSegRepsObjs = cornerstone3DTools.segmentation.state.getAllSegmentationRepresentations()[toolGroupIdContours];
-            allSegObjs.forEach(segObj => {
-                if (segObj.segmentationId.includes(predSegmentationIdBase)){
-                    console.log('   -- [makeRequestToProcess()] Removing segObj: ', segObj.segmentationId);
-                    cornerstone3DTools.segmentation.state.removeSegmentation(segObj.segmentationId);
-                    const thisSegRepsObj = allSegRepsObjs.filter(obj => obj.segmentationId === segObj.segmentationId)[0]
-                    console.log('   -- [makeRequestToProcess()] Removing segRepsObj: ', thisSegRepsObj);
-                    cornerstone3DTools.segmentation.removeSegmentationsFromToolGroup(toolGroupIdContours, [thisSegRepsObj.segmentationRepresentationUID,], true);
-                    if (segObj.type == SEG_TYPE_LABELMAP){
-                        cornerstone3D.cache.removeVolumeLoadObject(segObj.segmentationId);
+            if (response.status == 200){
+                responseData = responseJSON.responseData    
+
+                // Step 3 - Remove old segmentation
+                console.log('\n --------------- Removing old segmentation ...  ---------------: ')
+                const allSegObjs = cornerstone3DTools.segmentation.state.getSegmentations();
+                const allSegRepsObjs = cornerstone3DTools.segmentation.state.getAllSegmentationRepresentations()[toolGroupIdContours];
+                allSegObjs.forEach(segObj => {
+                    if (segObj.segmentationId.includes(predSegmentationIdBase)){
+                        console.log('   -- [makeRequestToProcess()] Removing segObj: ', segObj.segmentationId);
+                        cornerstone3DTools.segmentation.state.removeSegmentation(segObj.segmentationId);
+                        const thisSegRepsObj = allSegRepsObjs.filter(obj => obj.segmentationId === segObj.segmentationId)[0]
+                        console.log('   -- [makeRequestToProcess()] Removing segRepsObj: ', thisSegRepsObj);
+                        cornerstone3DTools.segmentation.removeSegmentationsFromToolGroup(toolGroupIdContours, [thisSegRepsObj.segmentationRepresentationUID,], true);
+                        if (segObj.type == SEG_TYPE_LABELMAP){
+                            cornerstone3D.cache.removeVolumeLoadObject(segObj.segmentationId);
+                        }
                     }
+                });
+                console.log('   -- [makeRequestToProcess()] new allSegObjs: ', cornerstone3DTools.segmentation.state.getSegmentations())
+                console.log('   -- [makeRequestToProcess()] new     allSegRepsObjs: ', cornerstone3DTools.segmentation.state.getAllSegmentationRepresentations())
+
+                console.log('\n --------------- Adding new segmentation ...  ---------------: ')
+                try{
+                    console.log(' - responseData: ', responseData)
+                    await fetchAndLoadDCMSeg(responseData, global.imageIdsCT, MASK_TYPE_REFINE)
+                } catch (error){
+                    console.error(' - [loadData()] Error in makeRequestToProcess(responseData, global.imageIdsCT, MASK_TYPE_PRED): ', error);
+                    showToast('Error in loading refined segmentation data', 3000);
                 }
-            });
-            console.log('   -- [makeRequestToProcess()] new allSegObjs: ', cornerstone3DTools.segmentation.state.getSegmentations())
-            console.log('   -- [makeRequestToProcess()] new     allSegRepsObjs: ', cornerstone3DTools.segmentation.state.getAllSegmentationRepresentations())
 
-            console.log('\n --------------- Adding new segmentation ...  ---------------: ')
-            try{
-                console.log(' - responseData: ', responseData)
-                await fetchAndLoadDCMSeg(responseData, global.imageIdsCT, MASK_TYPE_REFINE)
-            } catch (error){
-                console.error(' - [loadData()] Error in makeRequestToProcess(responseData, global.imageIdsCT, MASK_TYPE_PRED): ', error);
-                showToast('Error in loading refined segmentation data', 3000);
+                const seconds = (new Date() - now) / 1000;
+                showToast(`AI Processing completed in ${seconds} s`, 3000);
+            } else {
+                showToast('Python server - /process failed' + responseJSON.detail, 30000)
             }
-
-            const seconds = (new Date() - now) / 1000;
-            showToast(`AI Processing completed in ${seconds} s`, 3000);
 
         } catch (error){
             requestStatus = false;
             console.log('   -- [makeRequestToProcess()] Error: ', error);
             showToast('Python server - /process failed', 3000)
         }
-
-        
-        
 
     } catch (error){
         requestStatus = false;
@@ -1257,6 +1260,23 @@ async function makeRequestToProcess(points3D, scribbleAnnotationUID){
     }
 
     return {requestStatus, responseData};
+}
+
+function getAllPlanFreeHandRoiAnnotations() {
+    const allAnnotations = cornerstone3DTools.annotation.state.getAllAnnotations();
+    const planFreeHandRoiAnnotations = allAnnotations.filter(annotation => annotation.metadata.toolName === cornerstone3DTools.PlanarFreehandROITool.toolName);
+    return planFreeHandRoiAnnotations;
+}
+
+function removeAllPlanFreeHandRoiAnnotations() {
+    const allAnnotations = cornerstone3DTools.annotation.state.getAllAnnotations();
+    allAnnotations.forEach(annotation => {
+        console.log('   -- [removeAllPlanFreeHandRoiAnnotations()] annotation: ', annotation);
+        if (annotation.metadata.toolName === cornerstone3DTools.PlanarFreehandROITool.toolName) {
+            cornerstone3DTools.annotation.state.removeAnnotation(annotation.annotationUID);
+        }
+    });
+
 }
 
 function setAnnotationColor(rgbColorString){
@@ -1706,8 +1726,7 @@ function setContouringButtonsLogic(verbose=true){
             setTimeout(async () => {
                 const freehandRoiToolMode = toolGroupContours.toolOptions[planarFreehandROITool.toolName].mode;
                 if (freehandRoiToolMode === MODE_ACTIVE){
-                    const allAnnotations = cornerstone3DTools.annotation.state.getAllAnnotations();
-                    const scribbleAnnotations = allAnnotations.filter(x => x.metadata.toolName === planarFreehandROITool.toolName);
+                    const scribbleAnnotations = getAllPlanFreeHandRoiAnnotations()
                     if (scribbleAnnotations.length > 0){
                         const scribbleAnnotationUID = scribbleAnnotations[scribbleAnnotations.length - 1].annotationUID;
                         if (scribbleAnnotations.length > 0){
@@ -1721,6 +1740,7 @@ function setContouringButtonsLogic(verbose=true){
                     } else {
                         const allAnnotations = cornerstone3DTools.annotation.state.getAllAnnotations();
                         console.log(' - [setContouringButtonsLogic()] allAnnotations: ', allAnnotations);
+                        renderNow();
                     }
                 }
             }, 100);
@@ -1751,13 +1771,29 @@ async function setRenderingEngineAndViewports(){
     // return {renderingEngine};
 }
 
-function renderNow(){
+function renderNowOld(){
     const renderingEngine = cornerstone3D.getRenderingEngine(renderingEngineId);
     viewportIds.forEach((viewportId) => {
         // renderingEngine.render(viewportId);
         const viewport = renderingEngine.getViewport(viewportId);
         viewport.render()
     });
+}
+
+function renderNow(){
+    try {
+        // console.log(cornerstone3DTools.ToolGroupManager getToolGroup(toolGroupId)
+        const viewportsInfo = cornerstone3DTools.ToolGroupManager.getToolGroup(toolGroupIdContours).getViewportsInfo();
+        viewportsInfo.forEach(({ viewportId, renderingEngineId }) => {
+          const enabledElement = cornerstone3D.getEnabledElementByIds(
+            viewportId,
+            renderingEngineId
+          );
+          enabledElement.viewport.render();
+        });
+    } catch {
+        console.error('Error in renderNow()');
+    }
 }
 
 async function fetchAndLoadDCMSeg(searchObj, imageIds, maskType){
@@ -1771,6 +1807,8 @@ async function fetchAndLoadDCMSeg(searchObj, imageIds, maskType){
     let arrayBuffer;
     let dataset;
     try{
+
+        // NOTE: only works for modality=SEG, and not modality=RTSTRUCT
         arrayBuffer = await client.retrieveInstance({
             studyInstanceUID: searchObj.StudyInstanceUID,
             seriesInstanceUID: searchObj.SeriesInstanceUID,

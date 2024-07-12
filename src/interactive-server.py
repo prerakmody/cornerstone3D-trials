@@ -11,6 +11,14 @@ import setproctitle
 import numpy as np
 from pathlib import Path
 
+import matplotlib.colors
+import skimage.morphology
+import matplotlib.pyplot as plt
+
+import pydicom
+import pydicom_seg
+import SimpleITK as sitk
+
 import copy
 import typing
 import fastapi
@@ -19,6 +27,7 @@ import pydantic
 import starlette
 import fastapi.middleware.cors
 import starlette.middleware.sessions
+from contextlib import asynccontextmanager
 
 import threading
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
@@ -97,6 +106,8 @@ MODE_DEBUG = True
 
 # Settings - Model Input
 SHAPE_TENSOR  = (1, 5, 144, 144, 144)
+HU_MIN, HU_MAX   = -250, 250
+SUV_MIN, SUV_MAX = 0   ,25000
 
 # Settings - Model Type
 KEY_UNET_V1          = 'unet_v1'
@@ -354,6 +365,10 @@ def getCTArray(client, patientData):
         ctArray = np.zeros((len(ctInstances), ctInstances[0].Rows, ctInstances[0].Columns), dtype=np.int16)
         for instance in ctInstances:
             ctArray[:, :, int(instance.InstanceNumber)-1] = instance.pixel_array
+        
+        # Step 3.1 - Perform min-max crop and then z-normalization
+        ctArrayProcessed = np.clip(copy.deepcopy(ctArray), HU_MIN, HU_MAX)
+        ctArrayProcessed = (ctArrayProcessed - np.mean(ctArrayProcessed)) / np.std(ctArrayProcessed)
 
         # Step 4 - Update sessionsGlobal
         thisShapeTensor = list(copy.deepcopy(SHAPE_TENSOR))
@@ -362,13 +377,13 @@ def getCTArray(client, patientData):
         thisShapeTensor[4] = ctArray.shape[2]
         
         patientData[KEY_TORCH_DATA] = torch.zeros(thisShapeTensor, dtype=torch.float32, device=DEVICE)
-        patientData[KEY_TORCH_DATA][0, 0, :, :, :] = torch.tensor(ctArray, dtype=torch.float32, device=DEVICE)
+        patientData[KEY_TORCH_DATA][0, 0, :, :, :] = torch.tensor(ctArrayProcessed, dtype=torch.float32, device=DEVICE)
         patientData[KEY_DCM_LIST] = ctInstances
 
     except:
         traceback.print_exc()
     
-    return ctArray, patientData
+    return ctArray, ctArrayProcessed, patientData
 
 def getPTArray(client, patientData):
     
@@ -396,14 +411,18 @@ def getPTArray(client, patientData):
         ptArray = np.zeros((len(ptInstances), ptInstances[0].Rows, ptInstances[0].Columns), dtype=np.int16)
         for instance in ptInstances:
             ptArray[:, :, int(instance.InstanceNumber)-1] = instance.pixel_array
+        
+        # Step 3.1 - Perform min-max crop and then z-normalization
+        ptArrayProcessed = np.clip(copy.deepcopy(ptArray), SUV_MIN, SUV_MAX)
+        ptArrayProcessed = (ptArrayProcessed - np.mean(ptArrayProcessed)) / np.std(ptArray)
 
         # Step 4 - Update sessionsGlobal
-        patientData[KEY_TORCH_DATA][0, 1, :, :, :] = torch.tensor(ptArray, dtype=torch.float32, device=DEVICE)
+        patientData[KEY_TORCH_DATA][0, 1, :, :, :] = torch.tensor(ptArrayProcessed, dtype=torch.float32, device=DEVICE)
         
     except:
         traceback.print_exc()
     
-    return ptArray, patientData
+    return ptArray, ptArrayProcessed, patientData
 
 def getSEGs(client, patientData): # preparedData, sessionsGlobal, clientIdentifier, debug=False):
     
@@ -472,17 +491,93 @@ def getSEGs(client, patientData): # preparedData, sessionsGlobal, clientIdentifi
     
     return segArrayGT, segArrayPred, patientData
 
+def plotHistograms(ctArray, ctArrayProcessed, ptArray, ptArrayProcessed, segArrayGT, segArrayPred, patientName, saveFolderPath):
+    
+        try:
+    
+            # Step 1 - Plot histograms
+            f,axarr = plt.subplots(3,2, figsize=(10,10))
+            axarr[0,0].hist(ctArray.flatten(), bins=100, color='black', alpha=0.5, label='CT')
+            axarr[0,0].set_title('CT')
+            axarr[0,1].hist(ptArray.flatten(), bins=100, color='black', alpha=0.5, label='PT')
+            axarr[0,1].set_title('PT')
+            axarr[1,0].hist(ctArrayProcessed.flatten(), bins=100, color='black', alpha=0.5, label='CT-Processed')
+            axarr[1,0].set_title('CT-Processed')
+            axarr[1,1].hist(ptArrayProcessed.flatten(), bins=100, color='black', alpha=0.5, label='PT-Processed')
+            axarr[1,1].set_title('PT-Processed')
+            axarr[2,0].hist(segArrayGT.flatten(), bins=100, color='black', alpha=0.5, label='SEG-GT')
+            axarr[2,0].set_title('SEG-GT')
+            axarr[2,1].hist(segArrayPred.flatten(), bins=100, color='black', alpha=0.5, label='SEG-Pred')
+            axarr[2,1].set_title('SEG-Pred')
+            plt.suptitle(patientName)
+
+            Path(saveFolderPath).mkdir(parents=True, exist_ok=True)
+            plt.savefig(str(Path(saveFolderPath).joinpath(patientName + '_histograms.png')), bbox_inches='tight')
+    
+        except:
+            traceback.print_exc()
+            if MODE_DEBUG: pdb.set_trace()
+
+def postInstanceToOrthanc(requestBaseURL, dcmPath):
+
+    postDICOMStatus = False
+    instanceOrthanID = None
+    postInstanceStatus = ''
+
+    try:
+        sendInstanceURL = requestBaseURL + '/instances'
+        with open(dcmPath, 'rb') as file:
+            dcmPathContent     = file.read()
+            sendResponse       = requests.post(sendInstanceURL, data=dcmPathContent)
+            postInstanceStatus = sendResponse.json()['Status'] # ['Success', 'AlreadyStored']
+            if sendResponse.status_code == 200:
+                instanceOrthanID = sendResponse.json()['ID']
+                postDICOMStatus = True
+            elif sendResponse.status_code == 404:
+                print (' - [makeSEGDicom()] Could not post instance: ', sendResponse.text)
+                if MODE_DEBUG: pdb.set_trace()
+            else:
+                print (' - [makeSEGDicom()] Could not post instance: ', sendResponse.text)
+                if MODE_DEBUG: pdb.set_trace()
+                
+    except:
+        traceback.print_exc()
+        print (' - [makeSEGDicom()] Could not post instance')
+    
+    return postDICOMStatus, instanceOrthanID, postInstanceStatus
+
+def deleteInstanceFromOrthanc(requestBaseURL, instanceOrthanID):
+
+    deleteInstanceStatus = False
+
+    try:
+        deleteInstanceURL = requestBaseURL + '/instances/' + str(instanceOrthanID)
+        deleteResponse = requests.delete(deleteInstanceURL)
+        if deleteResponse.status_code == 404:
+            print (' - [makeSEGDicom()] Instance not found: ', deleteInstanceURL)
+            pass # instance not found
+        if deleteResponse.status_code == 200:
+            # print (' - [makeSEGDicom()] Instance deleted')
+            deleteInstanceStatus = True
+            pass # instance deleted
+    except:
+        traceback.print_exc()
+        print (' - [makeSEGDicom()] Could not delete instance')
+    
+    return deleteInstanceStatus
+
 def makeSEGDicom(maskArray, patientSessionData):
+    """
+    Params
+    ------
+    maskArray: np.ndarray, [H,W,Depth]
+    """
 
     makeDICOMStatus = False
     try:
 
         if 1:
             # Step 0 - Init
-            import pydicom
-            import pydicom_seg
-            import SimpleITK as sitk
-
             def set_segment_color(ds, segment_index, rgb_color):
 
                 def rgb_to_cielab(rgb):
@@ -521,11 +616,20 @@ def makeSEGDicom(maskArray, patientSessionData):
             dsCT        = ctDicomsList[0]
             maskSpacing = floatify(dsCT.PixelSpacing) + [float(dsCT.SliceThickness)]
             maskOrigin  = floatify(dsCT.ImagePositionPatient)
-            maskImage   = sitk.GetImageFromArray(np.moveaxis(maskArray, [0,1,2], [2,1,0]).astype(np.uint8)) # np([H,W,D]) -> np([D,W,H]) -> sitk([H,W,D]) 
+            if 0:
+                sliceId = 72
+                f,axarr = plt.subplots(1,3)
+                axarr[0].imshow(maskArray[:,:,sliceId], cmap='gray'); axarr[0].set_title('maskArray[:,:,{}]'.format(sliceId))
+                axarr[1].imshow(np.moveaxis(maskArray, [0,1,2], [2,1,0])[sliceId,:,:], cmap='gray'); axarr[1].set_title('np.moveaxis(maskArray, [0,1,2], [2,1,0])[sliceId,:,:]')
+                axarr[2].imshow(np.moveaxis(maskArray, [0,1,2], [1,2,0])[sliceId,:,:], cmap='gray'); axarr[2].set_title('np.moveaxis(maskArray, [0,1,2], [1,2,0])[sliceId,:,:]')
+                plt.show()
+
+            # maskArrayForImage = np.moveaxis(maskArray, [0,1,2], [2,1,0]) # np([H,W,D]) -> np([D,W,H]) -> sitk([H,W,D])
+            maskArrayForImage = np.moveaxis(maskArray, [0,1,2], [1,2,0])
+            maskImage   = sitk.GetImageFromArray(maskArrayForImage.astype(np.uint8)) # np([H,W,D]) -> np([D,W,H]) -> sitk([H,W,D])
             maskImage.SetSpacing(maskSpacing)
             maskImage.SetOrigin(maskOrigin)
-            # print (' - [maskImage] rows: {}, cols: {}, slices: {}'.format(maskImage.GetHeight(), maskImage.GetWidth(), maskImage.GetDepth())) ## SITK is (Width, Height, Depth)
-
+            
             # Step 2 - Create a basic dicom dataset        
             template                    = pydicom_seg.template.from_dcmqi_metainfo(Path(DIR_SRC) / FILENAME_METAINFO_SEG_JSON)
             if MODE_DEBUG:
@@ -547,53 +651,44 @@ def makeSEGDicom(maskArray, patientSessionData):
             Path(pathFolderMask).mkdir(parents=True, exist_ok=True)
             dcmPath = str(Path(pathFolderMask).joinpath('-'.join([patientName, SUFIX_REFINE, str(counter)]) + '.dcm'))
             dcm.save_as(dcmPath)
+            print (' - [makeSEGDicom()] Saving SEG with SeriesDescription: ', dcm.SeriesDescription)
         
         # Step 4 - Post to DICOM server
         if 1:
-            instanceOrthanID = patientSessionData[KEY_SEG_ORTHANC_ID]
+            instanceOrthancID = patientSessionData[KEY_SEG_ORTHANC_ID]
             global DCMCLIENT
             if DCMCLIENT is not None:
                 requestBaseURL = str(DCMCLIENT.protocol) + '://' + str(DCMCLIENT.host) + ':' + str(DCMCLIENT.port)
 
-                # Step 4.1 - Delete existing instance
-                if instanceOrthanID is not None:
-                    deleteInstanceURL = requestBaseURL + '/instances/' + str(instanceOrthanID)
-                    try:
-                        deleteResponse = requests.delete(deleteInstanceURL)
-                        if deleteResponse.status_code == 404:
-                            pass # instance not found
-                        if deleteResponse.status_code == 200:
-                            pass # instance deleted
-                    except:
-                        traceback.print_exc()
-                        print (' - [makeSEGDicom()] Could not delete instance')
-                        return makeDICOMStatus
+                if instanceOrthancID is None:
+                    print (' - [makeSEGDicom()] First AI scribble for this patient. Posting SEG to DICOM server')
+                    postDICOMStatus, instanceOrthancID, postInstanceStatus = postInstanceToOrthanc(requestBaseURL, dcmPath)
+                    if postDICOMStatus:
+                        if postInstanceStatus == 'AlreadyStored':
+                            deleteInstanceStatus = deleteInstanceFromOrthanc(requestBaseURL, instanceOrthancID)
+                            if deleteInstanceStatus:
+                                postDICOMStatus, instanceOrthancID, postInstanceStatus = postInstanceToOrthanc(requestBaseURL, dcmPath)
+                                if postDICOMStatus:
+                                    patientSessionData[KEY_SEG_ORTHANC_ID] = instanceOrthancID # this is so that the dicom data is not crowded. Only the latest instance is stored
+                                    makeDICOMStatus = True
+                        else:
+                            makeDICOMStatus = True
+                    else:
+                        print (' - [makeSEGDicom()] Could not post SEG to DICOM server')
                 
-                # Step 4.2 - Post new instance
-                try:
-                    sendInstanceURL = requestBaseURL + '/instances'
-                    with open(dcmPath, 'rb') as file:
-                        dcmPathContent = file.read()
-                        sendResponse = requests.post(sendInstanceURL, data=dcmPathContent)
-                        if sendResponse.status_code == 200:
-                            instanceOrthanID = sendResponse.json()['ID']
-                        elif sendResponse.status_code == 404:
-                            print (' - [makeSEGDicom()] Could not post instance: ', sendResponse.text)
-                            if MODE_DEBUG: pdb.set_trace()
-                            
-                except:
-                    traceback.print_exc()
-                    print (' - [makeSEGDicom()] Could not post instance')
-                    return makeDICOMStatus
-
-                # Step 99 - Final
-                patientSessionData[KEY_SEG_ORTHANC_ID] = instanceOrthanID
-                makeDICOMStatus = True
+                elif instanceOrthancID is not None:
+                    print (' - [makeSEGDicom()] >1 AI scribble for this patient. Deleting existing SEG and posting new SEG to DICOM server')
+                    deleteInstanceStatus = deleteInstanceFromOrthanc(requestBaseURL, instanceOrthancID)
+                    if deleteInstanceStatus:
+                        postDICOMStatus, instanceOrthancID, postInstanceStatus = postInstanceToOrthanc(requestBaseURL, dcmPath)
+                        if postDICOMStatus:
+                            patientSessionData[KEY_SEG_ORTHANC_ID] = instanceOrthancID
+                            makeDICOMStatus = True
+                    else:
+                        print (' - [makeSEGDicom()] Could not delete existing SEG from DICOM server')
 
             else:
                 print (' - [makeSEGDicom()] DCMCLIENT is None. Not posting SEG to DICOM server')
-
-            
 
     except:
         traceback.print_exc()
@@ -729,7 +824,6 @@ def plotData(ctArray, ptArray, gtArray, predArray, refineArray=None, sliceId=Non
     """
     try:
 
-        print (' - [plotData()] caseName: {}, counter: {}, scribbleType: {}'.format(caseName, counter, scribbleType))
         import matplotlib.colors
         import skimage.morphology
         import matplotlib.pyplot as plt
@@ -865,14 +959,14 @@ def plotData(ctArray, ptArray, gtArray, predArray, refineArray=None, sliceId=Non
                         axarr[0,columnId].imshow(points3DDistanceMap[:, :, sliceNeighborId], cmap=cmapScribbleDist, norm=normScribbleDist)
                 elif viewType == KEY_SAGITTAL:
                     sagittal2DSlice = skimage.morphology.binary_dilation(rotSagittal(points3DDistanceMapBinary[:, sliceId, :]))
-                    axarr[1,0].imshow(sagittal2DSlice, cmap=cmapScribbleDist, norm=normScribbleDist)
-                    axarr[1,1].imshow(sagittal2DSlice, cmap=cmapScribbleDist, norm=normScribbleDist)
+                    axarr[1,0].imshow(sagittal2DSlice, cmap=scribbleColorMap, norm=scribbleNorm)
+                    axarr[1,1].imshow(sagittal2DSlice, cmap=scribbleColorMap, norm=scribbleNorm)
                     for (sliceNeighborId, columnId) in extraSliceIdsAndColumnIds:
                         axarr[1,columnId].imshow(rotSagittal(points3DDistanceMap[:, sliceNeighborId, :]), cmap=cmapScribbleDist, norm=normScribbleDist)
                 elif viewType == KEY_CORONAL:
                     coronal2DSlice = skimage.morphology.binary_dilation(rotCoronal(points3DDistanceMapBinary[sliceId, :, :]))
-                    axarr[2,0].imshow(coronal2DSlice, cmap=cmapScribbleDist, norm=normScribbleDist)
-                    axarr[2,1].imshow(coronal2DSlice, cmap=cmapScribbleDist, norm=normScribbleDist)
+                    axarr[2,0].imshow(coronal2DSlice, cmap=scribbleColorMap, norm=scribbleNorm)
+                    axarr[2,1].imshow(coronal2DSlice, cmap=scribbleColorMap, norm=scribbleNorm)
                     for (sliceNeighborId, columnId) in extraSliceIdsAndColumnIds:
                         axarr[2,columnId].imshow(rotCoronal(points3DDistanceMap[sliceNeighborId, :, :]), cmap=cmapScribbleDist, norm=normScribbleDist)
         
@@ -896,7 +990,6 @@ def plotData(ctArray, ptArray, gtArray, predArray, refineArray=None, sliceId=Non
 
 def plot(preparedDataTorch, segArrayGT, caseName, counter, points3D, scribbleType, refineArray=None, saveFolderPath=None):
 
-    print (' - [plot()] caseName: {}, counter: {}, scribbleType: {}'.format(caseName, counter, scribbleType))
     try:
         ctArray      = np.array(preparedDataTorch[0,0])
         ptArray      = np.array(preparedDataTorch[0,1])
@@ -907,6 +1000,12 @@ def plot(preparedDataTorch, segArrayGT, caseName, counter, points3D, scribbleTyp
         traceback.print_exc()
         if MODE_DEBUG: pdb.set_trace()
 
+def plotUsingThread(plotFunc, *args):
+
+    thread = threading.Thread(target=run_executor_in_thread, args=(plotFunc, *args))
+    thread.daemon = True  # This makes the thread a daemon thread
+    thread.start()
+
 def run_executor_in_thread(func, *args):
     with ProcessPoolExecutor() as executor:
         future= executor.submit(func, *args)
@@ -915,34 +1014,38 @@ def run_executor_in_thread(func, *args):
 #                        API ENDPOINTS
 #################################################################
 
-# Step 1 - App related
-app     = fastapi.FastAPI()
-configureFastAPIApp(app)
-setproctitle.setproctitle("interactive-server.py") # set process name
-
 # Step 2 - Global Vars-related
 SESSIONSGLOBAL = {}
 DCMCLIENT      = None
 MODEL          = None
 DEVICE         = None
 
-@app.on_event("startup")
-def startup_event():
+@asynccontextmanager
+async def lifespan(app: fastapi.FastAPI):
+
+    ################################################################## Step 1 - On startup
     global DEVICE
     global MODEL
-
-    DEVICE  = getTorchDevice()
+    DEVICE = getTorchDevice()
     
     ######################## Experiment-wise settings ########################
     if 1:
-        expName = 'UNetv1__DICE-LR1e3__Class1__Trial1'
+        expName   = 'UNetv1__DICE-LR1e3__Class1__Trial1'
         epoch     = 100
         modelType = KEY_UNET_V1
-        DEVICE  = torch.device('cpu')
+        DEVICE    = torch.device('cpu')
 
     MODEL = loadModelUsingUserPath(DEVICE, expName, epoch, modelType)
 
+    yield
+    
+    ################################################################## Step 1 - On startup
+    print (' - [on_shutdown()] Nothing here!')
 
+# Step 1 - App related
+app     = fastapi.FastAPI(lifespan=lifespan)
+configureFastAPIApp(app)
+setproctitle.setproctitle("interactive-server.py") # set process name
 
 # Step 3 - API Endpoints
 @app.post("/prepare")
@@ -972,9 +1075,9 @@ async def prepare(payload: PayloadPrepare, request: starlette.requests.Request):
                                                 , KEY_SEG_ARRAY_GT: None
                                                 }
             SESSIONSGLOBAL[clientIdentifier][patientName][KEY_PATH_SAVE] = Path(DIR_EXPERIMENTS).joinpath(SESSIONSGLOBAL[clientIdentifier][patientName][KEY_DATETIME] + ' -- ' + clientIdentifier)
-            if MODE_DEBUG:
-                SESSIONSGLOBAL[clientIdentifier][patientName][KEY_SEG_SERIES_INSTANCE_UID] = '1.2.826.0.1.3680043.8.498.34877500930222447338868826875966216464'
-                SESSIONSGLOBAL[clientIdentifier][patientName][KEY_SEG_SOP_INSTANCE_UID]    = '1.2.826.0.1.3680043.8.498.19269429515399130451320550305889352775'
+            # if MODE_DEBUG:
+            #     SESSIONSGLOBAL[clientIdentifier][patientName][KEY_SEG_SERIES_INSTANCE_UID] = '1.2.826.0.1.3680043.8.498.34877500930222447338868826875966216464'
+            #     SESSIONSGLOBAL[clientIdentifier][patientName][KEY_SEG_SOP_INSTANCE_UID]    = '1.2.826.0.1.3680043.8.498.19269429515399130451320550305889352775'
 
         # Step 1 - Check if new scans are selected on the client side
         dataAlreadyPresent = True
@@ -988,13 +1091,15 @@ async def prepare(payload: PayloadPrepare, request: starlette.requests.Request):
                 DCMCLIENT = getDCMClient(preparePayloadData[KEY_SEARCH_OBJ_CT][KEY_WADO_RS_ROOT])
                 
             if DCMCLIENT != None:
-                ctArray, patientData = getCTArray(DCMCLIENT, patientData)
+                ctArray, ctArrayProcessed, patientData = getCTArray(DCMCLIENT, patientData)
                 if ctArray is not None:
-                    ptArray, patientData = getPTArray(DCMCLIENT, patientData)
+                    ptArray, ptArrayProcessed, patientData = getPTArray(DCMCLIENT, patientData)
                     if ptArray is not None:
                         segArrayGT, segArrayPred, patientData = getSEGs(DCMCLIENT, patientData)
                         if segArrayPred is not None:
                             if ctArray.shape == ptArray.shape == segArrayPred.shape:                               
+                                # plotHistograms(ctArray, ctArrayProcessed, ptArray, ptArrayProcessed, segArrayGT, segArrayPred, patientName, patientData[KEY_PATH_SAVE])
+                                plotUsingThread(plotHistograms, ctArray, ctArrayProcessed, ptArray, ptArrayProcessed, segArrayGT, segArrayPred, patientName, patientData[KEY_PATH_SAVE])
                                 if 0:
                                     plotData(ctArray, ptArray, segArrayGT, segArrayPred, 71, patientName)
             
@@ -1063,7 +1168,7 @@ async def process(payload: PayloadProcess, request: starlette.requests.Request):
             preparedData      = patientData[KEY_DATA]
             preparedDataTorch = copy.deepcopy(patientData[KEY_TORCH_DATA])
             assert torch.sum(preparedDataTorch[0,3]) == 0 and torch.sum(preparedDataTorch[0,4]) == 0, ' - [process()] Distance maps not reset'
-
+            
             # Step 3.1 - Extract data
             points3D     = processPayloadData[KEY_POINTS_3D] # [(h/w, h/w, d), (), ..., ()] [NOTE: cornerstone3D sends array-indexed data, so now +1/-1 needed]
             points3D     = np.array([list(x) for x in points3D])
@@ -1071,6 +1176,7 @@ async def process(payload: PayloadProcess, request: starlette.requests.Request):
 
             # Step 3.2 - Get distance map
             preparedDataTorch = getDistanceMap(preparedDataTorch, scribbleType, points3D, DISTMAP_Z, DISTMAP_SIGMA)
+            print (' - [process()] torch.sum(preparedDataTorch, dim=(2,3,4)): ', torch.sum(preparedDataTorch, dim=(2,3,4)))
 
             # Step 4.1 - Get refined segmentation
             tModel               = time.time()
@@ -1084,6 +1190,7 @@ async def process(payload: PayloadProcess, request: starlette.requests.Request):
             
             # Step 4.2 - Save refined segmentation
             makeSEGDICOMStatus, patientData = makeSEGDicom(segArrayRefinedNumpy, patientData)
+            patientData[KEY_SEG_ORTHANC_ID] = None # this is so that the dicom data is not crowded. Only the latest instance is stored
             SESSIONSGLOBAL[clientIdentifier][patientName] = patientData
             
             # Step 4.99 - Plot refined segmentation
@@ -1117,10 +1224,6 @@ async def process(payload: PayloadProcess, request: starlette.requests.Request):
     except Exception as e:
         traceback.print_exc()
         raise fastapi.HTTPException(status_code=500, detail=" [clientIdentifier={}, patientName={}] Error in /process => {}".format(clientIdentifier, patientName, str(e)))
-
-@app.on_event("shutdown")
-def shutdown_event():
-    print (' - [on_shutdown()] Nothing here!')
 
 #################################################################
 #                           MAIN
