@@ -454,8 +454,8 @@ async function otherHTMLElements(){
     caseSelectionHTML.id        = 'caseSelection';
     caseSelectionHTML.innerHTML = 'Case Selection';
     caseSelectionHTML.addEventListener('change', async function() {
-        const caseNumber = parseInt(this.value);
-        await fetchAndLoadData(caseNumber);
+        global.patientIdx = parseInt(this.value);
+        await fetchAndLoadData(global.patientIdx);
     });
 
     // Step 99 - Add to contentDiv
@@ -1185,6 +1185,7 @@ async function makeRequestToProcess(points3D, scribbleAnnotationUID){
     try{
 
         // Step 0 - Init=
+        console.log(' \n ----------------- Python server (/process) ----------------- \n')
         console.log('   -- [makeRequestToProcess()] patientIdx: ', global.patientIdx);
         console.log('   -- [makeRequestToProcess()] caseName: ', orthanDataURLS[global.patientIdx]['caseName']);
 
@@ -1195,7 +1196,7 @@ async function makeRequestToProcess(points3D, scribbleAnnotationUID){
             , [KEY_IDENTIFIER]: instanceName,
         }
         await showLoaderAnimation();
-        console.log(' \n ----------------- Python server (/process) ----------------- \n')
+        
         console.log('   -- [makeRequestToProcess()] processPayload: ', processPayload);
         try{
             const response = await fetch(URL_PYTHON_SERVER + ENDPOINT_PROCESS, {method: METHOD_POST, headers: HEADERS_JSON, body: JSON.stringify(processPayload), credentials: 'include',}); // credentials: 'include' is important for cross-origin requests
@@ -1547,6 +1548,21 @@ async function getToolsAndToolGroup() {
     
 }
 
+function setInnerHTMLForSliceId(activeViewportId, imageIdxForViewport, totalImagesForViewPort){
+    
+    if (activeViewportId == axialID){
+        // console.log('Axial: ', imageIdxForViewport, totalImagesForViewPort)
+        axialSliceDiv.innerHTML = `Axial: ${imageIdxForViewport+1}/${totalImagesForViewPort}`
+    } else if (activeViewportId == sagittalID){
+        // console.log('Sagittal: ', imageIdxForViewport, totalImagesForViewPort)
+        sagittalSliceDiv.innerHTML = `Sagittal: ${imageIdxForViewport+1}/${totalImagesForViewPort}`
+    } else if (activeViewportId == coronalID){
+        // console.log('Coronal: ', imageIdxForViewport, totalImagesForViewPort)
+        coronalSliceDiv.innerHTML = `Coronal: ${imageIdxForViewport+1}/${totalImagesForViewPort}`
+    }
+
+}
+
 function setMouseAndKeyboardEvents(){
 
     // handle scroll event
@@ -1556,15 +1572,58 @@ function setMouseAndKeyboardEvents(){
             // console.log(activeViewport, activeViewportId)
             const imageIdxForViewport = activeViewport.getCurrentImageIdIndex()
             const totalImagesForViewPort = activeViewport.getNumberOfSlices()
-            if (activeViewportId == axialID){
-                // console.log('Axial: ', imageIdxForViewport, totalImagesForViewPort)
-                axialSliceDiv.innerHTML = `Axial: ${imageIdxForViewport+1}/${totalImagesForViewPort}`
-            } else if (activeViewportId == sagittalID){
-                // console.log('Sagittal: ', imageIdxForViewport, totalImagesForViewPort)
-                sagittalSliceDiv.innerHTML = `Sagittal: ${imageIdxForViewport+1}/${totalImagesForViewPort}`
-            } else if (activeViewportId == coronalID){
-                // console.log('Coronal: ', imageIdxForViewport, totalImagesForViewPort)
-                coronalSliceDiv.innerHTML = `Coronal: ${imageIdxForViewport+1}/${totalImagesForViewPort}`
+            setInnerHTMLForSliceId(activeViewportId, imageIdxForViewport, totalImagesForViewPort)
+        }
+    });
+
+    // handle left-arrow and right-arrow keydown event
+    document.addEventListener('keydown', function(evt) {
+        if (viewportIds.includes(evt.target.id)){
+            if (evt.key == 'ArrowLeft' || evt.key == 'ArrowRight'){
+
+                try {
+
+                    // Step 1 - Init
+                    const {viewport: activeViewport, viewportId: activeViewportId} = cornerstone3D.getEnabledElement(evt.target);
+                    const imageIdxForViewport    = activeViewport.getCurrentImageIdIndex()
+                    const totalImagesForViewPort = activeViewport.getNumberOfSlices()
+                    let viewportViewReference  = activeViewport.getViewReference()
+                    
+                    // Step 2 - Handle keydown event
+                    let newImageIdxForViewportForHTML = imageIdxForViewport;
+                    let newImageIdxForViewport = imageIdxForViewport;
+                    if (evt.key == 'ArrowLeft'){
+                        newImageIdxForViewportForHTML = imageIdxForViewport - 1;
+                    } else if (evt.key == 'ArrowRight'){
+                        newImageIdxForViewportForHTML = imageIdxForViewport + 1;
+                    }
+                    if (newImageIdxForViewportForHTML < 0) newImageIdxForViewportForHTML = 0;
+                    if (newImageIdxForViewportForHTML > totalImagesForViewPort-1) newImageIdxForViewportForHTML = totalImagesForViewPort - 1;
+                    if (activeViewportId == sagittalID){
+                        newImageIdxForViewport = newImageIdxForViewportForHTML
+                    } else if (activeViewportId == coronalID || activeViewportId == axialID){
+                        if (evt.key == 'ArrowLeft'){
+                            newImageIdxForViewport = (totalImagesForViewPort-1) - (imageIdxForViewport - 1);
+                        } else if (evt.key == 'ArrowRight'){
+                            newImageIdxForViewport = (totalImagesForViewPort-1) - (imageIdxForViewport + 1);
+                        }
+                        // if (newImageIdxForViewport < 0) newImageIdxForViewport = 0;
+                        // if (newImageIdxForViewport > totalImagesForViewPort-1) newImageIdxForViewport = totalImagesForViewPort - 1;
+                    }
+
+                    // Step 3 - Update the viewport
+                    // console.log('   -- [',evt.key,'] imageIdxForViewport: ', imageIdxForViewport, ' --> ',newImageIdxForViewport, ' || cameraFocalPoint: ', viewportViewReference.cameraFocalPoint, ' || sliceIndex: ', viewportViewReference.sliceIndex, '(',(totalImagesForViewPort-1)-(imageIdxForViewport),')')
+                    // if (evt.key == 'ArrowLeft')
+                    //     console.log('         ----> ', (totalImagesForViewPort-1)-(imageIdxForViewport-1))
+                    // else if (evt.key == 'ArrowRight')
+                    //     console.log('         ----> ', (totalImagesForViewPort-1)-(imageIdxForViewport+1))
+                    setInnerHTMLForSliceId(activeViewportId, newImageIdxForViewportForHTML, totalImagesForViewPort)
+                    viewportViewReference.sliceIndex = newImageIdxForViewport;
+                    activeViewport.setViewReference(viewportViewReference);
+                    renderNow();
+                } catch (error){
+                    console.error('   -- [keydown] Error: ', error);
+                }
             }
         }
     });
@@ -1769,15 +1828,6 @@ async function setRenderingEngineAndViewports(){
     );
 
     // return {renderingEngine};
-}
-
-function renderNowOld(){
-    const renderingEngine = cornerstone3D.getRenderingEngine(renderingEngineId);
-    viewportIds.forEach((viewportId) => {
-        // renderingEngine.render(viewportId);
-        const viewport = renderingEngine.getViewport(viewportId);
-        viewport.render()
-    });
 }
 
 function renderNow(){
@@ -2271,7 +2321,7 @@ async function setup(patientIdx){
 }
 
 // Some debug params
-global.patientIdx = 11;
+global.patientIdx = 28;
 MODALITY_CONTOURS = MODALITY_SEG
 
 if (process.env.NETLIFY === "true")
@@ -2286,14 +2336,5 @@ TO-DO
 2. [P] ORTHANC__DICOM_WEB__METADATA_WORKER_THREADS_COUNT = 1
 3. [P] https://www.cornerstonejs.org/docs/examples/#polymorph-segmentation
     - https://github.com/cornerstonejs/cornerstone3D/issues/1351
-4. if (renderImmediate) {
-    const viewportsInfo = getToolGroup(toolGroupId).getViewportsInfo();
-    viewportsInfo.forEach(({ viewportId, renderingEngineId }) => {
-      const enabledElement = getEnabledElementByIds(
-        viewportId,
-        renderingEngineId
-      );
-      enabledElement.viewport.render();
-    });
-  }
+4. Include slider for scans (or even shortcuts)
  */

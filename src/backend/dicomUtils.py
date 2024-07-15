@@ -4,6 +4,7 @@ import nrrd
 import tqdm
 import shutil
 import pydicom
+import inspect
 import traceback
 import numpy as np
 import nibabel as nib
@@ -174,7 +175,6 @@ def makeCTPTDicomSlices(imageArray, origin, spacing, patientName, studyUID, seri
                 dsCT.ImagePositionPatient = volOriginTmp
 
                 # Step 1.2 - Set pixel data
-                # pixelData      = np.rot90(imageArray[:,:,sliceIdx], k=3) # anti-clockwise rotation x 3
                 pixelData        = rotFunc(imageArray[:,:,sliceIdx]) ## NOTE: helps to set right --> left orientation for .dcm files, refer: https://blog.redbrickai.com/blog-posts/introduction-to-dicom-coordinate
                 if modality == MODALITY_CT:
                     pixelData = pixelData.astype(np.int16)
@@ -235,12 +235,13 @@ def makeSEGDicom(maskArray, maskSpacing, maskOrigin, metaInfoJsonPath, ctPathsLi
     try:
 
         # Step 1 - Convert to sitk image
-        maskImage = sitk.GetImageFromArray(np.moveaxis(maskArray, [0,1,2], [2,1,0]).astype(np.uint8)) # np([H,W,D]) -> np([D,W,H]) -> sitk([H,W,D]) 
+        maskImage = sitk.GetImageFromArray(np.moveaxis(maskArray, [0,1,2], [2,1,0]).astype(np.uint8)); print (" - Doing makeSEGDICOM's np.moveaxis() as always") # np([H,W,D]) -> np([D,W,H]) -> sitk([H,W,D]) 
+        # maskImage = sitk.GetImageFromArray(np.moveaxis(maskArray, [0,1,2], [1,2,0]).astype(np.uint8)); print (" - Doing makeSEGDICOM's np.moveaxis() differently")
         maskImage.SetSpacing(maskSpacing)
         maskImage.SetOrigin(maskOrigin)
         # print (' - [maskImage] rows: {}, cols: {}, slices: {}'.format(maskImage.GetHeight(), maskImage.GetWidth(), maskImage.GetDepth())) ## SITK is (Width, Height, Depth)
 
-        # Step 2 - Create a basic dicom dataset        
+        # Step 2 - Create a basic dicom dataset        ``
         import pydicom_seg
         template                    = pydicom_seg.template.from_dcmqi_metainfo(metaInfoJsonPath)
         template.SeriesDescription  = '-'.join([patientName, maskType])
@@ -253,20 +254,12 @@ def makeSEGDicom(maskArray, maskSpacing, maskOrigin, metaInfoJsonPath, ctPathsLi
         # print (' - rows: {} | cols: {} | numberofframes:{}'.format(dcm.Rows, dcm.Columns, dcm.NumberOfFrames))
         
         # Step 3 - Save the dicom file
-        print (dcm.SegmentSequence[0])
-        set_segment_color(dcm, 0, [0, 255, 0])
-        print (dcm.SegmentSequence[0])
+        if seriesNumber == 3:
+            set_segment_color(dcm, 0, [0, 255, 0]) # GT
+        elif seriesNumber == 4: 
+            set_segment_color(dcm, 0, [255, 0, 0]) # Pred
         dcm.StudyInstanceUID        = studyUID
         dcm.save_as(str(pathFolderMask / "mask.dcm"))
-        
-        # Step 99 - Meh
-        # decodedMaskArray = dcm.pixel_array
-        # print (decodedMaskArray.shape, self.maskArray.shape)
-        # plot(self.ctArray, self.ptArray, decodedMaskArray, sliceIds=[20, 54, 90])
-        # plot(self.ctArray, self.ptArray, self.maskArray, sliceIds=[20, 54, 90])
-        # bytes_array = np.frombuffer(dcm.PixelData, dtype=np.uint8)
-        # unpacked_bits = np.unpackbits(bytes_array, bitorder='little')        
-        # studyDicomTags(dcm)
 
     except:
         traceback.print_exc()
@@ -312,7 +305,7 @@ def studyDicomTags(ds):
         traceback.print_exc()
         pdb.set_trace()
 
-def plot(ctArray, ptArray, maskPredArray=None, sliceIds=[]):
+def plot(ctArray, ptArray, maskArray, maskPredArray=None, sliceIds=[], patientName='', pathSavefigFolder=None):
     """
     Params:
         ctArray: [H, W, D]
@@ -320,30 +313,94 @@ def plot(ctArray, ptArray, maskPredArray=None, sliceIds=[]):
         maskPredArray: [H, W, D]
     """
     
+    # Keys - for colors
+    COLORSTR_RED   = 'red'
+    COLORSTR_GREEN = 'green'
+    COLORSTR_PINK  = 'pink'
+    COLORSTR_GRAY  = 'gray'
+
+    # Define constants
+    rotAxial    = lambda x: np.rot90(x, k=3)
+    rotSagittal = lambda x: np.rot90(x, k=1)
+    rotCoronal  = lambda x: np.rot90(x, k=1)
+
+    totalSliceIdsToDisplay = 3
+
     try:
+        
         if len(sliceIds) == 0:
-            randomSliceIds = np.random.choice(ctArray.shape[2], 3)
+            if maskArray is not None:
+                gtPixelCountsInAxialSlices = np.sum(maskArray, axis=(0,1))
+                randomSliceIds = np.random.choice(np.argwhere(gtPixelCountsInAxialSlices).flatten(), totalSliceIdsToDisplay)
+            else:
+                randomSliceIds = np.random.choice(ctArray.shape[2], totalSliceIdsToDisplay)
         else:
             randomSliceIds = sliceIds
-        f,axarr = plt.subplots(len(randomSliceIds),3,figsize=(15,15))
 
+        f,axarr = plt.subplots(3,len(randomSliceIds)*2, figsize=(15,15))
+
+        axarr[0,0].set_ylabel('Axial')    # idx=2
+        axarr[1,0].set_ylabel('Sagittal') # idx=0
+        axarr[2,0].set_ylabel('Coronal')  # idx=1
         for i, sliceId in enumerate(randomSliceIds):
-
-            # Plot CT
-            axarr[i,0].imshow(ctArray[:,:,sliceId], cmap='gray')
-            axarr[i,0].set_ylabel('Slice: ' + str(sliceId))
-
-            # Plot PT
-            axarr[i,1].imshow(ptArray[:,:,sliceId], cmap='gray')
-
-            # Plot Mask
-            axarr[i,2].imshow(ctArray[:,:,sliceId], cmap='gray')
-            axarr[i,2].imshow(ptArray[:,:,sliceId], cmap='gray', alpha=0.5)
+            
+            # Plot Axial
+            ctAxialSlice = ctArray[:,:,sliceId]
+            ptAxialSlice = ptArray[:,:,sliceId]
+            axarr[0,i*2].imshow(ctAxialSlice, cmap=COLORSTR_GRAY); axarr[0,i*2].set_title('Slice: ' + str(sliceId))
+            axarr[0,i*2].imshow(ptAxialSlice, cmap=COLORSTR_GRAY, alpha=0.3)
+            axarr[0,i*2+1].imshow(ctAxialSlice, cmap=COLORSTR_GRAY); axarr[0,i*2+1].set_title('Slice: ' + str(sliceId))
+            axarr[0,i*2+1].imshow(ptAxialSlice, cmap=COLORSTR_GRAY, alpha=0.3)
+            if maskArray is not None:
+                maskAxialSlice = maskArray[:,:,sliceId]
+                if np.max(maskAxialSlice) == 1:
+                    axarr[0,i*2+1].contour(maskAxialSlice, colors=COLORSTR_GREEN)
             if maskPredArray is not None:
-                axarr[i,2].contour(maskPredArray[:,:,sliceId])
+                maskAxialPredSlice = maskPredArray[:,:,sliceId]
+                if np.max(maskAxialPredSlice) == 1:
+                    axarr[0,i*2+1].contour(maskAxialPredSlice, colors=COLORSTR_RED)
+
+            # Plot Sagittal
+            ctSagittalSlice = rotSagittal(ctArray[sliceId,:,:])
+            ptSagittalSlice = rotSagittal(ptArray[sliceId,:,:])
+            axarr[1,i*2].imshow(ctSagittalSlice, cmap=COLORSTR_GRAY)
+            axarr[1,i*2].imshow(ptSagittalSlice, cmap=COLORSTR_GRAY, alpha=0.3)
+            axarr[1,i*2+1].imshow(ctSagittalSlice, cmap=COLORSTR_GRAY)
+            axarr[1,i*2+1].imshow(ptSagittalSlice, cmap=COLORSTR_GRAY, alpha=0.3)
+            if maskArray is not None:
+                maskSagittalSlice = rotSagittal(maskArray[sliceId,:,:])
+                if np.max(maskSagittalSlice) == 1:
+                    axarr[1,i*2+1].contour(maskSagittalSlice, colors=COLORSTR_GREEN)
+            if maskPredArray is not None:
+                maskPredSagittallSlice = rotSagittal(maskPredArray[sliceId,:,:])
+                if np.max(maskPredSagittallSlice) == 1:
+                    axarr[1,i*2+1].contour(maskPredSagittallSlice, colors=COLORSTR_RED)
+
+            # Plot Coronal
+            ctCoronalSlice = rotCoronal(ctArray[:,sliceId,:])
+            ptCoronalSlice = rotCoronal(ptArray[:,sliceId,:])
+            axarr[2,i*2].imshow(ctCoronalSlice, cmap=COLORSTR_GRAY)
+            axarr[2,i*2].imshow(ptCoronalSlice, cmap=COLORSTR_GRAY, alpha=0.3)
+            axarr[2,i*2+1].imshow(ctCoronalSlice, cmap=COLORSTR_GRAY)
+            axarr[2,i*2+1].imshow(ptCoronalSlice, cmap=COLORSTR_GRAY, alpha=0.3)
+            if maskArray is not None:
+                maskCoronalSlice = rotCoronal(maskArray[:,sliceId,:])
+                if np.max(maskCoronalSlice) == 1:
+                    axarr[2,i*2+1].contour(maskCoronalSlice, colors=COLORSTR_GREEN)
+            if maskPredArray is not None:
+                maskCoronalPredSlice = rotCoronal(maskPredArray[:,sliceId,:])
+                if np.max(maskCoronalPredSlice) == 1:
+                    axarr[2,i*2+1].contour(maskCoronalPredSlice, colors=COLORSTR_RED)
         
-        plt.show()
-    
+        pltTitleStr = 'Raw Array Plot (no .dcm stuff involved so far) \n' + patientName
+        plt.suptitle(pltTitleStr)
+        if pathSavefigFolder is None:
+            plt.show()
+        else:
+            Path(pathSavefigFolder).mkdir(parents=True, exist_ok=True)
+            plt.savefig(pathSavefigFolder / "{}.png".format(patientName))
+            plt.close()
+
     except:
         traceback.print_exc()
         pdb.set_trace()
@@ -407,6 +464,10 @@ class DICOMConverterHecktor:
             # Step 4 - Create folders and make UIDs
             self._createFolders()
 
+            # Step 5 - Plot
+            if 1:
+                plot(self.ctArray, self.ptArray, self.maskArray, self.maskPredArray, patientName=self.patientName, pathSavefigFolder=self.pathParentFolder / self.patientName)
+
         except:
             traceback.print_exc()
             pdb.set_trace()
@@ -425,6 +486,8 @@ class DICOMConverterHecktor:
             shutil.rmtree(self.pathFolderPT)
         if Path(self.pathFolderMask).exists():
             shutil.rmtree(self.pathFolderMask)
+        if Path(self.pathFolderMaskPred).exists():
+            shutil.rmtree(self.pathFolderMaskPred)
 
         Path(self.pathFolderCT).mkdir(parents=True, exist_ok=True)
         Path(self.pathFolderPT).mkdir(parents=True, exist_ok=True)
@@ -439,6 +502,7 @@ class DICOMConverterHecktor:
             self.studyUID = pydicom.uid.generate_uid()
 
             # Step 1 - Convert CT
+            print ('\n - [convertToDICOM()] rotFunc: ', inspect.getsource(self.rotFunc))
             if 1:
                 ctSeriesUID = pydicom.uid.generate_uid()
                 ctSeriesNum = 1
@@ -467,9 +531,6 @@ class DICOMConverterHecktor:
                 makeSEGDicom(self.maskPredArray, self.maskPredSpacing, self.maskPredOrigin, self.maskMetaInfoPath, ctPathsList
                              , self.patientName,  self.maskPredSeriesDescSuffix, self.studyUID, seriesNumber, self.maskPredCreatorName, self.pathFolderMaskPred)
                 
-            
-            pdb.set_trace()
-
 
         except:
             traceback.print_exc()
@@ -477,47 +538,41 @@ class DICOMConverterHecktor:
 
 if __name__ == "__main__":
 
-    DIR_FILE = Path(__file__).parent.absolute() # project3/visualizer/src
-    DIR_MAIN = DIR_FILE.parent.absolute() # project3/visualizer
-    DIR_DATA = DIR_MAIN.parent.absolute() / "_data" # project3/_data
+    DIR_FILE   = Path(__file__).parent.absolute()     # <root>/src/backend/
+    DIR_SRC    = DIR_FILE.parent.absolute()           # <root>/src/
+    DIR_MAIN   = DIR_SRC.parent.absolute()            # <root>/
+    DIR_ASSETS = DIR_SRC / "assets"                  # <root>/assets/
+    DIR_DATA = DIR_MAIN.parent.absolute() / "_data"   # <pre-root>/_data/
+    
 
     if 1:
-        DIR_CLINIC   = DIR_DATA / "trial2-CHMR"
-        patientName  = "CHMR001"
-        pathCT       = DIR_CLINIC / "CHMR001_ct.nii.gz"      # "nrrd_CHMR001_img1.nrrd"
-        pathPT       = DIR_CLINIC / "CHMR001_pt.nii.gz"      # "nrrd_CHMR001_img2.nrrd"
-        pathMask     = DIR_CLINIC / "CHMR001_gtvt.nii.gz"    # ["nrrd_CHMR001_mask.nrrd", "CHMR001_gtvt.nii.gz"]
-        pathMaskPred = DIR_CLINIC / "nrrd_CHMR001_maskpred.nrrd"
-        
-        rotFunc              = lambda x: np.fliplr(np.rot90(x, k=3))    # [x, np.rot90(x, k=3)] ## NOTE: helps to set right --> left orientation for .dcm files, refer: https://blog.redbrickai.com/blog-posts/introduction-to-dicom-coordinate
-        maskMetaInfoPath     = DIR_FILE / 'metainfo-segmentation.json'
+        DIR_CLINIC           = DIR_DATA / "Hecktor2021" / "trial2-CHMR"
+        rotFunc              = lambda x: np.fliplr(np.rot90(x, k=3)) ## NOTE: helps to set right --> left orientation for .dcm files, refer: https://blog.redbrickai.com/blog-posts/introduction-to-dicom-coordinate
+        # rotFunc              = lambda x:x
+        maskMetaInfoPath     = DIR_ASSETS / 'metainfo-segmentation.json'
         maskGTSeriesDescSuffix   = 'Series-SEG-GT'
         maskPredSeriesDescSuffix = 'Series-SEG-Pred'
         maskGTCreatorName        = 'Hecktor2022'
         maskPredCreatorName      = 'Modys AI model'
 
+        # for patientName in ['CHMR001', 'CHMR004', 'CHMR005', 'CHMR011', 'CHMR012', 'CHMR013', 'CHMR014', 'CHMR016', 'CHMR020', 'CHMR021', 'CHMR023', 'CHMR024', 'CHMR025', 'CHMR028', 'CHMR029', 'CHMR030', 'CHMR034', 'CHMR040']:
+        for patientName in ['CHMR016']:
+            pathCT       = DIR_CLINIC / "{}_ct.nii.gz".format(patientName)      # "nrrd_CHMR001_img1.nrrd"
+            pathPT       = DIR_CLINIC / "{}_pt.nii.gz".format(patientName)      # "nrrd_CHMR001_img2.nrrd"
+            pathMask     = DIR_CLINIC / "{}_gtvt.nii.gz".format(patientName)    # ["nrrd_CHMR001_mask.nrrd", "CHMR001_gtvt.nii.gz"]
+            pathMaskPred = DIR_CLINIC / "nrrd_{}_maskpred.nrrd".format(patientName)
 
-    converterClass = DICOMConverterHecktor(patientName, pathCT, pathPT, pathMask, pathMaskPred
-                                           , rotFunc, maskMetaInfoPath
-                                           , maskGTSeriesDescSuffix, maskPredSeriesDescSuffix, maskGTCreatorName, maskPredCreatorName)
-    converterClass.convertToDICOM()
+            converterClass = DICOMConverterHecktor(patientName, pathCT, pathPT, pathMask, pathMaskPred
+                                                , rotFunc, maskMetaInfoPath
+                                                , maskGTSeriesDescSuffix, maskPredSeriesDescSuffix, maskGTCreatorName, maskPredCreatorName)
+            converterClass.convertToDICOM()
 
 """
-1. pydicom_seg.MultiClassWriter
- - rows=?, cols=?
-     - https://github.com/razorx89/pydicom-seg/blob/v0.4.1/pydicom_seg/writer.py#L153
- - height
-     - https://github.com/razorx89/pydicom-seg/blob/v0.4.1/pydicom_seg/writer.py#L183
-        - min_z, max_z = 0, segmentation.GetDepth()
- - add_frame
-    - https://github.com/razorx89/pydicom-seg/blob/v0.4.1/pydicom_seg/writer.py#L193
-        - slice_idx in range(min_z, max_z)
-        - frame_data = np.equal( buffer[slice_idx, min_y:max_y, min_x:max_x], segment )
- - Encoding 3D Array
-    - https://github.com/razorx89/pydicom-seg/blob/v0.4.1/pydicom_seg/segmentation_dataset.py#L200
-
-
 OHIF in Orthanc
  - ReferencedSeriesSequence is missing for the SEG 
  - for elem in ds: print (elem.name, elem.VR) if elem.VR == "SQ": pass
+
+SEG modality in DICOM
+ - np,moveaxis([0,1,2], [2,1,0]) shows it correctly in 3D Slicer and myC3D app
+ - does not show correctly in matplotlib. Makes me question whether torch is getting the right arrays.
 """
