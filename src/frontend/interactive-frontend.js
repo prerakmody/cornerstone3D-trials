@@ -104,6 +104,11 @@ const KEY_BGD = 'bgd'
 // Tools
 const MODE_ACTIVE  = 'Active';
 const MODE_PASSIVE = 'Passive';
+const MODE_ENABLED = 'Enabled';
+const MODE_DISABLED = 'Disabled';
+const SHORTCUT_KEY_C = 'c';
+const SHORTCUT_KEY_ARROW_LEFT = 'ArrowLeft';
+const SHORTCUT_KEY_ARROW_RIGHT = 'ArrowRight';
 
 // General
 let imageIdsCT   = []
@@ -139,30 +144,86 @@ async function createViewPortsHTML() {
     viewportGridDiv.style.flexDirection = 'row';
     viewportGridDiv.oncontextmenu = (e) => e.preventDefault(); // Disable right click
 
-    // element for axial view
+    // Step 1.1 - element for axial view
     const axialDiv = document.createElement('div');
     axialDiv.style.width = '500px';
     axialDiv.style.height = '500px';
     axialDiv.id = axialID;
 
-    // element for sagittal view
+    // Step 1.2 - element for sagittal view
     const sagittalDiv = document.createElement('div');
     sagittalDiv.style.width = '500px';
     sagittalDiv.style.height = '500px';
     sagittalDiv.id = sagittalID;
 
-    // element for coronal view
+    // Step 1.2 - element for coronal view
     const coronalDiv = document.createElement('div');
     coronalDiv.style.width = '500px';
     coronalDiv.style.height = '500px';
     coronalDiv.id = coronalID;
 
-    // On the  top-right of axialDiv add a div for the slice number
+    // Step 2.1.1 - On the top-left of axialDiv add a div to indicate server status
+    axialDiv.style.position = 'relative';
+    const serverStatusDiv = document.createElement('div');
+    serverStatusDiv.style.position = 'absolute'; // Change to absolute
+    serverStatusDiv.style.top = '3';
+    serverStatusDiv.style.left = '3';
+    serverStatusDiv.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
+    serverStatusDiv.style.color = 'white';
+    serverStatusDiv.style.padding = '5px';
+    serverStatusDiv.style.zIndex = '1000'; // Ensure zIndex is a string
+    serverStatusDiv.id = 'serverStatusDiv';
+    axialDiv.appendChild(serverStatusDiv);
+
+    // Step 2.1.2 - add a blinking circle with red color to serverStatusDiv
+    const serverStatusCircle = document.createElement('div');
+    serverStatusCircle.style.width = '10px';
+    serverStatusCircle.style.height = '10px';
+    serverStatusCircle.style.backgroundColor = 'red';
+    serverStatusCircle.style.borderRadius = '50%';
+    serverStatusCircle.style.animation = 'blinker 1s linear infinite';
+    serverStatusDiv.appendChild(serverStatusCircle);
+    const style = document.createElement('style');
+    style.type = 'text/css';
+    const keyframes = `
+        @keyframes blinker {
+            50% {
+                opacity: 0;
+            }
+        }
+    `;
+    style.appendChild(document.createTextNode(keyframes));
+    document.head.appendChild(style);
+
+    // Add a div, in serverStatusDiv, where if I hover over it, shows me text related to server status
+    const serverStatusTextDiv = document.createElement('div');
+    serverStatusTextDiv.style.position = 'absolute'; // Change to absolute
+    serverStatusTextDiv.style.top = '0';
+    serverStatusTextDiv.style.left = '20';
+    serverStatusTextDiv.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
+    serverStatusTextDiv.style.color = 'white';
+    serverStatusTextDiv.style.padding = '5px';
+    serverStatusTextDiv.style.zIndex = '1000'; // Ensure zIndex is a string
+    serverStatusTextDiv.id = 'serverStatusTextDiv';
+    serverStatusTextDiv.style.display = 'none';
+    serverStatusTextDiv.innerHTML = 'Server Status: <br> - Red: Server is not running <br> - Green: Server is running';
+    serverStatusTextDiv.style.width = 0.5*parseInt(axialDiv.style.width);
+    serverStatusDiv.appendChild(serverStatusTextDiv);
+
+    // Add the hover text
+    serverStatusDiv.addEventListener('mouseover', function() {
+        serverStatusTextDiv.style.display = 'block';
+    });
+    serverStatusTextDiv.addEventListener('mouseout', function() {
+        serverStatusTextDiv.style.display = 'none';
+    });
+
+    // Step 2.2.1 - On the  top-right of axialDiv add a div for the slice number
     axialDiv.style.position = 'relative';
     const axialSliceDiv = document.createElement('div');
     axialSliceDiv.style.position = 'absolute'; // Change to absolute
-    axialSliceDiv.style.top = '0';
-    axialSliceDiv.style.right = '20';
+    axialSliceDiv.style.top = '3';
+    axialSliceDiv.style.right = '3';
     axialSliceDiv.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
     axialSliceDiv.style.color = 'white';
     axialSliceDiv.style.padding = '5px';
@@ -170,7 +231,7 @@ async function createViewPortsHTML() {
     axialSliceDiv.id = 'axialSliceDiv';
     axialDiv.appendChild(axialSliceDiv);
 
-    // On the  top-right of sagittalDiv add a div for the slice number
+    // Step 2.2.2 - On the  top-right of sagittalDiv add a div for the slice number
     sagittalDiv.style.position = 'relative';
     const sagittalSliceDiv = document.createElement('div');
     sagittalSliceDiv.style.position = 'absolute'; // Change to absolute
@@ -183,7 +244,7 @@ async function createViewPortsHTML() {
     sagittalSliceDiv.id = 'sagittalSliceDiv';
     sagittalDiv.appendChild(sagittalSliceDiv);
 
-    // On the  top-right of coronalDiv add a div for the slice number
+    // Step 2.2.3 - On the  top-right of coronalDiv add a div for the slice number
     coronalDiv.style.position = 'relative';
     const coronalSliceDiv = document.createElement('div');
     coronalSliceDiv.style.position = 'absolute'; // Change to absolute
@@ -203,9 +264,9 @@ async function createViewPortsHTML() {
 
     contentDiv.appendChild(viewportGridDiv);
 
-    return {contentDiv, viewportGridDiv, axialDiv, sagittalDiv, coronalDiv, axialSliceDiv, sagittalSliceDiv, coronalSliceDiv};
+    return {contentDiv, viewportGridDiv, axialDiv, sagittalDiv, coronalDiv, axialSliceDiv, sagittalSliceDiv, coronalSliceDiv, serverStatusCircle, serverStatusTextDiv};
 }
-const {axialDiv, sagittalDiv, coronalDiv, axialSliceDiv, sagittalSliceDiv, coronalSliceDiv} = await createViewPortsHTML();
+const {axialDiv, sagittalDiv, coronalDiv, axialSliceDiv, sagittalSliceDiv, coronalSliceDiv, serverStatusCircle, serverStatusTextDiv} = await createViewPortsHTML();
 
 async function createContouringHTML() {
 
@@ -232,35 +293,41 @@ async function createContouringHTML() {
     const windowLevelButton     = document.createElement('button');
     windowLevelButton.id        = windowLevelButtonId;
     windowLevelButton.innerHTML = 'Enable WindowLevelTool';
+
+    // Step 1.4 - Add show/unshow contour button
+    const showHideContourButton = document.createElement('button');
+    showHideContourButton.id = 'showHideContourButton';
+    showHideContourButton.innerHTML = 'Show/Hide Contour';
+    showHideContourButton.disabled = true;
     
-    // Step 1.4 - Add a para
+    // Step 1.5 - Add a para
     const para = document.createElement('p');
     para.innerHTML = 'Contouring Tools (use +/- to change brushSize):';
     para.style.margin = '0';
 
-    // Step 1.5 - Edit main contour vs scribble contour. Add buttons for that
+    // Step 1.6 - Edit main contour vs scribble contour. Add buttons for that
     const choseContourToEditHTML = document.createElement('div');
     choseContourToEditHTML.style.display = 'flex';
     choseContourToEditHTML.style.flexDirection = 'row';
 
-    // Step 1.5.1
+    // Step 1.6.1
     const paraEdit     = document.createElement('p');
     paraEdit.innerHTML = 'Edit Predicted Contour:';
     choseContourToEditHTML.appendChild(paraEdit);
     
-    // Step 1.5.2
+    // Step 1.6.2
     const editBaseContourViaBrushButton     = document.createElement('button');
     editBaseContourViaBrushButton.id        = 'editBaseContourViaBrushButton';
     editBaseContourViaBrushButton.innerHTML = '(using brush)';
     editBaseContourViaBrushButton.disabled  = true;
     choseContourToEditHTML.appendChild(editBaseContourViaBrushButton);
     
-    // Step 1.5.3
+    // Step 1.6.3
     const paraEdit2 = document.createElement('p');
     paraEdit2.innerHTML = ' or ';
     choseContourToEditHTML.appendChild(paraEdit2);
 
-    // Step 1.5.4
+    // Step 1.6.4
     const editBaseContourViaScribbleButton     = document.createElement('button');
     editBaseContourViaScribbleButton.id        = 'editBaseContourViaScribbleButton';
     editBaseContourViaScribbleButton.innerHTML = '(using AI-scribble)';
@@ -289,7 +356,7 @@ async function createContouringHTML() {
     bgdCheckboxParentDiv.style.flexDirection = 'row';
     scribbleCheckboxDiv.appendChild(bgdCheckboxParentDiv);
 
-    // Step 1.5.6.1 - Add checkbox for fgd
+    // Step 1.6.6.1 - Add checkbox for fgd
     const fgdCheckbox = document.createElement('input');
     fgdCheckbox.type = 'checkbox';
     fgdCheckbox.id = 'fgdCheckbox';
@@ -304,7 +371,7 @@ async function createContouringHTML() {
     });
     fgdChecBoxParentDiv.appendChild(fgdCheckbox);
 
-    // Step 1.5.6.2 - Add label for fgd
+    // Step 1.6.6.2 - Add label for fgd
     const fgdLabel = document.createElement('label');
     fgdLabel.htmlFor = 'fgdCheckbox';
     fgdLabel.style.color = COLOR_RGB_FGD // 'goldenrod'; // '#DAA520', 'rgb(218, 165, 32)'
@@ -312,7 +379,7 @@ async function createContouringHTML() {
     fgdChecBoxParentDiv.appendChild(fgdLabel);
     
 
-    // Step 1.5.6.3 - Add checkbox for bgd
+    // Step 1.6.6.3 - Add checkbox for bgd
     const bgdCheckbox = document.createElement('input');
     bgdCheckbox.type = 'checkbox';
     bgdCheckbox.id = 'bgdCheckbox';
@@ -327,7 +394,7 @@ async function createContouringHTML() {
     });
     bgdCheckboxParentDiv.appendChild(bgdCheckbox);
 
-    // Step 1.5.6.4 - Add label for bgd
+    // Step 1.6.6.4 - Add label for bgd
     const bgdLabel = document.createElement('label');
     bgdLabel.htmlFor = 'bgdCheckbox';
     bgdLabel.style.color = COLOR_RGB_BGD;
@@ -341,6 +408,7 @@ async function createContouringHTML() {
     contouringButtonInnerDiv.appendChild(contourSegmentationToolButton);
     contouringButtonInnerDiv.appendChild(sculptorToolButton);
     contouringButtonInnerDiv.appendChild(windowLevelButton);
+    contouringButtonInnerDiv.appendChild(showHideContourButton);
     contouringButtonDiv.appendChild(choseContourToEditHTML);
 
     // Step 1.6 - Add contouringButtonDiv to contentDiv
@@ -586,6 +654,24 @@ async function unshowLoaderAnimation() {
 
 function printHeaderInConsole(strToPrint){
     console.log(`\n\n | ================================================================ ${strToPrint} ================================================================ | \n\n`)
+}
+
+function setServerStatus(serverMessageId, serverMessageStr){
+    // 0 - loading, 1 - successful, 2 - error
+    if (serverMessageId == 0){
+        serverStatusCircle.style.backgroundColor = 'red';
+        serverStatusCircle.style.animation = 'blinker 1s linear infinite';
+        serverStatusTextDiv.innerHTML = 'Server Status: <br> - Red: Server is not running <br> - Green: Server is running';
+    }else if (serverMessageId == 1){
+        serverStatusCircle.style.backgroundColor = 'green';
+        serverStatusCircle.style.animation = 'none';
+        serverStatusTextDiv.innerHTML = serverMessageStr;
+    } else if (serverMessageId == 2){
+        serverStatusCircle.style.backgroundColor = 'red';
+        serverStatusCircle.style.animation = 'blinker 1s linear infinite';
+        serverStatusTextDiv.innerHTML = serverMessageStr;
+    }
+
 }
 
 /****************************************************************
@@ -1161,13 +1247,28 @@ async function makeRequestToPrepare(patientIdx){
 
     let requestStatus = false;
     try{
+        
+        // Step 1 - Init
         const preparePayload = {[KEY_DATA]: orthanDataURLS[patientIdx],[KEY_IDENTIFIER]: instanceName,}
-        const response = await fetch(URL_PYTHON_SERVER + ENDPOINT_PREPARE, {method: METHOD_POST, headers: HEADERS_JSON, body: JSON.stringify(preparePayload), credentials: 'include',}); // credentials: 'include' is important for cross-origin requests
-        requestStatus = true;
         console.log(' \n ----------------- Python server (/prepare) ----------------- \n')
         console.log('   -- [makeRequestToPrepare()] preparePayload: ', preparePayload);
+
+        // Step 2 - Make a request to /prepare
+        const response = await fetch(URL_PYTHON_SERVER + ENDPOINT_PREPARE, {method: METHOD_POST, headers: HEADERS_JSON, body: JSON.stringify(preparePayload), credentials: 'include',}); // credentials: 'include' is important for cross-origin requests
+        const responseJSON = await response.json();
         console.log('   -- [makeRequestToPrepare()] response: ', response);
-        console.log('   -- [makeRequestToPrepare()] response.json(): ', await response.json());
+        console.log('   -- [makeRequestToPrepare()] response.json(): ', responseJSON);
+        
+        // Step 3 - Process output
+        if (parseInt(response.status) == 200){
+            requestStatus = true;
+            serverStatusCircle.style.backgroundColor = 'green';
+            serverStatusCircle.style.animation = 'none';
+            setServerStatus(1, responseJSON.status);
+        } else {
+            setServerStatus(2, response.status + ': ' + responseJSON.detail);
+        }
+
     } catch (error){
         requestStatus = false;
         console.log('   -- [makeRequestToPrepare()] Error: ', error);
@@ -1422,6 +1523,17 @@ function showSliceIds(){
     }
 }
 
+function showUnshowAllSegmentations() {
+    const toolGroupContours = cornerstone3DTools.ToolGroupManager.getToolGroup(toolGroupIdContours);
+    const segmentationDisplayTool = cornerstone3DTools.SegmentationDisplayTool;
+
+    if (toolGroupContours.toolOptions[segmentationDisplayTool.toolName].mode === MODE_ENABLED){
+        toolGroupContours.setToolDisabled(segmentationDisplayTool.toolName);
+    } else {
+        toolGroupContours.setToolEnabled(segmentationDisplayTool.toolName);
+    }
+}
+
 /****************************************************************
 *                      CORNERSTONE FUNCS  
 *****************************************************************/
@@ -1578,8 +1690,10 @@ function setMouseAndKeyboardEvents(){
 
     // handle left-arrow and right-arrow keydown event
     document.addEventListener('keydown', function(evt) {
+        
+        // For slice traversal
         if (viewportIds.includes(evt.target.id)){
-            if (evt.key == 'ArrowLeft' || evt.key == 'ArrowRight'){
+            if (evt.key == SHORTCUT_KEY_ARROW_LEFT || evt.key == SHORTCUT_KEY_ARROW_RIGHT){
 
                 try {
 
@@ -1592,9 +1706,9 @@ function setMouseAndKeyboardEvents(){
                     // Step 2 - Handle keydown event
                     let newImageIdxForViewportForHTML = imageIdxForViewport;
                     let newImageIdxForViewport = imageIdxForViewport;
-                    if (evt.key == 'ArrowLeft'){
+                    if (evt.key == SHORTCUT_KEY_ARROW_LEFT){
                         newImageIdxForViewportForHTML = imageIdxForViewport - 1;
-                    } else if (evt.key == 'ArrowRight'){
+                    } else if (evt.key == SHORTCUT_KEY_ARROW_RIGHT){
                         newImageIdxForViewportForHTML = imageIdxForViewport + 1;
                     }
                     if (newImageIdxForViewportForHTML < 0) newImageIdxForViewportForHTML = 0;
@@ -1602,9 +1716,9 @@ function setMouseAndKeyboardEvents(){
                     if (activeViewportId == sagittalID){
                         newImageIdxForViewport = newImageIdxForViewportForHTML
                     } else if (activeViewportId == coronalID || activeViewportId == axialID){
-                        if (evt.key == 'ArrowLeft'){
+                        if (evt.key == SHORTCUT_KEY_ARROW_LEFT){
                             newImageIdxForViewport = (totalImagesForViewPort-1) - (imageIdxForViewport - 1);
-                        } else if (evt.key == 'ArrowRight'){
+                        } else if (evt.key == SHORTCUT_KEY_ARROW_RIGHT){
                             newImageIdxForViewport = (totalImagesForViewPort-1) - (imageIdxForViewport + 1);
                         }
                         // if (newImageIdxForViewport < 0) newImageIdxForViewport = 0;
@@ -1625,6 +1739,11 @@ function setMouseAndKeyboardEvents(){
                     console.error('   -- [keydown] Error: ', error);
                 }
             }
+        }
+
+        // For show/unshow contours
+        if (evt.key === SHORTCUT_KEY_C) {
+            showUnshowAllSegmentations()
         }
     });
 }
@@ -2094,6 +2213,9 @@ async function restart() {
             setButtonBoundaryColor(buttonHTML, false);
             buttonHTML.disabled = true;
         });
+
+        // Other GUI
+        setServerStatus(0);
         
         // Step 2 - Remove all segmentationIds
         try{
@@ -2321,7 +2443,7 @@ async function setup(patientIdx){
 }
 
 // Some debug params
-global.patientIdx = 28;
+global.patientIdx = 27;
 MODALITY_CONTOURS = MODALITY_SEG
 
 if (process.env.NETLIFY === "true")

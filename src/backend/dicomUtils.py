@@ -440,9 +440,10 @@ class DICOMConverterHecktor:
             
             # Step 1.1 - Some custom processing
             if 1:
-                self.ctArray  = self.ctArray[:,:,:-1]
-                self.ptArray = self.ptArray[:,:,:-1]
-                self.maskArray = self.maskArray[:,:,:-1]
+                if self.ctArray.shape[-1] == 145:
+                    self.ctArray  = self.ctArray[:,:,:-1]
+                    self.ptArray = self.ptArray[:,:,:-1]
+                    self.maskArray = self.maskArray[:,:,:-1]
                 print (' - [DICOMConverterHecktor] CT: {}, PT: {}, Mask: {}, MaskPred: {}'.format(self.ctArray.shape, self.ptArray.shape, self.maskArray.shape, self.maskPredArray.shape))
             # assert self.ctArray.shape == self.ptArray.shape == self.maskArray.shape == self.maskPredArray.shape, " - [DICOMConverterHecktor] Shape mismatch: CT: {}, PET: {}, Mask: {}, MaskPred: {}".format(self.ctArray.shape, self.ptArray.shape, self.maskArray.shape, self.maskPredArray.shape)
 
@@ -555,8 +556,10 @@ if __name__ == "__main__":
         maskGTCreatorName        = 'Hecktor2022'
         maskPredCreatorName      = 'Modys AI model'
 
-        # for patientName in ['CHMR001', 'CHMR004', 'CHMR005', 'CHMR011', 'CHMR012', 'CHMR013', 'CHMR014', 'CHMR016', 'CHMR020', 'CHMR021', 'CHMR023', 'CHMR024', 'CHMR025', 'CHMR028', 'CHMR029', 'CHMR030', 'CHMR034', 'CHMR040']:
-        for patientName in ['CHMR016']:
+        for patientName in ['CHMR001', 'CHMR004', 'CHMR005', 'CHMR011', 'CHMR012', 'CHMR013', 'CHMR014', 'CHMR016', 'CHMR020', 'CHMR021', 'CHMR023', 'CHMR024', 'CHMR025', 'CHMR028', 'CHMR029', 'CHMR030', 'CHMR034', 'CHMR040']:
+        # # for patientName in ['CHMR016']:
+        # # for patientName in ['CHMR040']:
+        # for patientName in ['CHMR004']:
             pathCT       = DIR_CLINIC / "{}_ct.nii.gz".format(patientName)      # "nrrd_CHMR001_img1.nrrd"
             pathPT       = DIR_CLINIC / "{}_pt.nii.gz".format(patientName)      # "nrrd_CHMR001_img2.nrrd"
             pathMask     = DIR_CLINIC / "{}_gtvt.nii.gz".format(patientName)    # ["nrrd_CHMR001_mask.nrrd", "CHMR001_gtvt.nii.gz"]

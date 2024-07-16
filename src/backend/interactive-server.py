@@ -346,11 +346,14 @@ def getDCMClient(wadoRsRoot):
     return client
 
 def getCTArray(client, patientData):
-    ctArray = None
+    
+    ctArray, ctArrayProcessed, ctArrayProcessedBool = None, None, False
+    patientName = None
 
     try:
 
         # Step 0 - Init
+        patientName = patientData[KEY_DATA][KEY_CASE_NAME]
         preparedData = patientData[KEY_DATA]
 
         # Step 1 - Get CT instances
@@ -385,10 +388,13 @@ def getCTArray(client, patientData):
         patientData[KEY_TORCH_DATA][0, 0, :, :, :] = torch.tensor(ctArrayProcessed, dtype=torch.float32, device=DEVICE)
         patientData[KEY_DCM_LIST] = ctInstances
 
+        ctArrayProcessedBool = True
+
     except:
+        print (' - [getCTArray()] Could not get CT array for patient: ', patientName)
         traceback.print_exc()
     
-    return ctArray, ctArrayProcessed, patientData
+    return ctArrayProcessedBool, ctArray, ctArrayProcessed, patientData
 
 def getPTArray(client, patientData):
     
@@ -1123,6 +1129,7 @@ async def prepare(payload: PayloadPrepare, request: starlette.requests.Request):
         preparePayloadData = payload.data.dict()
         patientName        = preparePayloadData[KEY_CASE_NAME]
         # user         = request.user # AuthenticationMiddleware must be installed to access request.user
+
         if clientIdentifier not in SESSIONSGLOBAL:
             SESSIONSGLOBAL[clientIdentifier] = {'userAgent': userAgent, KEY_CLIENT_IDENTIFIER: clientIdentifier}
         
@@ -1151,8 +1158,8 @@ async def prepare(payload: PayloadPrepare, request: starlette.requests.Request):
                 DCMCLIENT = getDCMClient(preparePayloadData[KEY_SEARCH_OBJ_CT][KEY_WADO_RS_ROOT])
                 
             if DCMCLIENT != None:
-                ctArray, ctArrayProcessed, patientData = getCTArray(DCMCLIENT, patientData)
-                if ctArray is not None:
+                ctArrayProcessedBool, ctArray, ctArrayProcessed, patientData = getCTArray(DCMCLIENT, patientData)
+                if ctArrayProcessedBool:
                     ptArray, ptArrayProcessed, patientData = getPTArray(DCMCLIENT, patientData)
                     if ptArray is not None:
                         segArrayGT, segArrayPred, patientData = getSEGs(DCMCLIENT, patientData)
@@ -1164,7 +1171,15 @@ async def prepare(payload: PayloadPrepare, request: starlette.requests.Request):
                                     saveFolderPath = patientData[KEY_PATH_SAVE]
                                     plotData(ctArray, ptArray, segArrayGT, segArrayPred, sliceId=94, caseName=patientName, saveFolderPath=saveFolderPath)
                                     plotData(ctArray, ptArray, segArrayGT, segArrayPred, sliceId=69, caseName=patientName, saveFolderPath=saveFolderPath)
-            
+                            else:
+                                raise fastapi.HTTPException(status_code=500, detail="shapes dont match for patientName: {}".format(patientName))
+                        else:
+                            raise fastapi.HTTPException(status_code=500, detail="getSEGs() failed for patientName: {}".format(patientName))
+                    else:
+                        raise fastapi.HTTPException(status_code=500, detail="getPTArray() failed for patientName: {}".format(patientName))
+                else:
+                    raise fastapi.HTTPException(status_code=500, detail="getCTArray() failed for patientName: {}".format(patientName))
+                
                 SESSIONSGLOBAL[clientIdentifier][patientName] = patientData
 
         else:
@@ -1186,11 +1201,11 @@ async def prepare(payload: PayloadPrepare, request: starlette.requests.Request):
     except pydantic.ValidationError as e:
         print (' - /prepare (from {},{}): {}'.format(referer, userAgent, e))
         logging.error(e)
-        raise fastapi.HTTPException(status_code=500, detail="Error in /prepare => " + str(e))
+        raise fastapi.HTTPException(status_code=500, detail="Error in /prepare for patientName: {} => {}".format(patientName, e))
     
     except Exception as e:
         traceback.print_exc()
-        raise fastapi.HTTPException(status_code=500, detail="Error in /prepare => " + str(e))
+        raise fastapi.HTTPException(status_code=500, detail="Error in /prepare for patientName: {} => {}".format(patientName, e))
 
 @app.post("/process")
 async def process(payload: PayloadProcess, request: starlette.requests.Request):
@@ -1229,8 +1244,8 @@ async def process(payload: PayloadProcess, request: starlette.requests.Request):
             patientData       = SESSIONSGLOBAL[clientIdentifier][patientName]
             preparedData      = patientData[KEY_DATA]
             preparedDataTorch = patientData[KEY_TORCH_DATA]
-            preparedDataTorch[0,3] = torch.zeros_like(preparedDataTorch[0,3])
-            preparedDataTorch[0,4] = torch.zeros_like(preparedDataTorch[0,4])
+            preparedDataTorch[0,3] = torch.zeros_like(preparedDataTorch[0,1])
+            preparedDataTorch[0,4] = torch.zeros_like(preparedDataTorch[0,1])
             
             # Step 3.1 - Extract data
             points3D     = processPayloadData[KEY_POINTS_3D] # [(h/w, h/w, d), (), ..., ()] [NOTE: cornerstone3D sends array-indexed data, so now +1/-1 needed]
@@ -1318,5 +1333,5 @@ Data-Transformation Pipeline
     - for SEG
         --> np.moveaxis(maskArray, [0,1,2], [2,1,0])
 
-2. 
+2. From .dcms (in python) TO numpy/torch arrays
 """
