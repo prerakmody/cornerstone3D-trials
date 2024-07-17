@@ -45,6 +45,8 @@ import scipy.ndimage
 torch.manual_seed(42)
 np.random.seed(42)
 
+# time.time = time.process_time
+
 import onnx
 import onnxruntime
 
@@ -694,18 +696,24 @@ def postInstanceToOrthanc(requestBaseURL, dcmPath):
     try:
         sendInstanceURL = requestBaseURL + '/instances'
         with open(dcmPath, 'rb') as file:
+            tReadStart = time.time()
             dcmPathContent     = file.read()
+            tReadTotal = time.time() - tReadStart
+            tSendStart = time.time()
             sendResponse       = requests.post(sendInstanceURL, data=dcmPathContent)
+            tSendTotal = time.time() - tSendStart
             postInstanceStatus = sendResponse.json()['Status'] # ['Success', 'AlreadyStored']
             if sendResponse.status_code == 200:
                 instanceOrthanID = sendResponse.json()['ID']
                 postDICOMStatus = True
             elif sendResponse.status_code == 404:
-                print (' - [makeSEGDicom()] Could not post instance: ', sendResponse.text)
+                print (' - [postInstanceToOrthanc()] Could not post instance: ', sendResponse.text)
                 if MODE_DEBUG: pdb.set_trace()
             else:
-                print (' - [makeSEGDicom()] Could not post instance: ', sendResponse.text)
+                print (' - [postInstanceToOrthanc()] Could not post instance: ', sendResponse.text)
                 if MODE_DEBUG: pdb.set_trace()
+            
+            # print (' - [postInstanceToOrthanc()] Read time: {:.4f} seconds, Send time: {:.4f} seconds'.format(tReadTotal, tSendTotal))
                 
     except:
         traceback.print_exc()
@@ -741,10 +749,13 @@ def makeSEGDicom(maskArray, patientSessionData, viewType, sliceId):
     """
 
     makeDICOMStatus = False
+    tDCMMakeTotal, tPostTotal = -1, -1
     try:
 
+        # Step 1 - Make dicom (and save to disk)
         if 1:
             # Step 0 - Init
+            tDCMMakeStart = time.time()
             def set_segment_color(ds, segment_index, rgb_color):
 
                 def rgb_to_cielab(rgb):
@@ -821,11 +832,15 @@ def makeSEGDicom(maskArray, patientSessionData, viewType, sliceId):
             dcm.SOPInstanceUID          = sopInstanceUID
             Path(pathFolderMask).mkdir(parents=True, exist_ok=True)
             dcmPath = str(Path(pathFolderMask).joinpath('-'.join([patientName, SUFIX_REFINE, str(counter)]) + '.dcm'))
+            tWriteStart = time.time()
             dcm.save_as(dcmPath)
+            tWriteTotal = time.time() - tWriteStart
             print (' - [makeSEGDicom()] Saving SEG with SeriesDescription: ', dcm.SeriesDescription)
+            tDCMMakeTotal = time.time() - tDCMMakeStart
         
         # Step 4 - Post to DICOM server
         if 1:
+            tPostStart = time.time()
             instanceOrthancID = patientSessionData[KEY_SEG_ORTHANC_ID]
             global DCMCLIENT
             if DCMCLIENT is not None:
@@ -860,11 +875,14 @@ def makeSEGDicom(maskArray, patientSessionData, viewType, sliceId):
 
             else:
                 print (' - [makeSEGDicom()] DCMCLIENT is None. Not posting SEG to DICOM server')
+            
+            tPostTotal = time.time() - tPostStart
 
     except:
         traceback.print_exc()
         if MODE_DEBUG: pdb.set_trace()
 
+    # print (' - [makeSEGDicom()] Total time for make: {:.4f}s (write={:.4f}s), post: {:.4f}s'.format(tDCMMakeTotal, tWriteTotal, tPostTotal)) 
     return makeDICOMStatus, patientSessionData
 
 def getPatientUUIDs(patientID):
@@ -1252,7 +1270,7 @@ async def lifespan(app: fastapi.FastAPI):
         epoch     = 100
         modelType = KEY_UNET_V1 # type == <class 'monai.networks.nets.unet.UNet'>
         DEVICE    = torch.device('cpu')
-        loadOnnx  = False
+        loadOnnx  = True
 
     MODEL, ORT_SESSION = loadModelUsingUserPath(DEVICE, expName, epoch, modelType, loadOnnx)
     LOAD_ONNX = loadOnnx
@@ -1412,13 +1430,15 @@ async def process(payload: PayloadProcess, request: starlette.requests.Request):
             scribbleType = processPayloadData[KEY_SCRIBBLE_TYPE]
 
             # Step 3.2 - Get distance map
+            tDistMapStart = time.time()
             preparedDataTorch, viewType, sliceId = getDistanceMap(preparedDataTorch, scribbleType, points3D, DISTMAP_Z, DISTMAP_SIGMA)
             print (' - [process()] torch.sum(preparedDataTorch, dim=(2,3,4)): ', torch.sum(preparedDataTorch, dim=(2,3,4)))
+            tDistMap = time.time() - tDistMapStart
 
             # Step 4.1 - Get refined segmentation
-            tModel               = time.time()
+            tInferStart  = time.time()
             segArrayRefinedTorch, segArrayRefinedNumpy = doInferenceNew(MODEL, ORT_SESSION, preparedDataTorch)
-            totalInferenceTime   = time.time() - tModel
+            tInfer      = time.time() - tInferStart
             if segArrayRefinedNumpy is None or segArrayRefinedTorch is None:
                 raise fastapi.HTTPException(status_code=500, detail="Error in /process => doInference() failed")
             
@@ -1426,8 +1446,10 @@ async def process(payload: PayloadProcess, request: starlette.requests.Request):
             patientData[KEY_SCRIBBLE_COUNTER] += 1
             
             # Step 4.2 - Save refined segmentation
+            tMakeSegDCMStart = time.time()
             makeSEGDICOMStatus, patientData = makeSEGDicom(segArrayRefinedNumpy, patientData, viewType, sliceId)
-            
+            tMakeSegDCM = time.time() - tMakeSegDCMStart
+
             # Step 4.99 - Plot refined segmentation
             if 1: 
                 segArrayGT = patientData[KEY_SEG_ARRAY_GT]
@@ -1445,8 +1467,9 @@ async def process(payload: PayloadProcess, request: starlette.requests.Request):
                 raise fastapi.HTTPException(status_code=500, detail="Error in /process => makeSEGDicom failed")
             
             # Step 5 - Return
-            totalProcessTime = time.time() - tStart
-            returnObj = {"status": "{} Data processed for python server. (model={:.4f}s, total={:.4f}s)".format(returnMessagePrefix, totalInferenceTime, totalProcessTime)}
+            tTotal = time.time() - tStart
+            timeTakenStr = "(tDistMap={:.4f}s, tInfer={:.4f}s, tMakeSegDCM={:.4f}s, tTotal={:.4f}s)".format(tDistMap, tInfer, tMakeSegDCM, tTotal)
+            returnObj = {"status": "{} Scribble processed in python server {}".format(returnMessagePrefix, timeTakenStr)}
             returnObj[KEY_RESPONSE_DATA] = {
                 KEY_STUDY_INSTANCE_UID : preparedData[KEY_SEARCH_OBJ_CT][KEY_STUDY_INSTANCE_UID],
                 KEY_SERIES_INSTANCE_UID: patientData[KEY_SEG_SERIES_INSTANCE_UID],
@@ -1482,6 +1505,9 @@ To-Do
  - [P] train the model to do nothing when the scribble is made in a random region in the background.
  - [P] Change the Z-value of the distance map (randomly)
  - [P] include obedience loss in the model
+
+2. Other stuff
+ - difference between time.time() and time.process_time() 
 """
 
 """

@@ -1270,11 +1270,12 @@ async function makeRequestToPrepare(patientIdx){
             serverStatusCircle.style.animation = 'none';
             setServerStatus(2, responseJSON.status);
         } else {
-            setServerStatus(3, response.status + ': ' + responseJSON.detail);
+            setServerStatus(1, response.status + ': ' + responseJSON.detail);
         }
 
     } catch (error){
         requestStatus = false;
+        setServerStatus(1, 'Error in /process: ', error);
         console.log('   -- [makeRequestToPrepare()] Error: ', error);
         showToast('Python server - /prepare failed', 3000)
     }
@@ -1282,7 +1283,7 @@ async function makeRequestToPrepare(patientIdx){
     return requestStatus;
 }
 
-async function makeRequestToProcess(points3D, scribbleAnnotationUID){
+async function makeRequestToProcess(points3D, scribbleAnnotationUID, verbose=false){
 
     let requestStatus = false;
     let responseData  = {}
@@ -1307,11 +1308,11 @@ async function makeRequestToProcess(points3D, scribbleAnnotationUID){
             const response = await fetch(URL_PYTHON_SERVER + ENDPOINT_PROCESS, {method: METHOD_POST, headers: HEADERS_JSON, body: JSON.stringify(processPayload), credentials: 'include',}); // credentials: 'include' is important for cross-origin requests
             const responseJSON = await response.json();
             requestStatus = true;
-            console.log('   -- [makeRequestToProcess()] response: ', response);
+            console.log('   -- [makeRequestToProcess()] response       : ', response);
             console.log('   -- [makeRequestToProcess()] response.json(): ', responseJSON);
             
             // Step 2 - Remove old scribble annotation
-            console.log('\n --------------- Removing old annotation ...  ---------------: ', scribbleAnnotationUID)
+            if (verbose) console.log('\n --------------- Removing old annotation ...  ---------------: ', scribbleAnnotationUID)
             cornerstone3DTools.annotation.state.removeAnnotation(scribbleAnnotationUID);
             renderNow();
             await unshowLoaderAnimation();
@@ -1320,35 +1321,41 @@ async function makeRequestToProcess(points3D, scribbleAnnotationUID){
                 responseData = responseJSON.responseData    
 
                 // Step 3 - Remove old segmentation
-                console.log('\n --------------- Removing old segmentation ...  ---------------: ')
+                const nowPostAIScribbleResponseDate = new Date();
+                if (verbose) console.log('\n --------------- Removing old segmentation ...  ---------------: ')
                 const allSegObjs = cornerstone3DTools.segmentation.state.getSegmentations();
                 const allSegRepsObjs = cornerstone3DTools.segmentation.state.getAllSegmentationRepresentations()[toolGroupIdContours];
                 allSegObjs.forEach(segObj => {
                     if (segObj.segmentationId.includes(predSegmentationIdBase)){
-                        console.log('   -- [makeRequestToProcess()] Removing segObj: ', segObj.segmentationId);
+                        if (verbose)console.log('   -- [makeRequestToProcess()] Removing segObj: ', segObj.segmentationId);
                         cornerstone3DTools.segmentation.state.removeSegmentation(segObj.segmentationId);
                         const thisSegRepsObj = allSegRepsObjs.filter(obj => obj.segmentationId === segObj.segmentationId)[0]
-                        console.log('   -- [makeRequestToProcess()] Removing segRepsObj: ', thisSegRepsObj);
+                        if (verbose)console.log('   -- [makeRequestToProcess()] Removing segRepsObj: ', thisSegRepsObj);
                         cornerstone3DTools.segmentation.removeSegmentationsFromToolGroup(toolGroupIdContours, [thisSegRepsObj.segmentationRepresentationUID,], true);
                         if (segObj.type == SEG_TYPE_LABELMAP){
                             cornerstone3D.cache.removeVolumeLoadObject(segObj.segmentationId);
                         }
                     }
                 });
-                console.log('   -- [makeRequestToProcess()] new allSegObjs: ', cornerstone3DTools.segmentation.state.getSegmentations())
-                console.log('   -- [makeRequestToProcess()] new     allSegRepsObjs: ', cornerstone3DTools.segmentation.state.getAllSegmentationRepresentations())
+                if (verbose) console.log('   -- [makeRequestToProcess()] new allSegObjs: ', cornerstone3DTools.segmentation.state.getSegmentations())
+                if (verbose) console.log('   -- [makeRequestToProcess()] new     allSegRepsObjs: ', cornerstone3DTools.segmentation.state.getAllSegmentationRepresentations())
 
-                console.log('\n --------------- Adding new segmentation ...  ---------------: ')
+                if (verbose) console.log('\n --------------- Adding new segmentation ...  ---------------: ')
                 try{
-                    console.log(' - responseData: ', responseData)
+                    if (verbose) console.log(' - responseData: ', responseData)
+                    const nowDcmSEGFetch = new Date();
                     await fetchAndLoadDCMSeg(responseData, global.imageIdsCT, MASK_TYPE_REFINE)
+                    const totalDcmSEGFetchSeconds = (new Date() - nowDcmSEGFetch) / 1000;
+                    console.log('   -- [makeRequestToProcess()] Round-trip DcmSEG fetch completed in ', totalDcmSEGFetchSeconds, ' s');
                 } catch (error){
                     console.error(' - [loadData()] Error in makeRequestToProcess(responseData, global.imageIdsCT, MASK_TYPE_PRED): ', error);
                     showToast('Error in loading refined segmentation data', 3000);
                 }
-
-                const seconds = (new Date() - now) / 1000;
-                showToast(`AI Processing completed in ${seconds} s`, 3000);
+                
+                const totalPostAIScribbleResponseSeconds = (new Date() - nowPostAIScribbleResponseDate) / 1000;
+                const totalAIScribbleProcessingSeconds = (new Date() - now) / 1000;
+                showToast(`AI Processing completed in ${totalAIScribbleProcessingSeconds} s`, 3000);
+                console.log('   -- [makeRequestToProcess()] Round-trip AI Processing completed in ', totalAIScribbleProcessingSeconds, ' s with ', totalPostAIScribbleResponseSeconds, ' s post-AI scribble response processing');
             } else {
                 showToast('Python server - /process failed' + responseJSON.detail, 30000)
             }
@@ -1356,14 +1363,12 @@ async function makeRequestToProcess(points3D, scribbleAnnotationUID){
         } catch (error){
             requestStatus = false;
             console.log('   -- [makeRequestToProcess()] Error: ', error);
-            setServerStatus(2, 'Error in /process: ', error);
             showToast('Python server - /process failed', 3000)
         }
 
     } catch (error){
         requestStatus = false;
         console.log('   -- [makeRequestToProcess()] Error: ', error);
-        setServerStatus(2, 'Error in /process: ', error);
         showToast('Python server - /process failed', 3000)
     }
 
@@ -1922,10 +1927,12 @@ function setContouringButtonsLogic(verbose=true){
                             await makeRequestToProcess(points3DInt, scribbleAnnotationUID);
                         }
                     } else {
-                        const allAnnotations = cornerstone3DTools.annotation.state.getAllAnnotations();
-                        console.log(' - [setContouringButtonsLogic()] allAnnotations: ', allAnnotations);
+                        console.log(' - [setContouringButtonsLogic()] scribbleAnnotations: ', scribbleAnnotations);
                         renderNow();
                     }
+                } else {
+                    console.log('   -- [setContouringButtonsLogic()] freehandRoiToolMode: ', freehandRoiToolMode);
+                    showToast('Please enable the AI-scribble button to draw contours');
                 }
             }, 100);
         });
@@ -2464,5 +2471,5 @@ TO-DO
 2. [P] ORTHANC__DICOM_WEB__METADATA_WORKER_THREADS_COUNT = 1
 3. [P] https://www.cornerstonejs.org/docs/examples/#polymorph-segmentation
     - https://github.com/cornerstonejs/cornerstone3D/issues/1351
-4. Include slider for scans (or even shortcuts)
+4. Sometimes mouseUp event does not capture events
  */
