@@ -2,6 +2,7 @@ import os
 import pdb
 import time
 import json
+import timeit
 import psutil
 import logging
 import warnings
@@ -41,6 +42,14 @@ import dicomweb_client
 import torch
 import monai
 import scipy.ndimage
+torch.manual_seed(42)
+np.random.seed(42)
+
+import onnx
+import onnxruntime
+
+warnings.filterwarnings("ignore", category=UserWarning)
+warnings.filterwarnings("ignore", category=UserWarning, module="torch.onnx")
 
 ######################## KEYS ########################
 
@@ -86,6 +95,9 @@ KEY_RESPONSE_DATA = 'responseData'
 
 # Keys - For saving
 fileNameForSave = lambda name, counter, viewType, sliceId: '-'.join([str(name), SERIESDESC_SUFFIX_REFINE, str(counter), viewType, 'slice{:03d}'.format(sliceId)])
+
+# Keys - for extensions
+KEY_EXT_ONNX = '.onnx'
 
 # Key - for views
 KEY_AXIAL    = 'Axial'
@@ -218,6 +230,26 @@ class PayloadProcess(pydantic.BaseModel):
 #                        NNET MODELS
 #################################################################
 
+class ModelWithSigmoidAndThreshold(torch.nn.Module):
+
+    def __init__(self, model, threshold=0.5):
+        super(ModelWithSigmoidAndThreshold, self).__init__()
+        self.model     = model
+        self.threshold = threshold
+
+    def forward(self, x):
+
+        y = self.model(x) # [B,C=1, H,W,D]
+        y = torch.sigmoid(y)
+        y = torch.where(y <= self.threshold, torch.tensor(0.0), torch.tensor(1.0))
+        return x
+
+def sigmoidAndThresholdForward(self, x, threshold=0.5):
+    y = self.model(x) # [B,C=1, H,W,D]
+    y = torch.sigmoid(y)
+    y = torch.where(y <= threshold, torch.tensor(0.0), torch.tensor(1.0))
+    return y
+
 def getModel(modelName, device=None):
 
     model = None
@@ -225,13 +257,12 @@ def getModel(modelName, device=None):
     try:
 
         # Step 1 - Get neural arch
-
-        ###################### RECONSTRUCTION MODELS ######################
         if modelName == KEY_UNET_V1:
             # https://docs.monai.io/en/stable/networks.html#unet
+            # https://github.com/Project-MONAI/MONAI/blob/1.3.1/monai/networks/nets/unet.py#L30
             model = monai.networks.nets.UNet(in_channels=5, out_channels=1, spatial_dims=3, channels=[16, 32, 64, 128], strides=[2, 2, 2], num_res_units=2) # [CT,PET,Pred,Fgd,Bgd] --> [Refined-Pred] # 1.2M params
 
-        # Step 2 - Move to device
+        # Step 99 - Move to device
         if device is not None:
             model = model.to(device)
 
@@ -241,9 +272,10 @@ def getModel(modelName, device=None):
     
     return model
 
-def loadModel(modelPath, modelName=None, model=None, device=None):
+def loadModel(modelPath, modelName=None, model=None, device=None, loadOnnx=False):  
     
     loadedModel = None
+    ortSession  = None
 
     try:
 
@@ -256,25 +288,98 @@ def loadModel(modelPath, modelName=None, model=None, device=None):
         if model is not None:
 
             # Step 2.1 - Get checkpoint
-            checkpoint = torch.load(modelPath, map_location=device)
+            if Path(modelPath).exists():
 
-            if KEY_MODEL_STATE_DICT in checkpoint:
-                model.load_state_dict(checkpoint[KEY_MODEL_STATE_DICT])
-            else:
-                model.load_state_dict(checkpoint)
+                checkpoint = torch.load(modelPath, map_location=device)
+
+                if KEY_MODEL_STATE_DICT in checkpoint:
+                    model.load_state_dict(checkpoint[KEY_MODEL_STATE_DICT])
+                else:
+                    model.load_state_dict(checkpoint)
             
-            # Step 2.2 - Move to device
-            if device is not None:
-                loadedModel = model.to(device)
+                # Step 2.2 - Add a) post-processing, b) eval mode, c) move to device and d) warm-up
+                # model = ModelWithSigmoidAndThreshold(model, threshold=0.5) # does not export the unet model weights when exporting to onnx format
+                model.forward = sigmoidAndThresholdForward.__get__(model, monai.networks.nets.UNet)
+                model.eval()
+                if device is not None:
+                    model = model.to(device)
+                randomInput     = torch.randn(SHAPE_TENSOR, device=device)
+                
+                # Step 2.3 - Check for onnx loading
+                if not loadOnnx:
+                    _ = model(randomInput) # warm-up
+                
+                else:
+                    
+                    # Step 2.3.1 - Make sure .onnx model exists
+                    modelPathOnnx = Path(modelPath).with_suffix(KEY_EXT_ONNX)
+                    # Path(modelPathOnnx).unlink(missing_ok=True)
+                    if not Path(modelPathOnnx).exists():
+                        convertToOnnx(model, modelPathOnnx)
+                    
+                    # Step 2.3.2 - Convert existing model to onnx
+                    modelOnnx = torch.onnx.dynamo_export(model, randomInput) # type(loadedModel) == torch.onnx.ONNXProgram
+
+                    # Step 2.3.3 - Get onnxruntime session
+                    ortSession = onnxruntime.InferenceSession(modelPathOnnx, providers=['CPUExecutionProvider'])
+
+                    if 0:
+                    
+                        if 0:
+
+                            randomInputOnnx        = modelOnnx.adapt_torch_inputs_to_onnx(randomInput) # [B,C,H,W,D] --> ([B,C,H,W,D],) essentially a tuple
+                            randomInputOnnxRuntime = {k.name: to_numpy(v) for k, v in zip(ortSession.get_inputs(), randomInputOnnx)}
+
+                            print (' - [loadModel()] ONNX Inference time: ', timeit.timeit(lambda: ortSession.run(None, randomInputOnnxRuntime), number=10))
+                            t0 = time.time()
+                            randomOutputOnnxRuntime = ortSession.run(None, randomInputOnnxRuntime)
+                            print (' - [loadModel()] ONNX Inference time: ', time.time() - t0)
+
+                            print (' - [loadModel()] Torch Inference time: ', timeit.timeit(lambda: model(randomInput), number=10))
+                            t0 = time.time()
+                            randomOutputTorch = model(randomInput)
+                            print (' - [loadModel()] Torch Inference time: ', time.time() - t0)
+
+                            print (' - [loadModel()] ONNX Output: ', randomOutputOnnxRuntime[0].max(), randomOutputOnnxRuntime[0].sum(), type(randomOutputOnnxRuntime[0]))
+                            print (' - [loadModel()] Torch Output: ', randomOutputTorch.max(), randomOutputTorch.sum(), type(randomOutputTorch))
+                            difference = np.abs(randomOutputOnnxRuntime[0] - to_numpy(randomOutputTorch)).sum()
+                            print (' - [loadModel()] Difference: ', difference)
+                            pdb.set_trace()
+                        
+                        elif 1:
+                            print (' - [loadModel()] ONNX Inference time: ', timeit.timeit(lambda: doInferenceNew(modelOnnx, ortSession, randomInput), number=10))
+                            t0 = time.time()
+                            randomOutputTorchOnnxRuntime, randomOutputNumpyOnnxRuntime = doInferenceNew(modelOnnx, ortSession, randomInput)
+                            print (' - [loadModel()] ONNX Inference time: ', time.time() - t0)
+
+                            print (' - [loadModel()] Torch Inference time: ', timeit.timeit(lambda: doInferenceNew(model, None, randomInput), number=10))
+                            t0 = time.time()
+                            randomOutputTorch, randomOutputNumpy = doInferenceNew(model, None, randomInput)
+                            print (' - [loadModel()] Torch Inference time: ', time.time() - t0)
+
+                            print (' - [loadModel()] ONNX Output: ', randomOutputNumpyOnnxRuntime.shape, randomOutputNumpyOnnxRuntime.max(), randomOutputNumpyOnnxRuntime.sum(), type(randomOutputNumpyOnnxRuntime))
+                            print (' - [loadModel()] non-ONNX Output: ', randomOutputNumpy.shape, randomOutputNumpy.max(), randomOutputNumpy.sum(), type(randomOutputNumpy))
+                            difference = np.abs(randomOutputNumpyOnnxRuntime - randomOutputNumpy).sum()
+                            print (' - [loadModel()] Difference: ', difference)
+            
+            else:
+                print (' - [loadModel()] Model not found at: ', modelPath)
 
     except:
         traceback.print_exc()
+        if MODE_DEBUG: pdb.set_trace()
     
-    return loadedModel
+    if loadOnnx:
+        loadedModel = modelOnnx
+    else:
+        loadedModel = model
 
-def loadModelUsingUserPath(device, expNameParam, epochParam, modelTypeParam):
+    return loadedModel, ortSession
+
+def loadModelUsingUserPath(device, expNameParam, epochParam, modelTypeParam, loadOnnx):
 
     model = None
+    ortSession = None
     try:
 
         print ('\n =========================== [loadModelUsingUserPath()] =========================== \n')
@@ -282,14 +387,14 @@ def loadModelUsingUserPath(device, expNameParam, epochParam, modelTypeParam):
         # Step 1 - Load model
         getMemoryUsage()
         modelPath = Path(DIR_MODELS) / expNameParam / EPOCH_STR.format(epochParam) / EPOCH_STR.format(epochParam)
+        
         if Path(modelPath).exists():
             print (' - [loadModel()] Loading model from: ', modelPath)
-            print (' - [loadModel()] Device: ', device)
+            print (' - [loadModel()] Device  : ', device)
+            print (' - [loadModel()] loadOnnx: ', loadOnnx)
             
-            model     = loadModel(modelPath, modelTypeParam, device=device)
+            model, ortSession = loadModel(modelPath, modelTypeParam, device=device, loadOnnx=loadOnnx)
             if model is not None:
-                model.eval()
-                _ = model(torch.randn(SHAPE_TENSOR, device=device)) # warm-up
                 getMemoryUsage()
             else:
                 print (' - [loadModel()] Model not loaded')
@@ -305,27 +410,70 @@ def loadModelUsingUserPath(device, expNameParam, epochParam, modelTypeParam):
 
     except:
         traceback.print_exc()
-        pdb.set_trace()
+        if MODE_DEBUG: pdb.set_trace()
     
-    return model
+    return model, ortSession
 
-def doInference(model, preparedDataTorch):
+def doInferenceNew(model, ortSession, preparedDataTorch):
 
     segArrayRefinedNumpy = None
     segArrayRefinedTorch = None
     try:
         if model is not None:
-            segArrayRefinedTorch  = model(preparedDataTorch)
-            segArrayRefinedTorch  = torch.sigmoid(segArrayRefinedTorch).detach()
-            segArrayRefinedTorch[segArrayRefinedTorch <= 0.5] = 0
-            segArrayRefinedTorch[segArrayRefinedTorch > 0.5] = 1
-            segArrayRefinedNumpy = segArrayRefinedTorch.cpu().numpy()[0,0]
+            if ortSession is None:
+                segArrayRefinedTorch  = model(preparedDataTorch)
+                segArrayRefinedNumpy = segArrayRefinedTorch.cpu().numpy()[0,0]
+            else:
+                preparedDataOnnx         = model.adapt_torch_inputs_to_onnx(preparedDataTorch)
+                preparedDataOnnxRuntime  = {k.name: to_numpy(v) for k, v in zip(ortSession.get_inputs(), preparedDataOnnx)}
+                segArrayRefinedNumpy     = ortSession.run(None, preparedDataOnnxRuntime)[0]
+                segArrayRefinedTorch     = torch.tensor(segArrayRefinedNumpy)
+                segArrayRefinedNumpy     = segArrayRefinedNumpy[0,0]
 
     except:
         traceback.print_exc()
         if MODE_DEBUG: pdb.set_trace()
 
     return segArrayRefinedTorch, segArrayRefinedNumpy
+
+def doInference(model, ortSession, preparedDataTorch):
+
+    segArrayRefinedNumpy = None
+    segArrayRefinedTorch = None
+    try:
+        if model is not None:
+            if ORT_SESSION is None:
+                segArrayRefinedTorch  = model(preparedDataTorch)
+                segArrayRefinedTorch  = torch.sigmoid(segArrayRefinedTorch).detach()
+                segArrayRefinedTorch[segArrayRefinedTorch <= 0.5] = 0
+                segArrayRefinedTorch[segArrayRefinedTorch > 0.5] = 1
+                segArrayRefinedNumpy = segArrayRefinedTorch.cpu().numpy()[0,0]
+            else:
+                preparedDataOnnx = MODEL.adapt_torch_inputs_to_onnx(preparedDataTorch)
+                preparedDataOnnxRuntime = {k.name: to_numpy(v) for k, v in zip(ORT_SESSION.get_inputs(), preparedDataOnnx)}
+                segArrayRefinedOnnxRuntime = ORT_SESSION.run(None, preparedDataOnnxRuntime)
+                pdb.set_trace()
+
+    except:
+        traceback.print_exc()
+        if MODE_DEBUG: pdb.set_trace()
+
+    return segArrayRefinedTorch, segArrayRefinedNumpy
+
+def convertToOnnx(model, modelPathOnnx):
+
+    try:
+        
+        torch_input = torch.randn(SHAPE_TENSOR)
+        onnx_program = torch.onnx.dynamo_export(model, torch_input)
+        onnx_program.save(str(modelPathOnnx))
+
+    except:
+        traceback.print_exc()
+        pdb.set_trace()
+
+def to_numpy(tensor):
+    return tensor.detach().cpu().numpy() if tensor.requires_grad else tensor.cpu().numpy()
 
 #################################################################
 #                           DCM SERVER
@@ -887,7 +1035,7 @@ def plotData(ctArray, ptArray, gtArray, predArray, refineArray=None, sliceId=Non
         import matplotlib.colors
         import skimage.morphology
         import matplotlib.pyplot as plt
-        warnings.filterwarnings("ignore", category=UserWarning)
+        
 
         # Step 0 - Define constants
         rotAxial    = lambda x: x
@@ -1085,6 +1233,8 @@ SESSIONSGLOBAL = {}
 DCMCLIENT      = None
 MODEL          = None
 DEVICE         = None
+ORT_SESSION    = None
+LOAD_ONNX      = False
 
 @asynccontextmanager
 async def lifespan(app: fastapi.FastAPI):
@@ -1092,16 +1242,20 @@ async def lifespan(app: fastapi.FastAPI):
     ################################################################## Step 1 - On startup
     global DEVICE
     global MODEL
+    global ORT_SESSION
+    global LOAD_ONNX
     DEVICE = getTorchDevice()
     
     ######################## Experiment-wise settings ########################
     if 1:
         expName   = 'UNetv1__DICE-LR1e3__Class1__Trial1'
         epoch     = 100
-        modelType = KEY_UNET_V1
+        modelType = KEY_UNET_V1 # type == <class 'monai.networks.nets.unet.UNet'>
         DEVICE    = torch.device('cpu')
+        loadOnnx  = False
 
-    MODEL = loadModelUsingUserPath(DEVICE, expName, epoch, modelType)
+    MODEL, ORT_SESSION = loadModelUsingUserPath(DEVICE, expName, epoch, modelType, loadOnnx)
+    LOAD_ONNX = loadOnnx
 
     yield
     
@@ -1165,12 +1319,14 @@ async def prepare(payload: PayloadPrepare, request: starlette.requests.Request):
                         segArrayGT, segArrayPred, patientData = getSEGs(DCMCLIENT, patientData)
                         if segArrayPred is not None:
                             if ctArray.shape == ptArray.shape == segArrayPred.shape:                               
-                                # plotHistograms(ctArray, ctArrayProcessed, ptArray, ptArrayProcessed, segArrayGT, segArrayPred, patientName, patientData[KEY_PATH_SAVE])
-                                # plotUsingThread(plotHistograms, ctArray, ctArrayProcessed, ptArray, ptArrayProcessed, segArrayGT, segArrayPred, patientName, patientData[KEY_PATH_SAVE])
-                                if 1:
+                                if 0:
+                                    plotHistograms(ctArray, ctArrayProcessed, ptArray, ptArrayProcessed, segArrayGT, segArrayPred, patientName, patientData[KEY_PATH_SAVE])
+                                    plotUsingThread(plotHistograms, ctArray, ctArrayProcessed, ptArray, ptArrayProcessed, segArrayGT, segArrayPred, patientName, patientData[KEY_PATH_SAVE])
+                                if 0:
                                     saveFolderPath = patientData[KEY_PATH_SAVE]
                                     plotData(ctArray, ptArray, segArrayGT, segArrayPred, sliceId=94, caseName=patientName, saveFolderPath=saveFolderPath)
                                     plotData(ctArray, ptArray, segArrayGT, segArrayPred, sliceId=69, caseName=patientName, saveFolderPath=saveFolderPath)
+                                
                             else:
                                 raise fastapi.HTTPException(status_code=500, detail="shapes dont match for patientName: {}".format(patientName))
                         else:
@@ -1211,8 +1367,10 @@ async def prepare(payload: PayloadPrepare, request: starlette.requests.Request):
 async def process(payload: PayloadProcess, request: starlette.requests.Request):
 
     global MODEL
+    global ORT_SESSION
     global DCMCLIENT
     global SESSIONSGLOBAL
+    global LOAD_ONNX
 
     try:
         # Step 0 - Init
@@ -1221,6 +1379,7 @@ async def process(payload: PayloadProcess, request: starlette.requests.Request):
         clientIdentifier   = payload.identifier
         processPayloadData = payload.data.dict()
         patientName        = processPayloadData[KEY_CASE_NAME]
+        returnMessagePrefix = "[clientIdentifier={}, patientName={}, loadOnnx={}]".format(clientIdentifier, patientName, LOAD_ONNX)
 
         # Step 1 - Check if session data is available
         dataAlreadyPresent = False
@@ -1258,7 +1417,7 @@ async def process(payload: PayloadProcess, request: starlette.requests.Request):
 
             # Step 4.1 - Get refined segmentation
             tModel               = time.time()
-            segArrayRefinedTorch, segArrayRefinedNumpy = doInference(MODEL, preparedDataTorch)
+            segArrayRefinedTorch, segArrayRefinedNumpy = doInferenceNew(MODEL, ORT_SESSION, preparedDataTorch)
             totalInferenceTime   = time.time() - tModel
             if segArrayRefinedNumpy is None or segArrayRefinedTorch is None:
                 raise fastapi.HTTPException(status_code=500, detail="Error in /process => doInference() failed")
@@ -1287,7 +1446,7 @@ async def process(payload: PayloadProcess, request: starlette.requests.Request):
             
             # Step 5 - Return
             totalProcessTime = time.time() - tStart
-            returnObj = {"status": "[clientIdentifier={}] Data processed for python server. (model={:.4f}s, total={:.4f}s)".format(clientIdentifier, totalInferenceTime, totalProcessTime)}
+            returnObj = {"status": "{} Data processed for python server. (model={:.4f}s, total={:.4f}s)".format(returnMessagePrefix, totalInferenceTime, totalProcessTime)}
             returnObj[KEY_RESPONSE_DATA] = {
                 KEY_STUDY_INSTANCE_UID : preparedData[KEY_SEARCH_OBJ_CT][KEY_STUDY_INSTANCE_UID],
                 KEY_SERIES_INSTANCE_UID: patientData[KEY_SEG_SERIES_INSTANCE_UID],
@@ -1297,16 +1456,16 @@ async def process(payload: PayloadProcess, request: starlette.requests.Request):
             return returnObj
         
         else:
-            raise fastapi.HTTPException(status_code=500, detail=" [clientIdentifier={}, patientName={}] No data present in python server. Reload page.".format(clientIdentifier, patientName))
+            raise fastapi.HTTPException(status_code=500, detail="{} No data present in python server. Reload page.".format(returnMessagePrefix))
     
     except pydantic.ValidationError as e:
         print (' - /process (from {},{}): {}'.format(referer, userAgent, e))
         logging.error(e)
-        raise fastapi.HTTPException(status_code=500, detail=" [clientIdentifier={}, patientName={}] Error in /process => {}".format(clientIdentifier, patientName, str(e)))
+        raise fastapi.HTTPException(status_code=500, detail="{} Error in /process => {}".format(returnMessagePrefix, str(e)))
 
     except Exception as e:
         traceback.print_exc()
-        raise fastapi.HTTPException(status_code=500, detail=" [clientIdentifier={}, patientName={}] Error in /process => {}".format(clientIdentifier, patientName, str(e)))
+        raise fastapi.HTTPException(status_code=500, detail=" {} Error in /process => {}".format(returnMessagePrefix, str(e)))
 
 #################################################################
 #                           MAIN

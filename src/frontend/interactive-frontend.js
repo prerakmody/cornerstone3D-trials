@@ -662,11 +662,15 @@ function setServerStatus(serverMessageId, serverMessageStr){
         serverStatusCircle.style.backgroundColor = 'red';
         serverStatusCircle.style.animation = 'blinker 1s linear infinite';
         serverStatusTextDiv.innerHTML = 'Server Status: <br> - Red: Server is not running <br> - Green: Server is running';
-    }else if (serverMessageId == 1){
+    } else if (serverMessageId == 1){
+        serverStatusCircle.style.backgroundColor = 'red';
+        serverStatusCircle.style.animation = 'none';
+        serverStatusTextDiv.innerHTML = serverMessageStr;
+    }else if (serverMessageId == 2){
         serverStatusCircle.style.backgroundColor = 'green';
         serverStatusCircle.style.animation = 'none';
         serverStatusTextDiv.innerHTML = serverMessageStr;
-    } else if (serverMessageId == 2){
+    } else if (serverMessageId == 3){
         serverStatusCircle.style.backgroundColor = 'red';
         serverStatusCircle.style.animation = 'blinker 1s linear infinite';
         serverStatusTextDiv.innerHTML = serverMessageStr;
@@ -1264,9 +1268,9 @@ async function makeRequestToPrepare(patientIdx){
             requestStatus = true;
             serverStatusCircle.style.backgroundColor = 'green';
             serverStatusCircle.style.animation = 'none';
-            setServerStatus(1, responseJSON.status);
+            setServerStatus(2, responseJSON.status);
         } else {
-            setServerStatus(2, response.status + ': ' + responseJSON.detail);
+            setServerStatus(3, response.status + ': ' + responseJSON.detail);
         }
 
     } catch (error){
@@ -1352,12 +1356,14 @@ async function makeRequestToProcess(points3D, scribbleAnnotationUID){
         } catch (error){
             requestStatus = false;
             console.log('   -- [makeRequestToProcess()] Error: ', error);
+            setServerStatus(2, 'Error in /process: ', error);
             showToast('Python server - /process failed', 3000)
         }
 
     } catch (error){
         requestStatus = false;
         console.log('   -- [makeRequestToProcess()] Error: ', error);
+        setServerStatus(2, 'Error in /process: ', error);
         showToast('Python server - /process failed', 3000)
     }
 
@@ -2443,7 +2449,7 @@ async function setup(patientIdx){
 }
 
 // Some debug params
-global.patientIdx = 27;
+global.patientIdx = 18;
 MODALITY_CONTOURS = MODALITY_SEG
 
 if (process.env.NETLIFY === "true")

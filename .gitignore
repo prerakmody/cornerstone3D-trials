@@ -15,3 +15,5 @@ _experiments/
 .DS_STORE
 .mjs
 *.mjs
+.json
+*.json
