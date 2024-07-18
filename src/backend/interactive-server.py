@@ -17,9 +17,12 @@ import matplotlib.colors
 import skimage.morphology
 import matplotlib.pyplot as plt
 
+import requests
 import pydicom
 import pydicom_seg
+import dicomweb_client
 import SimpleITK as sitk
+logging.getLogger('dicomweb_client').setLevel(logging.ERROR)
 
 import copy
 import typing
@@ -31,13 +34,11 @@ import fastapi.middleware.cors
 import starlette.middleware.sessions
 from contextlib import asynccontextmanager
 
+import asgi_logger 
+import termcolor
+
 import threading
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
-
-import pydicom
-import requests
-import pydicom_seg
-import dicomweb_client
 
 import torch
 import monai
@@ -55,105 +56,106 @@ warnings.filterwarnings("ignore", category=UserWarning, module="torch.onnx")
 
 ######################## KEYS ########################
 
-# Keys - DICOM
-KEY_STUDY_INSTANCE_UID  = 'StudyInstanceUID'
-KEY_SERIES_INSTANCE_UID = 'SeriesInstanceUID'
-KEY_SOP_INSTANCE_UID    = 'SOPInstanceUID'
-KEY_WADO_RS_ROOT        = 'wadoRsRoot'
+if 1:
+    # Keys - DICOM
+    KEY_STUDY_INSTANCE_UID  = 'StudyInstanceUID'
+    KEY_SERIES_INSTANCE_UID = 'SeriesInstanceUID'
+    KEY_SOP_INSTANCE_UID    = 'SOPInstanceUID'
+    KEY_WADO_RS_ROOT        = 'wadoRsRoot'
 
-# Keys - Model load
-KEY_MODEL_STATE_DICT = 'model_state_dict'
-EPOCH_STR            = 'epoch_{:04d}'
+    # Keys - Model load
+    KEY_MODEL_STATE_DICT = 'model_state_dict'
+    EPOCH_STR            = 'epoch_{:04d}'
 
-# Keys - Input + session-data json
-KEY_DATA                 = 'data'
-KEY_TORCH_DATA           = 'torchData'
-KEY_CLIENT_IDENTIFIER    = 'clientIdentifier'
-KEY_DCM_LIST             = 'dcmList'
-KEY_SCRIBBLE_COUNTER     = 'scribbleCounter'
-KEY_DATETIME             = 'dateTime'
-KEY_PATH_SAVE            = 'pathSave'
-KEY_SEG_ARRAY_GT         = 'segArrayGT'
-KEY_SEG_SOP_INSTANCE_UID    = 'segSOPInstanceUID'
-KEY_SEG_SERIES_INSTANCE_UID = 'segSeriesInstanceUID'
-KEY_SEG_ORTHANC_ID          = 'segOrthancID'
+    # Keys - Input + session-data json
+    KEY_DATA                 = 'data'
+    KEY_TORCH_DATA           = 'torchData'
+    KEY_CLIENT_IDENTIFIER    = 'clientIdentifier'
+    KEY_DCM_LIST             = 'dcmList'
+    KEY_SCRIBBLE_COUNTER     = 'scribbleCounter'
+    KEY_DATETIME             = 'dateTime'
+    KEY_PATH_SAVE            = 'pathSave'
+    KEY_SEG_ARRAY_GT         = 'segArrayGT'
+    KEY_SEG_SOP_INSTANCE_UID    = 'segSOPInstanceUID'
+    KEY_SEG_SERIES_INSTANCE_UID = 'segSeriesInstanceUID'
+    KEY_SEG_ORTHANC_ID          = 'segOrthancID'
 
 
-KEY_SCRIBBLE_TYPE = 'scribbleType'
-KEY_SCRIBBLE_FGD = 'fgd'
-KEY_SCRIBBLE_BGD = 'bgd'
-KEY_POINTS_3D    = 'points3D'
+    KEY_SCRIBBLE_TYPE = 'scribbleType'
+    KEY_SCRIBBLE_FGD = 'fgd'
+    KEY_SCRIBBLE_BGD = 'bgd'
+    KEY_POINTS_3D    = 'points3D'
 
-# Keys - For DICOM server
-KEY_CASE_NAME          = 'caseName'
-KEY_SEARCH_OBJ_CT      = 'searchObjCT'
-KEY_SEARCH_OBJ_PET     = 'searchObjPET'
-KEY_SEARCH_OBJ_RTSGT   = 'searchObjRTSGT'
-KEY_SEARCH_OBJ_RTSPRED = 'searchObjRTSPred'
+    # Keys - For DICOM server
+    KEY_CASE_NAME          = 'caseName'
+    KEY_SEARCH_OBJ_CT      = 'searchObjCT'
+    KEY_SEARCH_OBJ_PET     = 'searchObjPET'
+    KEY_SEARCH_OBJ_RTSGT   = 'searchObjRTSGT'
+    KEY_SEARCH_OBJ_RTSPRED = 'searchObjRTSPred'
 
-# Keys - For response json
-KEY_STATUS = 'status'
-KEY_RESPONSE_DATA = 'responseData'
+    # Keys - For response json
+    KEY_STATUS = 'status'
+    KEY_RESPONSE_DATA = 'responseData'
 
-# Keys - For saving
-fileNameForSave = lambda name, counter, viewType, sliceId: '-'.join([str(name), SERIESDESC_SUFFIX_REFINE, str(counter), viewType, 'slice{:03d}'.format(sliceId)])
+    # Keys - For saving
+    fileNameForSave = lambda name, counter, viewType, sliceId: '-'.join([str(name), SERIESDESC_SUFFIX_REFINE, str(counter), viewType, 'slice{:03d}'.format(sliceId)])
 
-# Keys - for extensions
-KEY_EXT_ONNX = '.onnx'
+    # Keys - for extensions
+    KEY_EXT_ONNX = '.onnx'
 
-# Key - for views
-KEY_AXIAL    = 'Axial'
-KEY_CORONAL  = 'Coronal'
-KEY_SAGITTAL = 'Sagittal'
+    # Key - for views
+    KEY_AXIAL    = 'Axial'
+    KEY_CORONAL  = 'Coronal'
+    KEY_SAGITTAL = 'Sagittal'
 
-# Keys - for colors
-COLORSTR_RED   = 'red'
-COLORSTR_GREEN = 'green'
-COLORSTR_PINK  = 'pink'
-COLORSTR_GRAY  = 'gray'
-SAVE_DPI = 200
+    # Keys - for colors
+    COLORSTR_RED   = 'red'
+    COLORSTR_GREEN = 'green'
+    COLORSTR_PINK  = 'pink'
+    COLORSTR_GRAY  = 'gray'
+    SAVE_DPI = 200
 
-# Keys - For platforms
-KEY_PLATFORM_LINUX   = 'Linux'
-KEY_PLATFORM_WINDOWS = 'Windows'
-KEY_PLATFORM_DARWIN  = 'Darwin'
+    # Keys - For platforms
+    KEY_PLATFORM_LINUX   = 'Linux'
+    KEY_PLATFORM_WINDOWS = 'Windows'
+    KEY_PLATFORM_DARWIN  = 'Darwin'
 
-# Vars - For logger
-LOG_CONFIG = None
+    # Vars - For logger
+    LOG_CONFIG = None
 
 ######################## User-defined settings ########################
+if 1:
+    # Settings - Python server
+    HOST       = 'localhost'
+    PORT       = 55000
+    MODE_DEBUG = True
 
-# Settings - Python server
-HOST       = 'localhost'
-PORT       = 55000
-MODE_DEBUG = True
+    # Settings - Model Input
+    SHAPE_TENSOR  = (1, 5, 144, 144, 144)
+    HU_MIN, HU_MAX   = -250, 250
+    SUV_MIN, SUV_MAX = 0   ,25000
 
-# Settings - Model Input
-SHAPE_TENSOR  = (1, 5, 144, 144, 144)
-HU_MIN, HU_MAX   = -250, 250
-SUV_MIN, SUV_MAX = 0   ,25000
+    # Settings - Model Type
+    KEY_UNET_V1          = 'unet_v1'
 
-# Settings - Model Type
-KEY_UNET_V1          = 'unet_v1'
+    # Settings - Distance Map
+    DISTMAP_Z = 3
+    DISTMAP_SIGMA = 0.005
 
-# Settings - Distance Map
-DISTMAP_Z = 3
-DISTMAP_SIGMA = 0.005
+    # Settings - Paths and filenames
+    DIR_THIS        = Path(__file__).parent.absolute() # <root>/src/backend/
+    DIR_SRC         = DIR_THIS.parent.absolute() # <root>/src/
+    DIR_ASSETS      = DIR_SRC / 'assets/'
+    DIR_MAIN        = DIR_SRC.parent.absolute() # <root>/
+    DIR_MODELS      = DIR_MAIN / '_models/'
+    DIR_EXPERIMENTS = DIR_MAIN / '_experiments/'
 
-# Settings - Paths and filenames
-DIR_THIS        = Path(__file__).parent.absolute() # <root>/src/backend/
-DIR_SRC         = DIR_THIS.parent.absolute() # <root>/src/
-DIR_ASSETS      = DIR_SRC / 'assets/'
-DIR_MAIN        = DIR_SRC.parent.absolute() # <root>/
-DIR_MODELS      = DIR_MAIN / '_models/'
-DIR_EXPERIMENTS = DIR_MAIN / '_experiments/'
-
-FILENAME_PATIENTS_UUIDS_JSON = 'patients-uuids.json'
-FILENAME_METAINFO_SEG_JSON   = 'metainfo-segmentation.json'
-SERIESDESC_SUFFIX_REFINE     = 'Series-SEG-Refine'
-CREATORNAME_REFINE           = 'Modys Refinement model: ' + str(KEY_UNET_V1)
-SERIESNUM_REFINE             = 5
-SUFIX_REFINE                 = 'Refine'
+    FILENAME_PATIENTS_UUIDS_JSON = 'patients-uuids.json'
+    FILENAME_METAINFO_SEG_JSON   = 'metainfo-segmentation.json'
+    SERIESDESC_SUFFIX_REFINE     = 'Series-SEG-Refine'
+    CREATORNAME_REFINE           = 'Modys Refinement model: ' + str(KEY_UNET_V1)
+    SERIESNUM_REFINE             = 5
+    SUFIX_REFINE                 = 'Refine'
 
 #################################################################
 #                             UTILS
@@ -1328,8 +1330,26 @@ async def lifespan(app: fastapi.FastAPI):
 
 # Step 1 - App related
 app     = fastapi.FastAPI(lifespan=lifespan)
+# app     = fastapi.FastAPI(lifespan=lifespan, middleware=[fastapi.middleware.Middleware(asgi_logger.AccessLoggerMiddleware)])
+# logging.getLogger("uvicorn").handlers.clear()
 configureFastAPIApp(app)
 setproctitle.setproctitle("interactive-server.py") # set process name
+logger = logging.getLogger(__name__)
+
+@app.middleware("http")
+async def logging_middleware(request: fastapi.Request, call_next: typing.Callable[[fastapi.Request], typing.Awaitable[fastapi.Response]]) -> fastapi.Response:
+    
+    # print (' - [logging_middleware()] request:', request) # type==starlette.middleware.base._CachedRequest
+    start    = time.time()
+    response = await call_next(request)
+    duration = (time.time() - start)
+    source   = termcolor.colored(f"{request.client.host}:{request.client.port}", "blue")
+    resource = termcolor.colored(f"{request.method} {request.url.path}", "green")
+    result   = termcolor.colored(f"{response.status_code}", "yellow")
+    duration = termcolor.colored(f"[{duration:.1f}s]", "magenta")
+    message  = f"{source} => {resource} => {result} {duration}"
+    logger.info(message)
+    return response
 
 # Step 3 - API Endpoints
 @app.post("/prepare")
@@ -1562,6 +1582,7 @@ if __name__ == "__main__":
     # LOG_CONFIG["formatters"]["access"]["fmt"]  = '%(asctime)s [%(name)s] %(levelprefix)s %(client_addr)s - "%(request_line)s" %(status_code)s'
     # uvicorn.run(app, host=HOST, port=PORT, log_config=LOG_CONFIG) # too slow to start :(
     # in-terminal ==> uvicorn interactive-server:app --host localhost --port 55000 --log-config=logConfig.yaml --reload
+    # in-terminal ==> uvicorn interactive-server:app --host localhost --port 55000 --log-config=logConfigCustom.yaml --reload
     
     # [MacOS]
     # os.execvp("uvicorn", ["uvicorn", "interactive-server:app", "--host", HOST, "--port", str(PORT)])
@@ -1577,6 +1598,7 @@ To-Do
 
 2. Other stuff
  - difference between time.time() and time.process_time() 
+ - do /prepare in parallel, otherwise its too time-consuming
 
 3. Update Orthanc questions here
  - https://groups.google.com/g/orthanc-users/c/oUgOW8lctUw?pli=1

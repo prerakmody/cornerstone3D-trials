@@ -1,0 +1,27 @@
+version: 1
+
+formatters:
+    standard:
+        format: "%(asctime)s | %(levelname)s | %(message)s"
+
+handlers:
+    console:
+        class: logging.StreamHandler
+        level: INFO
+        formatter: standard
+
+loggers:
+    # root logger
+    "":
+        level: INFO
+        handlers: [console]
+    
+    # handlers=[] and propagate=false turns this logger off
+    "uvicorn.access":
+        handlers: []
+        propagate: false
+    
+    # having this logger just propagate to root doesn't seem to work
+    "uvicorn.error":
+        handlers: [console]
+        propagate: false
