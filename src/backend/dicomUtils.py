@@ -542,33 +542,39 @@ if __name__ == "__main__":
     DIR_FILE   = Path(__file__).parent.absolute()     # <root>/src/backend/
     DIR_SRC    = DIR_FILE.parent.absolute()           # <root>/src/
     DIR_MAIN   = DIR_SRC.parent.absolute()            # <root>/
-    DIR_ASSETS = DIR_SRC / "assets"                  # <root>/assets/
-    DIR_DATA = DIR_MAIN.parent.absolute() / "_data"   # <pre-root>/_data/
-    
+    DIR_ASSETS = DIR_SRC / "assets"                  # <root>/assets/    
 
+    # On MacOS
     if 1:
-        DIR_CLINIC           = DIR_DATA / "Hecktor2021" / "trial2-CHMR"
-        rotFunc              = lambda x: np.fliplr(np.rot90(x, k=3)) ## NOTE: helps to set right --> left orientation for .dcm files, refer: https://blog.redbrickai.com/blog-posts/introduction-to-dicom-coordinate
-        # rotFunc              = lambda x:x
-        maskMetaInfoPath     = DIR_ASSETS / 'metainfo-segmentation.json'
-        maskGTSeriesDescSuffix   = 'Series-SEG-GT'
-        maskPredSeriesDescSuffix = 'Series-SEG-Pred'
-        maskGTCreatorName        = 'Hecktor2022'
-        maskPredCreatorName      = 'Modys AI model'
+        DIR_DATA = DIR_MAIN.parent.absolute() / "_data"   # <pre-root>/_data/
+        if 1:
+            DIR_CLINIC           = DIR_DATA / "Hecktor2021" / "trial2-CHMR"
+            rotFunc              = lambda x: np.fliplr(np.rot90(x, k=3)) ## NOTE: helps to set right --> left orientation for .dcm files, refer: https://blog.redbrickai.com/blog-posts/introduction-to-dicom-coordinate
+            # rotFunc              = lambda x:x
+            maskMetaInfoPath     = DIR_ASSETS / 'metainfo-segmentation.json'
+            maskGTSeriesDescSuffix   = 'Series-SEG-GT'
+            maskPredSeriesDescSuffix = 'Series-SEG-Pred'
+            maskGTCreatorName        = 'Hecktor2022'
+            maskPredCreatorName      = 'Modys AI model'
 
-        for patientName in ['CHMR001', 'CHMR004', 'CHMR005', 'CHMR011', 'CHMR012', 'CHMR013', 'CHMR014', 'CHMR016', 'CHMR020', 'CHMR021', 'CHMR023', 'CHMR024', 'CHMR025', 'CHMR028', 'CHMR029', 'CHMR030', 'CHMR034', 'CHMR040']:
-        # # for patientName in ['CHMR016']:
-        # # for patientName in ['CHMR040']:
-        # for patientName in ['CHMR004']:
-            pathCT       = DIR_CLINIC / "{}_ct.nii.gz".format(patientName)      # "nrrd_CHMR001_img1.nrrd"
-            pathPT       = DIR_CLINIC / "{}_pt.nii.gz".format(patientName)      # "nrrd_CHMR001_img2.nrrd"
-            pathMask     = DIR_CLINIC / "{}_gtvt.nii.gz".format(patientName)    # ["nrrd_CHMR001_mask.nrrd", "CHMR001_gtvt.nii.gz"]
-            pathMaskPred = DIR_CLINIC / "nrrd_{}_maskpred.nrrd".format(patientName)
+            for patientName in ['CHMR001', 'CHMR004', 'CHMR005', 'CHMR011', 'CHMR012', 'CHMR013', 'CHMR014', 'CHMR016', 'CHMR020', 'CHMR021', 'CHMR023', 'CHMR024', 'CHMR025', 'CHMR028', 'CHMR029', 'CHMR030', 'CHMR034', 'CHMR040']:
+            # # for patientName in ['CHMR016']:
+            # # for patientName in ['CHMR040']:
+            # for patientName in ['CHMR004']:
+                pathCT       = DIR_CLINIC / "{}_ct.nii.gz".format(patientName)      # "nrrd_CHMR001_img1.nrrd"
+                pathPT       = DIR_CLINIC / "{}_pt.nii.gz".format(patientName)      # "nrrd_CHMR001_img2.nrrd"
+                pathMask     = DIR_CLINIC / "{}_gtvt.nii.gz".format(patientName)    # ["nrrd_CHMR001_mask.nrrd", "CHMR001_gtvt.nii.gz"]
+                pathMaskPred = DIR_CLINIC / "nrrd_{}_maskpred.nrrd".format(patientName)
 
-            converterClass = DICOMConverterHecktor(patientName, pathCT, pathPT, pathMask, pathMaskPred
-                                                , rotFunc, maskMetaInfoPath
-                                                , maskGTSeriesDescSuffix, maskPredSeriesDescSuffix, maskGTCreatorName, maskPredCreatorName)
-            converterClass.convertToDICOM()
+                converterClass = DICOMConverterHecktor(patientName, pathCT, pathPT, pathMask, pathMaskPred
+                                                    , rotFunc, maskMetaInfoPath
+                                                    , maskGTSeriesDescSuffix, maskPredSeriesDescSuffix, maskGTCreatorName, maskPredCreatorName)
+                converterClass.convertToDICOM()
+    
+    # On Windows
+    elif 1:
+        pass
+
 
 """
 OHIF in Orthanc

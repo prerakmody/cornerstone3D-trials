@@ -112,6 +112,15 @@ COLORSTR_GREEN = 'green'
 COLORSTR_PINK  = 'pink'
 COLORSTR_GRAY  = 'gray'
 SAVE_DPI = 200
+
+# Keys - For platforms
+KEY_PLATFORM_LINUX   = 'Linux'
+KEY_PLATFORM_WINDOWS = 'Windows'
+KEY_PLATFORM_DARWIN  = 'Darwin'
+
+# Vars - For logger
+LOG_CONFIG = None
+
 ######################## User-defined settings ########################
 
 # Settings - Python server
@@ -153,11 +162,18 @@ SUFIX_REFINE                 = 'Refine'
 def configureFastAPIApp(app):
     
     # app.add_middleware(starlette.middleware.sessions.SessionMiddleware, secret_key="your-secret-key")
-    origins = [f"http://localhost:{port}" for port in range(49000, 60000)]  # Replace with your range of ports
+    
+    # origins = [f"http://localhost:{port}" for port in range(49000, 60000)]  # Replace with your range of ports
+    hostsLocal  = ['127.0.0.1', 'localhost']
+    hostsOthers = [] # ['*']
+    hostsAll    = hostsLocal + hostsOthers 
+    ports       = range(49000, 60000)
+    origins     = [f"http://{host}:{port}" for host in hostsAll for port in ports]
+    # print (' - [configureFastAPIApp()] Allowed origins: ', origins[:100])
+    
     app.add_middleware(
         fastapi.middleware.cors.CORSMiddleware,
-        # allow_origins=["*"],  # Allows all origins
-        allow_origins=origins,
+        allow_origins=origins, #["*"],  # Allows all origins
         allow_credentials=True,
         allow_methods=["*"],  # Allows all methods
         allow_headers=["*"],  # Allows all headers
@@ -167,10 +183,10 @@ def configureFastAPIApp(app):
 
 def getTorchDevice():
     device = torch.device('cpu')
-    if platform.system() == 'Darwin':
+    if platform.system() == KEY_PLATFORM_DARWIN:
         if torch.backends.mps.is_available(): device = torch.device('mps')
-    elif platform.system() in ['Linux', 'Windows']:
-        if torch.backends.cuda.is_available(): device = torch.device('cuda')
+    elif platform.system() in [KEY_PLATFORM_LINUX, KEY_PLATFORM_WINDOWS]:
+        if torch.cuda.is_available(): device = torch.device('cuda')
     else:
         print (' - Unknown platform: {}'.format(platform.system()))
 
@@ -180,17 +196,43 @@ def getTorchDevice():
 
 def getMemoryUsage():
 
-    pid  = os.getpid()
-    proc = psutil.Process(pid)
-    ramUsageInMB  = proc.memory_info().rss / 1024 / 1024 # in MB
-    ramUsageInGB  = ramUsageInMB / 1024 # in GB
+    try:
 
-    if platform.system() == 'Darwin': # need to redo this for MacOS
-        gpuUsageInMB = proc.memory_info().vms / 1024 / 1024
+        # Step 0 - Init
+        pid  = os.getpid()
+        proc = psutil.Process(pid)
 
-    gpuUsageInGB = gpuUsageInMB / 1024   
+        # Step 1 - Get RAM usage
+        ramUsageInMB  = proc.memory_info().rss / 1024 / 1024 # in MB
+        ramUsageInGB  = ramUsageInMB / 1024 # in GB
+
+        # Step 2 - Get GPU usage
+        if platform.system() == KEY_PLATFORM_DARWIN: # need to redo this for MacOS
+            gpuUsageInMB = proc.memory_info().vms / 1024 / 1024
+        elif platform.system() in [KEY_PLATFORM_LINUX, KEY_PLATFORM_WINDOWS]:
+            if torch.cuda.is_available():
+                import nvitop
+                nvDevices = nvitop.Device.all()
+                myNVProcess = None
+                for nvDevice in nvDevices:
+                    nvProcesses = nvDevice.processes()
+                    if pid in nvProcesses:
+                        myNVProcess = nvProcesses[pid]
+                        break
+                if myNVProcess is not None:
+                    gpuUsageInMB = float(myNVProcess.host_memory_human().split('MiB')[0])
+                else:
+                    gpuUsageInMB = 0
+            else:
+                gpuUsageInMB = torch.cuda.memory_allocated() / 1024 / 1024
+
+        gpuUsageInGB = gpuUsageInMB / 1024.0   
+        
+        print (' ** [{}] Memory usage: RAM ({:.2f} GB), GPU ({:.2f} GB)'.format(pid, ramUsageInGB, gpuUsageInGB))
     
-    print (' ** [{}] Memory usage: RAM ({:.2f} GB), GPU ({:.2f} GB)'.format(pid, ramUsageInGB, gpuUsageInGB))
+    except:
+        traceback.print_exc()
+        if MODE_DEBUG: pdb.set_trace()
 
 def getRequestInfo(request):
     userAgent = request.headers.get('user-agent', 'userAgentIsNone')
@@ -249,7 +291,8 @@ class ModelWithSigmoidAndThreshold(torch.nn.Module):
 def sigmoidAndThresholdForward(self, x, threshold=0.5):
     y = self.model(x) # [B,C=1, H,W,D]
     y = torch.sigmoid(y)
-    y = torch.where(y <= threshold, torch.tensor(0.0), torch.tensor(1.0))
+    y = torch.round(y)
+    # y = torch.where(y <= threshold, torch.tensor(0.0), torch.tensor(1.0))
     return y
 
 def getModel(modelName, device=None):
@@ -299,12 +342,12 @@ def loadModel(modelPath, modelName=None, model=None, device=None, loadOnnx=False
                 else:
                     model.load_state_dict(checkpoint)
             
-                # Step 2.2 - Add a) post-processing, b) eval mode, c) move to device and d) warm-up
+                # Step 2.2 - Add steps for a) move to device b) post-processing, c) eval mode and d) warm-up
                 # model = ModelWithSigmoidAndThreshold(model, threshold=0.5) # does not export the unet model weights when exporting to onnx format
-                model.forward = sigmoidAndThresholdForward.__get__(model, monai.networks.nets.UNet)
-                model.eval()
                 if device is not None:
                     model = model.to(device)
+                model.forward = sigmoidAndThresholdForward.__get__(model, monai.networks.nets.UNet)
+                model.eval()
                 randomInput     = torch.randn(SHAPE_TENSOR, device=device)
                 
                 # Step 2.3 - Check for onnx loading
@@ -423,13 +466,13 @@ def doInferenceNew(model, ortSession, preparedDataTorch):
     try:
         if model is not None:
             if ortSession is None:
-                segArrayRefinedTorch  = model(preparedDataTorch)
-                segArrayRefinedNumpy = segArrayRefinedTorch.cpu().numpy()[0,0]
+                segArrayRefinedTorch = model(preparedDataTorch)
+                segArrayRefinedNumpy = to_numpy(segArrayRefinedTorch)[0,0]
             else:
                 preparedDataOnnx         = model.adapt_torch_inputs_to_onnx(preparedDataTorch)
                 preparedDataOnnxRuntime  = {k.name: to_numpy(v) for k, v in zip(ortSession.get_inputs(), preparedDataOnnx)}
                 segArrayRefinedNumpy     = ortSession.run(None, preparedDataOnnxRuntime)[0]
-                segArrayRefinedTorch     = torch.tensor(segArrayRefinedNumpy)
+                segArrayRefinedTorch     = torch.tensor(segArrayRefinedNumpy, device=DEVICE)
                 segArrayRefinedNumpy     = segArrayRefinedNumpy[0,0]
 
     except:
@@ -882,7 +925,7 @@ def makeSEGDicom(maskArray, patientSessionData, viewType, sliceId):
         traceback.print_exc()
         if MODE_DEBUG: pdb.set_trace()
 
-    # print (' - [makeSEGDicom()] Total time for make: {:.4f}s (write={:.4f}s), post: {:.4f}s'.format(tDCMMakeTotal, tWriteTotal, tPostTotal)) 
+    print (' - [makeSEGDicom()] Total time for make: {:.4f}s (write={:.4f}s), post: {:.4f}s'.format(tDCMMakeTotal, tWriteTotal, tPostTotal)) 
     return makeDICOMStatus, patientSessionData
 
 def getPatientUUIDs(patientID):
@@ -988,7 +1031,7 @@ def getScribbleColorMap(cmap, opacityBoolForScribblePoints):
     
     return cmapNew, normNew
 
-def getGaussianDistanceMap(ctArray, points3D, distZ, sigma):
+def getGaussianDistanceMap(ctArrayShape, points3D, distZ, sigma):
 
     gaussianDistanceMap = None
     viewType, sliceId = None, None
@@ -1000,7 +1043,7 @@ def getGaussianDistanceMap(ctArray, points3D, distZ, sigma):
             return gaussianDistanceMap
 
         # Step 1 - Put points3D in an array
-        points3DInVolume = np.zeros_like(ctArray)
+        points3DInVolume = np.zeros(ctArrayShape)
         # points3DInVolume[points3D[:,0], points3D[:,1], points3D[:,2]] = 1
         points3DInVolume[points3D[:,1], points3D[:,0], points3D[:,2]] = 1
 
@@ -1023,15 +1066,17 @@ def getGaussianDistanceMap(ctArray, points3D, distZ, sigma):
 
 def getDistanceMap(preparedDataTorch, scribbleType, points3D, distMapZ, distMapSigma):
 
+    viewType, sliceId = None, None
+
     try:
         
-        ctArray        = np.array(preparedDataTorch[0,0])
-        fgdMap, bgdMap = np.zeros_like(ctArray), np.zeros_like(ctArray)
+        ctArrayShape   = tuple(preparedDataTorch[0,0].shape)
+        fgdMap, bgdMap = np.zeros(ctArrayShape), np.zeros(ctArrayShape)
         if scribbleType == KEY_SCRIBBLE_FGD:
-            fgdMap, viewType, sliceId = getGaussianDistanceMap(ctArray, points3D, distZ=distMapZ, sigma=distMapSigma)
+            fgdMap, viewType, sliceId = getGaussianDistanceMap(ctArrayShape, points3D, distZ=distMapZ, sigma=distMapSigma)
             preparedDataTorch[0,3] = torch.tensor(fgdMap, dtype=torch.float32, device=DEVICE)
         elif scribbleType == KEY_SCRIBBLE_BGD:
-            bgdMap, viewType, sliceId = getGaussianDistanceMap(ctArray, points3D, distZ=distMapZ, sigma=distMapSigma)
+            bgdMap, viewType, sliceId = getGaussianDistanceMap(ctArrayShape, points3D, distZ=distMapZ, sigma=distMapSigma)
             preparedDataTorch[0,4] = torch.tensor(bgdMap, dtype=torch.float32, device=DEVICE)
         else:
             print (' - [process()] Unknown scribbleType: {}'.format(scribbleType))
@@ -1068,7 +1113,8 @@ def plotData(ctArray, ptArray, gtArray, predArray, refineArray=None, sliceId=Non
         points3DDistanceMap = None
         viewType = None
         if points3D is not None:
-            points3DDistanceMap, viewType, sliceId = getGaussianDistanceMap(ctArray, points3D, distZ=DISTMAP_Z, sigma=DISTMAP_SIGMA)
+            ctArrayShape = tuple(ctArray.shape)
+            points3DDistanceMap, viewType, sliceId = getGaussianDistanceMap(ctArrayShape, points3D, distZ=DISTMAP_Z, sigma=DISTMAP_SIGMA)
                     
         # Step 1 - Set up figure
         rows = 3
@@ -1269,8 +1315,8 @@ async def lifespan(app: fastapi.FastAPI):
         expName   = 'UNetv1__DICE-LR1e3__Class1__Trial1'
         epoch     = 100
         modelType = KEY_UNET_V1 # type == <class 'monai.networks.nets.unet.UNet'>
-        DEVICE    = torch.device('cpu')
-        loadOnnx  = True
+        # DEVICE    = torch.device('cpu')
+        loadOnnx  = False
 
     MODEL, ORT_SESSION = loadModelUsingUserPath(DEVICE, expName, epoch, modelType, loadOnnx)
     LOAD_ONNX = loadOnnx
@@ -1310,7 +1356,7 @@ async def prepare(payload: PayloadPrepare, request: starlette.requests.Request):
                                                 , KEY_DCM_LIST: [], KEY_SCRIBBLE_COUNTER: 0
                                                 , KEY_SEG_SOP_INSTANCE_UID: None, KEY_SEG_SERIES_INSTANCE_UID: None
                                                 , KEY_SEG_ORTHANC_ID: None
-                                                , KEY_DATETIME: datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                                                , KEY_DATETIME: datetime.datetime.now().strftime("%Y-%m-%d %H-%M-%S")
                                                 , KEY_SEG_ARRAY_GT: None
                                                 }
             SESSIONSGLOBAL[clientIdentifier][patientName][KEY_PATH_SAVE] = Path(DIR_EXPERIMENTS).joinpath(SESSIONSGLOBAL[clientIdentifier][patientName][KEY_DATETIME] + ' -- ' + clientIdentifier)
@@ -1432,6 +1478,8 @@ async def process(payload: PayloadProcess, request: starlette.requests.Request):
             # Step 3.2 - Get distance map
             tDistMapStart = time.time()
             preparedDataTorch, viewType, sliceId = getDistanceMap(preparedDataTorch, scribbleType, points3D, DISTMAP_Z, DISTMAP_SIGMA)
+            if viewType is None or sliceId is None:
+                raise fastapi.HTTPException(status_code=500, detail="Error in /process => getDistanceMap() failed")
             print (' - [process()] torch.sum(preparedDataTorch, dim=(2,3,4)): ', torch.sum(preparedDataTorch, dim=(2,3,4)))
             tDistMap = time.time() - tDistMapStart
 
@@ -1451,12 +1499,16 @@ async def process(payload: PayloadProcess, request: starlette.requests.Request):
             tMakeSegDCM = time.time() - tMakeSegDCMStart
 
             # Step 4.99 - Plot refined segmentation
-            if 1: 
-                segArrayGT = patientData[KEY_SEG_ARRAY_GT]
-                preparedDataTorchCopy = copy.deepcopy(preparedDataTorch)
-                thread = threading.Thread(target=run_executor_in_thread, args=(plot, preparedDataTorchCopy, segArrayGT, patientName, patientData[KEY_SCRIBBLE_COUNTER], points3D, scribbleType, segArrayRefinedNumpy, patientData[KEY_PATH_SAVE]))
-                thread.daemon = True  # This makes the thread a daemon thread
-                thread.start()
+            if 1:
+                try: 
+                    segArrayGT = patientData[KEY_SEG_ARRAY_GT]
+                    preparedDataNp = copy.deepcopy(to_numpy(preparedDataTorch))
+                    thread = threading.Thread(target=run_executor_in_thread, args=(plot, preparedDataNp, segArrayGT, patientName, patientData[KEY_SCRIBBLE_COUNTER], points3D, scribbleType, segArrayRefinedNumpy, patientData[KEY_PATH_SAVE]))
+                    thread.daemon = True  # This makes the thread a daemon thread
+                    thread.start()
+                except:
+                    traceback.print_exc()
+                    if MODE_DEBUG: pdb.set_trace()
             
             # Step 5 - Update global data
             preparedDataTorch[0,2]      = segArrayRefinedTorch
@@ -1490,13 +1542,30 @@ async def process(payload: PayloadProcess, request: starlette.requests.Request):
         traceback.print_exc()
         raise fastapi.HTTPException(status_code=500, detail=" {} Error in /process => {}".format(returnMessagePrefix, str(e)))
 
+@app.get('/')
+async def root():
+    return {"message": "Hello World. This is Mody's AI interactive server!"}
+
 #################################################################
 #                           MAIN
 #################################################################
 
 if __name__ == "__main__":
 
-    os.execvp("uvicorn", ["uvicorn", "interactive-server:app", "--reload", "--host", HOST, "--port", str(PORT)])
+    # [for all OS]
+    pass
+
+    # [Windows]
+    # Custom logging only works if you run uvicorn.run(app, host='', port='')
+    # LOG_CONFIG = uvicorn.config.LOGGING_CONFIG
+    # LOG_CONFIG["formatters"]["default"]["fmt"] = "%(asctime)s [%(name)s] %(levelprefix)s %(message)s"
+    # LOG_CONFIG["formatters"]["access"]["fmt"]  = '%(asctime)s [%(name)s] %(levelprefix)s %(client_addr)s - "%(request_line)s" %(status_code)s'
+    # uvicorn.run(app, host=HOST, port=PORT, log_config=LOG_CONFIG) # too slow to start :(
+    # in-terminal ==> uvicorn interactive-server:app --host localhost --port 55000 --log-config=logConfig.yaml --reload
+    
+    # [MacOS]
+    # os.execvp("uvicorn", ["uvicorn", "interactive-server:app", "--host", HOST, "--port", str(PORT)])
+    # os.execvp("uvicorn", ["uvicorn", "interactive-server:app", "--reload", "--host", HOST, "--port", str(PORT)])
 
 """
 To-Do
@@ -1508,6 +1577,9 @@ To-Do
 
 2. Other stuff
  - difference between time.time() and time.process_time() 
+
+3. Update Orthanc questions here
+ - https://groups.google.com/g/orthanc-users/c/oUgOW8lctUw?pli=1
 """
 
 """

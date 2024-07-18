@@ -87,7 +87,7 @@ const SEG_TYPE_LABELMAP = 'LABELMAP'
 const SEG_TYPE_CONTOUR  = 'CONTOUR'
 
 // Python server
-const URL_PYTHON_SERVER = 'http://localhost:55000'
+const URL_PYTHON_SERVER = 'http://localhost:55000' //`${window.location.origin}`
 const ENDPOINT_PREPARE  = '/prepare'
 const ENDPOINT_PROCESS  = '/process'
 const KEY_DATA          = 'data'
@@ -700,6 +700,9 @@ const KEY_MODALITY      = 'Modality';
 const KEY_MODALITY_SEG = 'SEG';
 const KEY_SERIES_DESC = 'SeriesDescription';
 
+let orthancHeaders = new Headers();
+orthancHeaders.set('Authorization', 'Basic ' + btoa('orthanc'+ ":" + 'orthanc'));
+
 async function getOrthancPatientIds() {
     let res = {};
 
@@ -790,6 +793,7 @@ async function getOrthancPatientIds() {
         console.error(error);
     }
 
+    console.log(' - [getOrthancPatientIds()] res: ', res);
     return res;
 }
 
@@ -1275,7 +1279,7 @@ async function makeRequestToPrepare(patientIdx){
 
     } catch (error){
         requestStatus = false;
-        setServerStatus(1, 'Error in /process: ', error);
+        setServerStatus(1, 'Error in /process: ' + error);
         console.log('   -- [makeRequestToPrepare()] Error: ', error);
         showToast('Python server - /prepare failed', 3000)
     }
@@ -1313,9 +1317,7 @@ async function makeRequestToProcess(points3D, scribbleAnnotationUID, verbose=fal
             
             // Step 2 - Remove old scribble annotation
             if (verbose) console.log('\n --------------- Removing old annotation ...  ---------------: ', scribbleAnnotationUID)
-            cornerstone3DTools.annotation.state.removeAnnotation(scribbleAnnotationUID);
-            renderNow();
-            await unshowLoaderAnimation();
+            await handleStuffAfterProcessEndpoint(scribbleAnnotationUID);
 
             if (response.status == 200){
                 responseData = responseJSON.responseData    
@@ -1357,22 +1359,31 @@ async function makeRequestToProcess(points3D, scribbleAnnotationUID, verbose=fal
                 showToast(`AI Processing completed in ${totalAIScribbleProcessingSeconds} s`, 3000);
                 console.log('   -- [makeRequestToProcess()] Round-trip AI Processing completed in ', totalAIScribbleProcessingSeconds, ' s with ', totalPostAIScribbleResponseSeconds, ' s post-AI scribble response processing');
             } else {
-                showToast('Python server - /process failed' + responseJSON.detail, 30000)
+                showToast('Python server - /process failed <br/>' + responseJSON.detail, 30000)
+                await handleStuffAfterProcessEndpoint(scribbleAnnotationUID);
             }
 
         } catch (error){
             requestStatus = false;
             console.log('   -- [makeRequestToProcess()] Error: ', error);
             showToast('Python server - /process failed', 3000)
+            await handleStuffAfterProcessEndpoint(scribbleAnnotationUID);
         }
 
     } catch (error){
         requestStatus = false;
         console.log('   -- [makeRequestToProcess()] Error: ', error);
         showToast('Python server - /process failed', 3000)
+        await handleStuffAfterProcessEndpoint(scribbleAnnotationUID);
     }
 
     return {requestStatus, responseData};
+}
+
+async function handleStuffAfterProcessEndpoint(scribbleAnnotationUID){
+    cornerstone3DTools.annotation.state.removeAnnotation(scribbleAnnotationUID);
+    renderNow();
+    await unshowLoaderAnimation();
 }
 
 function getAllPlanFreeHandRoiAnnotations() {

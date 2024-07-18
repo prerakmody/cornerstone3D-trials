@@ -26,12 +26,12 @@ module.exports = smp.wrap({
     },
     setupMiddlewares: function(middlewares, devServer) {
       
-      const endpoints = ['/dicom-web', '/patients', '/studies', '/series', '/instances']; // List your endpoints here
-      endpoints.forEach((endpoint) => {
+      const endpointsOrthanc = ['/dicom-web', '/patients', '/studies', '/series', '/instances']; // List your endpoints here
+      endpointsOrthanc.forEach((endpointOrthanc) => {
         devServer.app.use(
-          endpoint,
+          endpointOrthanc,
           createProxyMiddleware({
-            target: `http://localhost:8042${endpoint}`,
+            target: `http://localhost:8042${endpointOrthanc}`,
             changeOrigin: true,
             onProxyRes: function(proxyRes) {
               proxyRes.headers['Cross-Origin-Opener-Policy'] = 'same-origin';
@@ -40,6 +40,21 @@ module.exports = smp.wrap({
           })
         );
       });
+
+      // const endpointsPython = ['/process', '/prepare']; // List your endpoints here
+      // endpointsPython.forEach((endpointPython) => {
+      //   devServer.app.use(
+      //     endpointPython,
+      //     createProxyMiddleware({
+      //       target: `http://localhost:55000${endpointPython}`,
+      //       changeOrigin: true,
+      //       onProxyRes: function(proxyRes) {
+      //         proxyRes.headers['Cross-Origin-Opener-Policy'] = 'same-origin';
+      //         proxyRes.headers['Cross-Origin-Embedder-Policy'] = 'require-corp';
+      //       },
+      //     })
+      //   );
+      // });
 
       return middlewares;
     },

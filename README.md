@@ -102,28 +102,37 @@
     ```
 
 # Step 3 - To use
-1. Type `npm start` in the terminal
-    - This refers to `package.json` and runs any scripts defined in it
-    - In this case it runs `webpack serve --mode development`
-
-So in total you need two terminals open
-    - One for `npm start`
+1. Open two terminals
     - One for `npx webpack --mode {development,production} --watch`
+    - One for `npm start`
+        - This refers to `package.json` and runs any scripts defined in it
 
 # Step 4 - To setup DICOMWeb (Orthanc) server
 1. Install Orthanc
+    - Find the versions on docker hub for [orthanc-plugins](https://hub.docker.com/r/jodogne/orthanc-plugins/tags) OR [orthancteam](https://hub.docker.com/r/orthancteam/orthanc/tags)/[orthancteam-docker-cookbook](https://orthanc.uclouvain.be/book/users/docker-orthancteam.html#default-configuration): 
     ```bash
-    docker pull jodogne/orthanc-plugins`
-    docker run -p 8042:8042 -p 8081:8081 -v orthanc-config:/etc/orthanc -v orthanc-db:/var/lib/orthanc/db/ -v node-data:/root jodogne/orthanc-plugins
+    docker pull jodogne/orthanc-plugins:1.12.4 OR docker pull orthancteam/orthanc:24.7.3-full
+    docker run -p 8042:8042 -v orthanc-config:/etc/orthanc -v orthanc-db:/var/lib/orthanc/db/ jodogne/orthanc-plugins:1.12.4
     ```
-    - Other useful commands are `docker ps -a` and to enter the container `docker exec -it <container_id> /bin/bash`
+    OR
+    ```bash
+    docker pull docker pull orthancteam/orthanc:24.7.3-full
+    docker run -e OHIF_PLUGIN_ENABLED=true -p 8042:8042 -v orthanc-config:/etc/orthanc -v orthanc-db:/var/lib/orthanc/db/ orthancteam/orthanc:24.7.3-full
+    ```
+        - Here port 8042 is for the dicom server
+        - Other useful commands are `docker ps -a` and to enter the container `docker exec -it <container_id> /bin/bash`
+    - Once you have a terminal open for the container, install apt related packages (its a Debian-Linux v10)
+    ```bash
+    apt-get update
+    apt-get install -y curl lsof vim tree
+    ```
 
 2. Once inside the terminal of the docker container, run
-    - Edit `/etc/orthanc.json`
+    - Edit `/etc/orthanc/orthanc.json`
     ```json
     "AuthenticationEnabled" : false,
     ```
-    - Make `/etc/dicomweb.json`
+    - Make `/etc/orthanc/dicomweb.json`
     ```json
     {
         "DicomWeb" : 
@@ -140,31 +149,41 @@ So in total you need two terminals open
             } 
     }
     ```
-    - Install apt related packages (its a Debian-Linux v10)
-    ```bash
-    apt-get update
-    apt-get install -y curl lsof
-    ```
-    - Install node. Refer [here](https://github.com/nodesource/distributions?tab=readme-ov-file#using-ubuntu-nodejs-22)
-    ```
-    curl -fsSL https://deb.nodesource.com/setup_20.x -o nodesource_setup.sh
-    bash nodesource_setup.sh
-    apt-get install -y nodejs
-    node -v
-    ```
-3. Once orthan and node have been setup, stop the container and restart it
+    - To find a file use: `find / -iname '*orthanc.json*'` 
+3. Once orthanc has been setup, stop the container and restart it
     - `docker stop <container_id>` and `docker start <container_id>`
         - Then perform steps [1](#step-1---to-setup) and [2](#step-2---to-configure) and [3](#step-3---to-use) above for the node application.
-    - Check if both orthanc and node are running
+    - Check if orthanc dicom-web is running
         - within the container: `lsof -i -P -n`
-        - and by visiting `localhost:8081` on your browser 
-    - You can also change orthanc's log verbosity by visiting [http://localhost:8042/ui/app/#/settings](http://localhost:8042/ui/app/#/settings)
+        - and by visiting `localhost:8042` on your browser 
+    - Other stuff
+        - Logging
+            - You can also change orthanc's log verbosity by visiting [http://localhost:8042/ui/app/#/settings](http://localhost:8042/ui/app/#/settings)
+        - Plugins enabled
+            - http://localhost:8042/app/explorer.html#plugins
 
 4. If your docker containeris running as expected, then you can make an image of it
     - `docker commit <container_id> orthanc-node` (will give you a commit id, disregard)
     - `docker tag {commit-ID} {image-name}:{tag}
     - `docker run -p 8042:8042 -p 8081:8081 -v orthanc-config:/etc/orthanc -v orthanc-db:/var/lib/orthanc/db/ -v node-data:/root {image-name}:{tag}` 
-    
+
+----
+
+# Step 5 - For python AI server
+5. For python server
+    - Install packages
+    ```bash
+    pip install pydicom pydicom_seg requests plotext setproctitle
+    pip install fastapi itsdangerous dicomweb_client
+    conda install pytorch==2.3.0 torchvision==0.18.0 pytorch-cuda=12.1 -c pytorch -c nvidia
+    pip install nvitop
+    ```
+    - Initialize server
+    ```bash
+    cd src/backend
+    python interactive-server.py
+    ```
+
 # For dev purposes
  - Data: 
     - ProstateX
