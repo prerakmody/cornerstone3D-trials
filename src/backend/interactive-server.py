@@ -24,6 +24,7 @@ import dicomweb_client
 import SimpleITK as sitk
 logging.getLogger('dicomweb_client').setLevel(logging.ERROR)
 
+import re
 import copy
 import ssl
 import typing
@@ -127,7 +128,7 @@ if 1:
 ######################## User-defined settings ########################
 if 1:
     # Settings - Python server
-    HOST       = '0.0.0.0' # ['localhost', 0.0.0.0]
+    HOST       = 'localhost' # ['localhost', 0.0.0.0]
     PORT       = 55000
     MODE_DEBUG = True
 
@@ -161,36 +162,92 @@ if 1:
     PATH_HOSTCERT = DIR_THIS / 'hostCert.pem'
     PATH_HOSTKEY  = DIR_THIS / 'hostKey.pem'
 
+    # Settings - Dicom Client
+    DCM_SERVER_URL = 'http://localhost:8042/dicom-web'
+
 #################################################################
 #                             UTILS
 #################################################################
+class CustomCORSMiddleware(starlette.middleware.base.BaseHTTPMiddleware):
+    def __init__(self, app, allow_origins=None, allow_credentials=True, allow_methods=None, allow_headers=None):
+        super().__init__(app)
+        self.allow_origins = allow_origins or []
+        self.allow_credentials = allow_credentials
+        self.allow_methods = allow_methods or ["*"]
+        self.allow_headers = allow_headers or ["*"]
+
+    async def dispatch(self, request: fastapi.Request, call_next):
+        origin = request.headers.get("origin")
+        print (' - [CustomCORSMiddleware] Origin: ', origin)
+        if origin and self.is_allowed_origin(origin):
+            response = await call_next(request)
+            response.headers["Access-Control-Allow-Origin"] = origin
+            response.headers["Access-Control-Allow-Credentials"] = str(self.allow_credentials).lower()
+            response.headers["Access-Control-Allow-Methods"] = ",".join(self.allow_methods)
+            response.headers["Access-Control-Allow-Headers"] = ",".join(self.allow_headers)
+            return response
+        return await call_next(request)
+
+    def is_allowed_origin(self, origin):
+        for allowed_origin in self.allow_origins:
+            if re.match(allowed_origin, origin):
+                return True
+        return False
+
+class LogOriginMiddleware:
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope['type'] == 'http':
+            request = fastapi.Request(scope, receive)
+            origin = request.headers.get('origin')
+            logging.info(f"Incoming request origin: {origin}")
+            # print (' - [LogOriginMiddleware] Origin: ', origin)
+        await self.app(scope, receive, send)
 
 def configureFastAPIApp(app):
     
     # app.add_middleware(starlette.middleware.sessions.SessionMiddleware, secret_key="your-secret-key")
     
     # origins = [f"http://localhost:{port}" for port in range(49000, 60000)]  # Replace with your range of ports
-    hostsLocal  = ['127.0.0.1', 'localhost']
-    hostsOthers = ['10.161.139.208'] # ['*']
-    hostsAll    = hostsLocal + hostsOthers 
-    ports       = range(49000, 60000)
-    origins     = [f"http://{host}:{port}" for host in hostsAll for port in ports]
+    hostsLocal   = ['127.0.0.1', 'localhost']
+    # hostsOthers1 = ['10.161.139.208'] # ['*']
+    # hostsOthers2 = ['145.94.122.143']
+    hostsOthers1 = ['10\..*']
+    hostsOthers2 = ['145\..*']
+    hostsAll     = hostsLocal + hostsOthers1 + hostsOthers2
+    ports        = range(49000, 60000)
+    origins      = [f"http://{host}:{port}" for host in hostsAll for port in ports]
+    origins      += [f"https://{host}:{port}" for host in hostsAll for port in ports]
+    # allow_origin_regex = r"^https?://(127\.0\.0\.1|localhost|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|145\.\d{1,3}\.\d{1,3}\.\d{1,3}):\d{4,5}$"
+    allow_origin_regex = (
+        r"^https?://"
+        r"(127\.0\.0\.1|localhost|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|145\.\d{1,3}\.\d{1,3}\.\d{1,3}):"
+        r"(49000|4900[1-9]|490[1-9]\d|49[1-9]\d{2}|4[9-9]\d{3}|5\d{4}|60000)$"
+    )
     # print (' - [configureFastAPIApp()] Allowed origins: ', origins[:100])
     
     app.add_middleware(
         fastapi.middleware.cors.CORSMiddleware,
+        # CustomCORSMiddleware,
         allow_origins=origins, #["*"],  # Allows all origins
         allow_credentials=True,
         allow_methods=["*"],  # Allows all methods
         allow_headers=["*"],  # Allows all headers
+        allow_origin_regex=allow_origin_regex,
     )
+
+    app.add_middleware(LogOriginMiddleware)
 
     return app
 
 def getTorchDevice():
     device = torch.device('cpu')
     if platform.system() == KEY_PLATFORM_DARWIN:
-        if torch.backends.mps.is_available(): device = torch.device('mps')
+        if torch.backends.mps.is_available(): 
+            device = torch.device('mps')
+            device = torch.device('cpu'); print ('\n - [getTorchDevice()] MPS on torch does not seem to work on MacOS. So using cpu.')
     elif platform.system() in [KEY_PLATFORM_LINUX, KEY_PLATFORM_WINDOWS]:
         if torch.cuda.is_available(): device = torch.device('cuda')
     else:
@@ -537,7 +594,8 @@ def getDCMClient(wadoRsRoot):
     try:
 
         # Step 1 - Init
-        client = dicomweb_client.api.DICOMwebClient(url=wadoRsRoot)
+        # client = dicomweb_client.api.DICOMwebClient(url=wadoRsRoot)
+        client = dicomweb_client.api.DICOMwebClient(url=DCM_SERVER_URL)
 
     except:
         traceback.print_exc()
@@ -591,7 +649,9 @@ def getCTArray(client, patientData):
 
     except:
         print (' - [getCTArray()] Could not get CT array for patient: ', patientName)
+        print ('    --------------------------- CT ERROR ---------------------------')
         traceback.print_exc()
+        print ('    --------------------------- CT ERROR ---------------------------')
     
     return ctArrayProcessedBool, ctArray, ctArrayProcessed, patientData
 
@@ -1306,6 +1366,7 @@ DEVICE         = None
 ORT_SESSION    = None
 LOAD_ONNX      = False
 
+## Entry point
 @asynccontextmanager
 async def lifespan(app: fastapi.FastAPI):
 
@@ -1317,12 +1378,19 @@ async def lifespan(app: fastapi.FastAPI):
     DEVICE = getTorchDevice()
     
     ######################## Experiment-wise settings ########################
-    if 1:
+    if 0:
         expName   = 'UNetv1__DICE-LR1e3__Class1__Trial1'
         epoch     = 100
         modelType = KEY_UNET_V1 # type == <class 'monai.networks.nets.unet.UNet'>
         # DEVICE    = torch.device('cpu')
-        loadOnnx  = False
+        loadOnnx  = True
+    
+    elif 1:
+        expName   = 'UNetv1__DICE-LR1e3-B12__Cls1-Pt-Scr__Trial1'
+        epoch     = 100
+        modelType = KEY_UNET_V1 # type == <class 'monai.networks.nets.unet.UNet'>
+        # DEVICE    = torch.device('cpu')
+        loadOnnx  = True
 
     MODEL, ORT_SESSION = loadModelUsingUserPath(DEVICE, expName, epoch, modelType, loadOnnx)
     LOAD_ONNX = loadOnnx
@@ -1568,7 +1636,7 @@ async def process(payload: PayloadProcess, request: starlette.requests.Request):
 
 @app.get('/')
 async def root():
-    return {"message": "Hello World. This is Mody's AI interactive server!"}
+    return {"message": "Hello World. This is Mody's AI interactive server! Valid POST endpoints are /prepare and /process."}
 
 #################################################################
 #                           MAIN
@@ -1594,6 +1662,7 @@ if __name__ == "__main__":
     # [MacOS]
     # os.execvp("uvicorn", ["uvicorn", "interactive-server:app", "--host", HOST, "--port", str(PORT)])
     # os.execvp("uvicorn", ["uvicorn", "interactive-server:app", "--reload", "--host", HOST, "--port", str(PORT)])
+    os.execvp("uvicorn", ["uvicorn", "interactive-server:app", "--reload", "--host", HOST, "--port", str(PORT), "--log-config", "logConfigCustom.yaml", "--ssl-keyfile", "hostKey.pem", "--ssl-certfile", "hostCert.pem"])
 
 """
 To-Do

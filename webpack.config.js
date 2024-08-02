@@ -1,8 +1,12 @@
-const path = require('path');
-const SpeedMeasurePlugin = require("speed-measure-webpack-plugin");
-const smp = new SpeedMeasurePlugin();
+const path                      = require('path');
+const SpeedMeasurePlugin        = require("speed-measure-webpack-plugin");
 const { createProxyMiddleware } = require('http-proxy-middleware');
-const webpack = require('webpack');
+const webpack                   = require('webpack');
+const fs                        = require('fs');
+const smp = new SpeedMeasurePlugin();
+
+const pythonServerCert = fs.readFileSync(path.resolve(__dirname, 'src', 'backend', 'hostCert.pem'));
+const pythonServerKey  = fs.readFileSync(path.resolve(__dirname, 'src', 'backend', 'hostKey.pem'));
 
 module.exports = smp.wrap({
   entry: './src/frontend/interactive-frontend.js',
@@ -24,6 +28,13 @@ module.exports = smp.wrap({
       "Cross-Origin-Opener-Policy": "same-origin",   
       "Cross-Origin-Resource-Policy": "cross-origin",  
     },
+    server: {
+      type: 'https',
+      options: {
+        key: pythonServerKey, // Private key file
+        cert: pythonServerCert, // Certificate file
+      },
+    },
     setupMiddlewares: function(middlewares, devServer) {
       
       const endpointsOrthanc = ['/dicom-web', '/patients', '/studies', '/series', '/instances']; // List your endpoints here
@@ -36,6 +47,26 @@ module.exports = smp.wrap({
             onProxyRes: function(proxyRes) {
               proxyRes.headers['Cross-Origin-Opener-Policy'] = 'same-origin';
               proxyRes.headers['Cross-Origin-Embedder-Policy'] = 'require-corp';
+            },
+          })
+        );
+      });
+
+      // Add middleware for Python server
+      const endpointsPython = ['/prepare', '/process']; // List your endpoints here
+      endpointsPython.forEach((endpointPython) => {
+        devServer.app.use(
+          endpointPython,
+          createProxyMiddleware({
+            target: `https://localhost:55000${endpointPython}`,
+            changeOrigin: false,
+            secure: true, // If you want to accept self-signed certificates
+            ssl: {
+              cert: pythonServerCert,
+              key: pythonServerKey, // Private key file
+            },
+            onProxyReq: (proxyReq, req, res) => {
+              // Additional proxy request configurations if needed
             },
           })
         );
@@ -79,3 +110,10 @@ module.exports = smp.wrap({
     })
   ],
 });
+
+/**
+ * 1) Middleware for Orthanc Server
+ *  - this server I cant configure, so need to use setupMiddlewares
+ * 2) Middleware for Python Server
+ *  - this server I can configure via fastapi stuff, so need for middleware
+ */

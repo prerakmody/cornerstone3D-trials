@@ -14,6 +14,8 @@ import createImageIdsAndCacheMetaData from './helpers/createImageIdsAndCacheMeta
 
 import * as dockerNames from 'docker-names'
 import { vec3 } from 'gl-matrix';
+// import * as fs from 'fs'
+// import * as https from 'https'
 
 const instanceName = dockerNames.getRandomName()
 console.log(' ------------ instanceName: ', instanceName)
@@ -87,6 +89,8 @@ const SEG_TYPE_LABELMAP = 'LABELMAP'
 const SEG_TYPE_CONTOUR  = 'CONTOUR'
 
 // Python server
+// const PYTHON_SERVER_CERT        = fs.readFileSync('../backend/hostCert.pem')
+// const PYTHON_SERVER_HTTPSAGENT = new https.Agent({ ca: PYTHON_SERVER_CERT })
 const URL_PYTHON_SERVER = 'https://localhost:55000' //`${window.location.origin}`
 const ENDPOINT_PREPARE  = '/prepare'
 const ENDPOINT_PROCESS  = '/process'
@@ -1262,7 +1266,13 @@ async function makeRequestToPrepare(patientIdx){
         console.log('   -- [makeRequestToPrepare()] preparePayload: ', preparePayload);
 
         // Step 2 - Make a request to /prepare
-        const response = await fetch(URL_PYTHON_SERVER + ENDPOINT_PREPARE, {method: METHOD_POST, headers: HEADERS_JSON, body: JSON.stringify(preparePayload), credentials: 'include',}); // credentials: 'include' is important for cross-origin requests
+        const response = await fetch(URL_PYTHON_SERVER + ENDPOINT_PREPARE
+            , {
+                method: METHOD_POST, headers: HEADERS_JSON, body: JSON.stringify(preparePayload),
+                credentials: 'include',
+                // agent: PYTHON_SERVER_HTTPSAGENT
+            }
+        ); // credentials: 'include' is important for cross-origin requests
         const responseJSON = await response.json();
         console.log('   -- [makeRequestToPrepare()] response: ', response);
         console.log('   -- [makeRequestToPrepare()] response.json(): ', responseJSON);
