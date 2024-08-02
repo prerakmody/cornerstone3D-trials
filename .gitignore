@@ -17,3 +17,4 @@ _experiments/
 *.mjs
 .json
 *.json
+.pem

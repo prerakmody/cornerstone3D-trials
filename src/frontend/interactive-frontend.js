@@ -87,7 +87,7 @@ const SEG_TYPE_LABELMAP = 'LABELMAP'
 const SEG_TYPE_CONTOUR  = 'CONTOUR'
 
 // Python server
-const URL_PYTHON_SERVER = 'http://localhost:55000' //`${window.location.origin}`
+const URL_PYTHON_SERVER = 'https://localhost:55000' //`${window.location.origin}`
 const ENDPOINT_PREPARE  = '/prepare'
 const ENDPOINT_PROCESS  = '/process'
 const KEY_DATA          = 'data'

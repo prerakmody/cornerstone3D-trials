@@ -25,6 +25,7 @@ import SimpleITK as sitk
 logging.getLogger('dicomweb_client').setLevel(logging.ERROR)
 
 import copy
+import ssl
 import typing
 import fastapi
 import uvicorn
@@ -126,7 +127,7 @@ if 1:
 ######################## User-defined settings ########################
 if 1:
     # Settings - Python server
-    HOST       = 'localhost'
+    HOST       = '0.0.0.0' # ['localhost', 0.0.0.0]
     PORT       = 55000
     MODE_DEBUG = True
 
@@ -157,6 +158,9 @@ if 1:
     SERIESNUM_REFINE             = 5
     SUFIX_REFINE                 = 'Refine'
 
+    PATH_HOSTCERT = DIR_THIS / 'hostCert.pem'
+    PATH_HOSTKEY  = DIR_THIS / 'hostKey.pem'
+
 #################################################################
 #                             UTILS
 #################################################################
@@ -167,7 +171,7 @@ def configureFastAPIApp(app):
     
     # origins = [f"http://localhost:{port}" for port in range(49000, 60000)]  # Replace with your range of ports
     hostsLocal  = ['127.0.0.1', 'localhost']
-    hostsOthers = [] # ['*']
+    hostsOthers = ['10.161.139.208'] # ['*']
     hostsAll    = hostsLocal + hostsOthers 
     ports       = range(49000, 60000)
     origins     = [f"http://{host}:{port}" for host in hostsAll for port in ports]
@@ -1581,8 +1585,11 @@ if __name__ == "__main__":
     # LOG_CONFIG["formatters"]["default"]["fmt"] = "%(asctime)s [%(name)s] %(levelprefix)s %(message)s"
     # LOG_CONFIG["formatters"]["access"]["fmt"]  = '%(asctime)s [%(name)s] %(levelprefix)s %(client_addr)s - "%(request_line)s" %(status_code)s'
     # uvicorn.run(app, host=HOST, port=PORT, log_config=LOG_CONFIG) # too slow to start :(
+    # SSL_CONTEXT = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    # SSL_CONTEXT.load_cert_chain(str(PATH_HOSTCERT), keyfile=str(PATH_HOSTKEY))
+    # uvicorn.run(app, host=HOST, port=PORT, ssl=SSL_CONTEXT) 
     # in-terminal ==> uvicorn interactive-server:app --host localhost --port 55000 --log-config=logConfig.yaml --reload
-    # in-terminal ==> uvicorn interactive-server:app --host localhost --port 55000 --log-config=logConfigCustom.yaml --reload
+    # in-terminal ==> uvicorn interactive-server:app --host localhost --port 55000 --log-config=logConfigCustom.yaml --reload --ssl-keyfile hostKey.pem --ssl-certfile hostCert.pem
     
     # [MacOS]
     # os.execvp("uvicorn", ["uvicorn", "interactive-server:app", "--host", HOST, "--port", str(PORT)])
