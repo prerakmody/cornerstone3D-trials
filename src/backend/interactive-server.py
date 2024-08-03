@@ -36,7 +36,6 @@ import fastapi.middleware.cors
 import starlette.middleware.sessions
 from contextlib import asynccontextmanager
 
-import asgi_logger 
 import termcolor
 
 import threading
@@ -55,6 +54,7 @@ import onnxruntime
 
 warnings.filterwarnings("ignore", category=UserWarning)
 warnings.filterwarnings("ignore", category=UserWarning, module="torch.onnx")
+logging.getLogger('onnxscript').setLevel(logging.WARNING)
 
 ######################## KEYS ########################
 
@@ -202,6 +202,7 @@ class LogOriginMiddleware:
         if scope['type'] == 'http':
             request = fastapi.Request(scope, receive)
             origin = request.headers.get('origin')
+            print (' ===========================================>>')
             logging.info(f"Incoming request origin: {origin}")
             # print (' - [LogOriginMiddleware] Origin: ', origin)
         await self.app(scope, receive, send)
@@ -214,9 +215,9 @@ def configureFastAPIApp(app):
     hostsLocal   = ['127.0.0.1', 'localhost']
     # hostsOthers1 = ['10.161.139.208'] # ['*']
     # hostsOthers2 = ['145.94.122.143']
-    hostsOthers1 = ['10\..*']
-    hostsOthers2 = ['145\..*']
-    hostsAll     = hostsLocal + hostsOthers1 + hostsOthers2
+    # hostsOthers1 = ['10\..*']
+    # hostsOthers2 = ['145\..*']
+    hostsAll     = hostsLocal # + hostsOthers1 + hostsOthers2
     ports        = range(49000, 60000)
     origins      = [f"http://{host}:{port}" for host in hostsAll for port in ports]
     origins      += [f"https://{host}:{port}" for host in hostsAll for port in ports]
@@ -398,7 +399,8 @@ def loadModel(modelPath, modelName=None, model=None, device=None, loadOnnx=False
             # Step 2.1 - Get checkpoint
             if Path(modelPath).exists():
 
-                checkpoint = torch.load(modelPath, map_location=device)
+                checkpoint = torch.load(modelPath, map_location=device, weights_only=True)
+                print ('\n - [loadModel()] Setting weights_only=True\n')
 
                 if KEY_MODEL_STATE_DICT in checkpoint:
                     model.load_state_dict(checkpoint[KEY_MODEL_STATE_DICT])
@@ -1366,7 +1368,7 @@ DEVICE         = None
 ORT_SESSION    = None
 LOAD_ONNX      = False
 
-## Entry point
+## -------------------------------------------------->>> Entry point
 @asynccontextmanager
 async def lifespan(app: fastapi.FastAPI):
 
@@ -1402,8 +1404,6 @@ async def lifespan(app: fastapi.FastAPI):
 
 # Step 1 - App related
 app     = fastapi.FastAPI(lifespan=lifespan)
-# app     = fastapi.FastAPI(lifespan=lifespan, middleware=[fastapi.middleware.Middleware(asgi_logger.AccessLoggerMiddleware)])
-# logging.getLogger("uvicorn").handlers.clear()
 configureFastAPIApp(app)
 setproctitle.setproctitle("interactive-server.py") # set process name
 logger = logging.getLogger(__name__)
@@ -1678,6 +1678,9 @@ To-Do
 
 3. Update Orthanc questions here
  - https://groups.google.com/g/orthanc-users/c/oUgOW8lctUw?pli=1
+
+4. Start logging interactions in a separate folders
+5. Test out network access on LUMC servers.
 """
 
 """

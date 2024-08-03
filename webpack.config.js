@@ -8,6 +8,17 @@ const smp = new SpeedMeasurePlugin();
 const pythonServerCert = fs.readFileSync(path.resolve(__dirname, 'src', 'backend', 'hostCert.pem'));
 const pythonServerKey  = fs.readFileSync(path.resolve(__dirname, 'src', 'backend', 'hostKey.pem'));
 
+const HOST = '0.0.0.0' // to allow access from other devices on the same network
+// const HOST = 'localhost' // to allow access only from the same device
+const PORT = 50000
+
+const NODEJS_SERVER_OPTIONS = {type: 'https', options: { key: pythonServerKey, cert: pythonServerCert }}
+// const NODEJS_SERVER_OPTIONS = {type: 'http'} // with http, you will get a CORS issue when you access the node server on other networked machines
+let SSL_ENABLED = false;
+if (NODEJS_SERVER_OPTIONS.type === 'https') {
+  SSL_ENABLED = true;
+}
+
 module.exports = smp.wrap({
   entry: './src/frontend/interactive-frontend.js',
   output: {
@@ -18,8 +29,8 @@ module.exports = smp.wrap({
   devServer: {
     static: path.join(__dirname, 'dist'),
     compress: true,
-    host: '0.0.0.0', // to allow access from other devices on the same network
-    port: 50000,
+    host: HOST, 
+    port: PORT,
     // hot: true,
     client: {overlay: false,},
     headers: {
@@ -28,13 +39,7 @@ module.exports = smp.wrap({
       "Cross-Origin-Opener-Policy": "same-origin",   
       "Cross-Origin-Resource-Policy": "cross-origin",  
     },
-    server: {
-      type: 'https',
-      options: {
-        key: pythonServerKey, // Private key file
-        cert: pythonServerCert, // Certificate file
-      },
-    },
+    server: NODEJS_SERVER_OPTIONS,
     setupMiddlewares: function(middlewares, devServer) {
       
       const endpointsOrthanc = ['/dicom-web', '/patients', '/studies', '/series', '/instances']; // List your endpoints here
@@ -110,6 +115,27 @@ module.exports = smp.wrap({
     })
   ],
 });
+
+const os = require('os');
+// Function to get the IP address
+function getIPAddress() {
+  const interfaces = os.networkInterfaces();
+  for (let iface in interfaces) {
+      for (let alias of interfaces[iface]) {
+          if (alias.family === 'IPv4' && !alias.internal) {
+              return alias.address;
+          }
+      }
+  }
+  return '0.0.0.0';
+}
+
+console.log('\n ======================================\n');
+console.log(` --> Server running at ${NODEJS_SERVER_OPTIONS.type}://${getIPAddress()}:${PORT}/ (SSL_ENABLED: ${SSL_ENABLED})`);
+console.log('   --> Make sure to remove addBlockers! (avoids the net::ERR_BLOCKED_BY_CLIENT issue)')
+console.log('   --> Make sure to allow self-signed certificates! (avoids the net::ERR_CERT_AUTHORITY_INVALID issue)')
+console.log('   --> Try to set chrome://flags/#allow-insecure-localhost to Enabled !! (avoids the net::ERR_CERT_COMMON_NAME_INVALID issue in Chrome/Edge)')
+console.log('\n ======================================\n');
 
 /**
  * 1) Middleware for Orthanc Server

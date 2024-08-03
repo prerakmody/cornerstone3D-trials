@@ -16,6 +16,7 @@ import * as dockerNames from 'docker-names'
 import { vec3 } from 'gl-matrix';
 // import * as fs from 'fs'
 // import * as https from 'https'
+// import os from 'os'; // Module not found: Error: Can't resolve 'os' in '/Users/prerakmody/Documents/Work/HCAI/Code/Project3-InteractiveRefinement/visualizer/src/frontend'
 
 const instanceName = dockerNames.getRandomName()
 console.log(' ------------ instanceName: ', instanceName)
