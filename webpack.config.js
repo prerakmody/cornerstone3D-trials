@@ -3,10 +3,13 @@ const SpeedMeasurePlugin        = require("speed-measure-webpack-plugin");
 const { createProxyMiddleware } = require('http-proxy-middleware');
 const webpack                   = require('webpack');
 const fs                        = require('fs');
+
+const HtmlWebpackPlugin = require('html-webpack-plugin');
+
 const smp = new SpeedMeasurePlugin();
 
-const pythonServerCert = fs.readFileSync(path.resolve(__dirname, 'src', 'backend', 'hostCert.pem'));
-const pythonServerKey  = fs.readFileSync(path.resolve(__dirname, 'src', 'backend', 'hostKey.pem'));
+const pythonServerCert = fs.readFileSync(path.resolve(__dirname, 'src', 'assets', 'hostCert.pem'));
+const pythonServerKey  = fs.readFileSync(path.resolve(__dirname, 'src', 'assets', 'hostKey.pem'));
 
 const HOST_NODEJS = '0.0.0.0' // to allow access from other devices on the same network
 // const HOST = 'localhost' // to allow access only from the same device
@@ -115,7 +118,10 @@ module.exports = smp.wrap({
     new webpack.DefinePlugin({
       'process.env.NETLIFY': JSON.stringify(process.env.NETLIFY), // to use dicoms from https://d3t6nz73ql33tx.cloudfront.net/dicomweb when on netlify
       'process.env.CONTEXT': JSON.stringify(process.env.CONTEXT),
-    })
+    }),
+    // new HtmlWebpackPlugin({
+    //   template: './src/frontend/index.html',
+    // }),
   ],
 });
 

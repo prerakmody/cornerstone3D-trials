@@ -14,9 +14,10 @@ import createImageIdsAndCacheMetaData from './helpers/createImageIdsAndCacheMeta
 
 import * as dockerNames from 'docker-names'
 import { vec3 } from 'gl-matrix';
-// import * as fs from 'fs'
-// import * as https from 'https'
-// import os from 'os'; // Module not found: Error: Can't resolve 'os' in '/Users/prerakmody/Documents/Work/HCAI/Code/Project3-InteractiveRefinement/visualizer/src/frontend'
+import * as chart from 'chart.js';
+
+window.Chart = chart.Chart
+chart.Chart.register(chart.BarController, chart.BarElement, chart.BarElement, chart.CategoryScale, chart.LinearScale);
 
 const instanceName = dockerNames.getRandomName()
 console.log(' ------------ instanceName: ', instanceName)
@@ -479,7 +480,7 @@ async function otherHTMLElements(){
     otherButtonsDiv.style.display = 'flex';
     otherButtonsDiv.style.flexDirection = 'row';
 
-    // Step 2.0 - Reset view button
+    ///////////////////////////////////////////////////////////////////////////////////// Step 2.0 - Reset view button
     const resetViewButton = document.createElement('button');
     resetViewButton.id = 'resetViewButton';
     resetViewButton.innerHTML = 'Reset View';
@@ -487,7 +488,7 @@ async function otherHTMLElements(){
         resetView();
     });
 
-    // Step 3.0 - Show PET button
+    ///////////////////////////////////////////////////////////////////////////////////// Step 3.1 - Show PET button
     const showPETButton = document.createElement('button');
     showPETButton.id = 'showPETButton';
     showPETButton.innerHTML = 'Show PET';
@@ -519,7 +520,81 @@ async function otherHTMLElements(){
         }
     });
 
-    // Step 4.0 - Show hoverelements
+    ///////////////////////////////////////////////////////////////////////////////////// hover functionality
+    const histContainer = document.createElement('div');
+    histContainer.id = 'histContainer';
+    histContainer.style.display = 'none';
+    histContainer.style.position = 'absolute';
+    histContainer.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
+    histContainer.zIndex = '1002'; // Ensure zIndex is a string
+
+    const histCanvas = document.createElement('canvas');
+    histCanvas.id = 'histCanvas';
+    histCanvas.width = 200;
+    histCanvas.height = 200;
+    histContainer.appendChild(histCanvas);  
+
+    // Sample data for the histogram
+    const dataList = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100];
+
+    // Create the histogram using Chart.js
+    document.addEventListener('DOMContentLoaded', () => {
+        console.log(chart)
+        console.log('DOMContentLoaded!!!!!!!!!!!!!!!!!');
+        console.log(histCanvas)
+        const ctx = histCanvas.getContext('2d');
+        console.log(ctx)    
+        const histogramChart = new chart.Chart(ctx, {
+            // type: 'bar',
+            // data: {
+            //     labels: dataList.map((_, index) => `Bin ${index + 1}`),
+            //     datasets: [{
+            //         label: 'Sample Data',
+            //         data: dataList,
+            //         backgroundColor: 'rgba(75, 192, 192, 0.2)',
+            //         borderColor: 'rgba(75, 192, 192, 1)',
+            //         borderWidth: 1
+            //     }]
+            // },
+            // options: {
+            //     scales: {
+            //         y: {
+            //             beginAtZero: true
+            //         }
+            //     }
+            // }
+            type: 'bar',
+            data: {
+            labels: ['Red', 'Blue', 'Yellow', 'Green', 'Purple', 'Orange'],
+            datasets: [{
+                label: '# of Votes',
+                data: [12, 19, 3, 5, 2, 3],
+                borderWidth: 1
+            }]
+            },
+            options: {
+                scales: {
+                    y: {
+                    beginAtZero: true
+                    }
+                }
+            }
+        });
+    });
+
+    showPETButton.addEventListener('mouseover', (event) => {
+        console.log('showing histogram');
+        histContainer.style.display = 'block';
+        histContainer.style.left = `${event.pageX + 10}px`;
+        histContainer.style.top = `${event.pageY + 10}px`;
+    });
+
+    showPETButton.addEventListener('mouseout', () => {
+        console.log('hiding histogram');    
+        histContainer.style.display = 'none';
+    });
+
+    ///////////////////////////////////////////////////////////////////////////////////// Step 4.0 - Show hoverelements
     // const mouseHoverDiv = document.createElement('div');
     // mouseHoverDiv.id = 'mouseHoverDiv';
     const mouseHoverDiv = document.createElement('div');
@@ -574,7 +649,7 @@ async function otherHTMLElements(){
     mouseHoverDiv.appendChild(ctValueHTML);
     mouseHoverDiv.appendChild(ptValueHTML);
 
-    // Step 5 - Create dropdown for case selection
+    ///////////////////////////////////////////////////////////////////////////////////// Step 5 - Create dropdown for case selection
     const caseSelectionHTML     = document.createElement('select');
     caseSelectionHTML.id        = 'caseSelection';
     caseSelectionHTML.innerHTML = 'Case Selection';
@@ -583,10 +658,11 @@ async function otherHTMLElements(){
         await fetchAndLoadData(global.patientIdx);
     });
 
-    // Step 99 - Add to contentDiv
+    ///////////////////////////////////////////////////////////////////////////////////// Step 99 - Add to contentDiv
     otherButtonsDiv.appendChild(caseSelectionHTML);
     otherButtonsDiv.appendChild(resetViewButton);
     otherButtonsDiv.appendChild(showPETButton);
+    otherButtonsDiv.appendChild(histContainer);
     // otherButtonsDiv.appendChild(mouseHoverDiv);
     interactionButtonsDiv.appendChild(otherButtonsDiv);
 
