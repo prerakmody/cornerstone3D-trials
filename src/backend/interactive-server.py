@@ -1,6 +1,7 @@
 import os
 import pdb
 import time
+import yaml
 import json
 import timeit
 import psutil
@@ -128,7 +129,7 @@ if 1:
 ######################## User-defined settings ########################
 if 1:
     # Settings - Python server
-    HOST       = 'localhost' # ['localhost', 0.0.0.0]
+    HOST       = '0.0.0.0' # ['localhost', 0.0.0.0]
     PORT       = 55000
     MODE_DEBUG = True
 
@@ -159,8 +160,9 @@ if 1:
     SERIESNUM_REFINE             = 5
     SUFIX_REFINE                 = 'Refine'
 
-    PATH_HOSTCERT = DIR_THIS / 'hostCert.pem'
-    PATH_HOSTKEY  = DIR_THIS / 'hostKey.pem'
+    PATH_HOSTCERT  = DIR_ASSETS / 'hostCert.pem'
+    PATH_HOSTKEY   = DIR_ASSETS / 'hostKey.pem'
+    PATH_LOGCONFIG = DIR_ASSETS / 'logConfigCustom.yaml'
 
     # Settings - Dicom Client
     DCM_SERVER_URL = 'http://localhost:8042/dicom-web'
@@ -239,7 +241,7 @@ def configureFastAPIApp(app):
         allow_origin_regex=allow_origin_regex,
     )
 
-    app.add_middleware(LogOriginMiddleware)
+    # app.add_middleware(LogOriginMiddleware)
 
     return app
 
@@ -425,7 +427,7 @@ def loadModel(modelPath, modelName=None, model=None, device=None, loadOnnx=False
                     modelPathOnnx = Path(modelPath).with_suffix(KEY_EXT_ONNX)
                     # Path(modelPathOnnx).unlink(missing_ok=True)
                     if not Path(modelPathOnnx).exists():
-                        convertToOnnx(model, modelPathOnnx)
+                        convertToOnnx(model, modelPathOnnx, randomInput)
                     
                     # Step 2.3.2 - Convert existing model to onnx
                     modelOnnx = torch.onnx.dynamo_export(model, randomInput) # type(loadedModel) == torch.onnx.ONNXProgram
@@ -570,12 +572,11 @@ def doInference(model, ortSession, preparedDataTorch):
 
     return segArrayRefinedTorch, segArrayRefinedNumpy
 
-def convertToOnnx(model, modelPathOnnx):
+def convertToOnnx(model, modelPathOnnx, randomInput):
 
     try:
         
-        torch_input = torch.randn(SHAPE_TENSOR)
-        onnx_program = torch.onnx.dynamo_export(model, torch_input)
+        onnx_program = torch.onnx.dynamo_export(model, randomInput)
         onnx_program.save(str(modelPathOnnx))
 
     except:
@@ -1372,6 +1373,16 @@ LOAD_ONNX      = False
 @asynccontextmanager
 async def lifespan(app: fastapi.FastAPI):
 
+    ################################################################## Step 0 - Init
+    import socket
+    hostname   = socket.gethostname()
+    ip_address = socket.gethostbyname(hostname)
+    print ('\n =========================== [lifespan()] =========================== \n')
+    print(f" - Server ({hostname}) is running on IP: {ip_address}")
+    # checkAssetPaths()
+    print ('\n =========================== [lifespan()] =========================== \n')
+    
+
     ################################################################## Step 1 - On startup
     global DEVICE
     global MODEL
@@ -1387,9 +1398,16 @@ async def lifespan(app: fastapi.FastAPI):
         # DEVICE    = torch.device('cpu')
         loadOnnx  = True
     
-    elif 1:
+    elif 0:
         expName   = 'UNetv1__DICE-LR1e3-B12__Cls1-Pt-Scr__Trial1'
         epoch     = 100
+        modelType = KEY_UNET_V1 # type == <class 'monai.networks.nets.unet.UNet'>
+        # DEVICE    = torch.device('cpu')
+        loadOnnx  = True
+    
+    elif 1:
+        expName   = 'UNetv1__DICE-LR1e3-B12__Cls1-Pt-Scr__Trial2'
+        epoch     = 150
         modelType = KEY_UNET_V1 # type == <class 'monai.networks.nets.unet.UNet'>
         # DEVICE    = torch.device('cpu')
         loadOnnx  = True
@@ -1397,16 +1415,48 @@ async def lifespan(app: fastapi.FastAPI):
     MODEL, ORT_SESSION = loadModelUsingUserPath(DEVICE, expName, epoch, modelType, loadOnnx)
     LOAD_ONNX = loadOnnx
 
+    
     yield
     
     ################################################################## Step 1 - On startup
     print (' - [on_shutdown()] Nothing here!')
 
 # Step 1 - App related
-app     = fastapi.FastAPI(lifespan=lifespan)
+app     = fastapi.FastAPI(lifespan=lifespan, title="FastAPI: Interactive Server Python App")
 configureFastAPIApp(app)
 setproctitle.setproctitle("interactive-server.py") # set process name
 logger = logging.getLogger(__name__)
+
+def checkAssetPaths(verbose=False):
+
+    logBool, certBool, keyBool = False, False, False
+
+    try:
+        
+        # LogConfig
+        if Path(PATH_LOGCONFIG).exists():
+            if verbose: print (' - [checkPath()] logConfig file exists!')
+            logBool = True
+        else:
+            print (' - [checkPath()] logConfig file does not exist!: ', PATH_LOGCONFIG)
+        
+        # Keys
+        if Path(PATH_HOSTCERT).exists():
+            if verbose: print (' - [checkPath()] hostCert file exists!')
+            certBool = True
+        else:
+            print (' - [checkPath()] hostCert file does not exist!: ', PATH_HOSTCERT)
+        
+        if Path(PATH_HOSTKEY).exists():
+            if verbose: print (' - [checkPath()] hostKey file exists!')
+            keyBool = True
+        else:
+            print (' - [checkPath()] hostKey file does not exist!: ', PATH_HOSTKEY)
+
+    except:
+        traceback.print_exc()
+    
+    return logBool and certBool and keyBool
 
 @app.middleware("http")
 async def logging_middleware(request: fastapi.Request, call_next: typing.Callable[[fastapi.Request], typing.Awaitable[fastapi.Response]]) -> fastapi.Response:
@@ -1416,6 +1466,7 @@ async def logging_middleware(request: fastapi.Request, call_next: typing.Callabl
     response = await call_next(request)
     duration = (time.time() - start)
     source   = termcolor.colored(f"{request.client.host}:{request.client.port}", "blue")
+    # source   = (request.headers.get('origin', None))
     resource = termcolor.colored(f"{request.method} {request.url.path}", "green")
     result   = termcolor.colored(f"{response.status_code}", "yellow")
     duration = termcolor.colored(f"[{duration:.1f}s]", "magenta")
@@ -1636,7 +1687,13 @@ async def process(payload: PayloadProcess, request: starlette.requests.Request):
 
 @app.get('/')
 async def root():
-    return {"message": "Hello World. This is Mody's AI interactive server! Valid POST endpoints are /prepare and /process."}
+
+    try:
+        dateStr = datetime.datetime.now().strftime("%Y-%m-%d %H-%M-%S")
+        return {"message": "Hello World. This is Mody's AI interactive server! Valid POST endpoints are /prepare and /process. Time={}".format(dateStr)}
+    except:
+        traceback.print_exc()
+        raise fastapi.HTTPException(status_code=500, detail=" Error in / => {}".format(str(e)))
 
 #################################################################
 #                           MAIN
@@ -1644,25 +1701,27 @@ async def root():
 
 if __name__ == "__main__":
 
-    # [for all OS]
-    pass
+    try:
 
-    # [Windows]
-    # Custom logging only works if you run uvicorn.run(app, host='', port='')
-    # LOG_CONFIG = uvicorn.config.LOGGING_CONFIG
-    # LOG_CONFIG["formatters"]["default"]["fmt"] = "%(asctime)s [%(name)s] %(levelprefix)s %(message)s"
-    # LOG_CONFIG["formatters"]["access"]["fmt"]  = '%(asctime)s [%(name)s] %(levelprefix)s %(client_addr)s - "%(request_line)s" %(status_code)s'
-    # uvicorn.run(app, host=HOST, port=PORT, log_config=LOG_CONFIG) # too slow to start :(
-    # SSL_CONTEXT = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-    # SSL_CONTEXT.load_cert_chain(str(PATH_HOSTCERT), keyfile=str(PATH_HOSTKEY))
-    # uvicorn.run(app, host=HOST, port=PORT, ssl=SSL_CONTEXT) 
-    # in-terminal ==> uvicorn interactive-server:app --host localhost --port 55000 --log-config=logConfig.yaml --reload
-    # in-terminal ==> uvicorn interactive-server:app --host localhost --port 55000 --log-config=logConfigCustom.yaml --reload --ssl-keyfile hostKey.pem --ssl-certfile hostCert.pem
+        if checkAssetPaths(verbose=False):
+            # [for all OS]
+            pass
+
+            # [Windows]
+            if platform.system() in [KEY_PLATFORM_WINDOWS]:
+                logConfig = yaml.safe_load(open(PATH_LOGCONFIG, 'r'))
+                uvicorn.run(f"{Path(__file__).stem}:app", host=HOST, port=PORT, ssl_keyfile=PATH_HOSTKEY, ssl_certfile=PATH_HOSTCERT, log_config=logConfig, reload=True)
+                # in-terminal ==> uvicorn interactive-server:app --host 0.0.0.0 --port 55000 --log-config=logConfigCustom.yaml --ssl-keyfile hostKey.pem --ssl-certfile hostCert.pem --reload 
+            
+            # [MacOS]
+            elif platform.system() in [KEY_PLATFORM_DARWIN, KEY_PLATFORM_LINUX]:
+                # os.execvp("uvicorn", ["uvicorn", "interactive-server:app", "--host", HOST, "--port", str(PORT)])
+                # os.execvp("uvicorn", ["uvicorn", "interactive-server:app", "--reload", "--host", HOST, "--port", str(PORT)])
+                os.execvp("uvicorn", ["uvicorn", "interactive-server:app", "--reload", "--host", HOST, "--port", str(PORT), "--log-config", "logConfigCustom.yaml", "--ssl-keyfile", "hostKey.pem", "--ssl-certfile", "hostCert.pem"])
     
-    # [MacOS]
-    # os.execvp("uvicorn", ["uvicorn", "interactive-server:app", "--host", HOST, "--port", str(PORT)])
-    # os.execvp("uvicorn", ["uvicorn", "interactive-server:app", "--reload", "--host", HOST, "--port", str(PORT)])
-    os.execvp("uvicorn", ["uvicorn", "interactive-server:app", "--reload", "--host", HOST, "--port", str(PORT), "--log-config", "logConfigCustom.yaml", "--ssl-keyfile", "hostKey.pem", "--ssl-certfile", "hostCert.pem"])
+    except KeyboardInterrupt:
+        import sys; sys.exit(1)
+        
 
 """
 To-Do
@@ -1680,7 +1739,7 @@ To-Do
  - https://groups.google.com/g/orthanc-users/c/oUgOW8lctUw?pli=1
 
 4. Start logging interactions in a separate folders
-5. Test out network access on LUMC servers.
+5. [D] Test out network access on LUMC servers.
 """
 
 """

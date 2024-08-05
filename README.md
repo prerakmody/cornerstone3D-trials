@@ -118,6 +118,8 @@
     ```bash
     docker pull docker pull orthancteam/orthanc:24.7.3-full
     docker run -e OHIF_PLUGIN_ENABLED=true -p 8042:8042 -v orthanc-config:/etc/orthanc -v orthanc-db:/var/lib/orthanc/db/ orthancteam/orthanc:24.7.3-full
+    # OR
+    docker run -e DICOM_WEB_PLUGIN_ENABLED=true -e ORTHANC__OHIF__DATA_SOURCE=dicom-web -e OHIF_PLUGIN_ENABLED=true -p 8042:8042 -v orthanc-config:/etc/orthanc -v orthanc-db:/var/lib/orthanc/db/ orthancteam/orthanc:24.7.3
     ```
         - Here port 8042 is for the dicom server
         - Other useful commands are `docker ps -a` and to enter the container `docker exec -it <container_id> /bin/bash`
@@ -173,10 +175,11 @@
 5. For python server
     - Install packages
     ```bash
-    pip install pydicom pydicom_seg requests plotext setproctitle
-    pip install fastapi itsdangerous dicomweb_client
-    conda install pytorch==2.3.0 torchvision==0.18.0 pytorch-cuda=12.1 -c pytorch -c nvidia
-    pip install nvitop
+    conda create --name interactive-refinement python==3.12.4
+    conda activate interactive-refinement
+    conda install pytorch==2.4.0 torchvision==0.19.0 -c pytorch # On windows you may have to conda install cuda-nvtx -c nvidia 
+    python -c "import torch; print (torch.cuda.is_available(), torch.cuda.device_count(), torch.cuda.current_device())"
+    pip install -r requirements.txt # For the rest refer to requirements.txt
     ```
     - Initialize server
     ```bash

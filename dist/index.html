@@ -1,20 +1,78 @@
 <html>
     <head>
+        <link rel="icon" href="./favicon.png" type="image/png">
+
+        <style>
+            .tooltip {
+                position: relative;
+                display: inline-block;
+                cursor: pointer;
+                padding: 5px
+            }
+
+            .tooltip .tooltiptext {
+                visibility: hidden;
+                width: 400px;
+                background-color: #555;
+                color: #fff;
+                text-align: left;
+                border-radius: 5px;
+                padding: 10px;
+                position: absolute;
+                z-index: 1;
+                top: 125%; /* Position above the icon */
+                left: 10%;
+                margin-left: 10px;
+                opacity: 0.;
+                transition: opacity 0.3s;
+                z-index: 2000;
+            }
+
+            .tooltip:hover .tooltiptext {
+                visibility: visible;
+                /* opacity: 1.0; */
+            }
+
+            .glass-effect {
+                background-color: rgba(255, 255, 255, 0.2); /* Semi-transparent background */
+                backdrop-filter: blur(40px); /* Blur effect */
+                -webkit-backdrop-filter: blur(10px); /* For Safari */
+                border-radius: 10px; /* Rounded corners */
+                padding: 20px; /* Padding inside the div */
+                border: 1px solid rgba(255, 255, 255, 0.3); /* Optional border */
+            }
+        </style>
+
     </head>
     <body>
-        <p>
-            <b>Interactions</b>
-            <br/>
-            1. Use scroll to navigate slices of the axial,sagittal and coronal planes. 
-            <br> 
-            2. Use right click to zoom Click on Mouse Scroll to pan. 
-            <br> 
-            3. Draw/Sculpt Contours (or make scribbles) using Left Mouse Button.
-            <br>
-            4. Press the "Enable WindowLevelTool" button to change window of CT scan.
-            <br>
-            
-        </p>
+        <div class="tooltip">
+            <img src="info-icon.png" alt="Info" width="20" height="20">
+            <div class="tooltiptext  glass-effect">
+                <h3>Instructions</h3>
+                <b>Navigation</b>
+                <br/>--------------
+                <br/>
+                1. [Mouse Scroll] Use to navigate slices of the axial, sagittal, and coronal planes.
+                <br> 
+                2. [Mouse Right Click] Use to zoom
+                <br>
+
+                <br/><b>Image Layers</b>
+                <br/>--------------
+                <br/>
+                1. [CT windowing] Press the WindowLevel button and use left-click.
+                <br>
+                
+                <br/><b>Contour Editing</b>
+                <br/>--------------
+                <br/>
+                1. [Manual Brush] Use Circle Brush/Eraser to edit contours
+                <br>
+                2. [AI Scribble] Make foreground/background scribbles to edit contours.
+                <br>
+                
+            </div>
+        </div>
         <div id="interactionButtonsDiv"></div>
         <div id="contentDiv"></div>
         <script src="main.js"></script>

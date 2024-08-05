@@ -8,9 +8,12 @@ const smp = new SpeedMeasurePlugin();
 const pythonServerCert = fs.readFileSync(path.resolve(__dirname, 'src', 'backend', 'hostCert.pem'));
 const pythonServerKey  = fs.readFileSync(path.resolve(__dirname, 'src', 'backend', 'hostKey.pem'));
 
-const HOST = '0.0.0.0' // to allow access from other devices on the same network
+const HOST_NODEJS = '0.0.0.0' // to allow access from other devices on the same network
 // const HOST = 'localhost' // to allow access only from the same device
-const PORT = 50000
+const PORT_NODEJS = 50000
+
+const HOST_PYTHON = '0.0.0.0'
+const PORT_PYTHON = 55000
 
 const NODEJS_SERVER_OPTIONS = {type: 'https', options: { key: pythonServerKey, cert: pythonServerCert }}
 // const NODEJS_SERVER_OPTIONS = {type: 'http'} // with http, you will get a CORS issue when you access the node server on other networked machines
@@ -29,8 +32,8 @@ module.exports = smp.wrap({
   devServer: {
     static: path.join(__dirname, 'dist'),
     compress: true,
-    host: HOST, 
-    port: PORT,
+    host: HOST_NODEJS, 
+    port: PORT_NODEJS,
     // hot: true,
     client: {overlay: false,},
     headers: {
@@ -63,7 +66,7 @@ module.exports = smp.wrap({
         devServer.app.use(
           endpointPython,
           createProxyMiddleware({
-            target: `https://localhost:55000${endpointPython}`,
+            target: `https://${HOST_PYTHON}:${PORT_PYTHON}${endpointPython}`,
             changeOrigin: false,
             secure: true, // If you want to accept self-signed certificates
             ssl: {
@@ -131,10 +134,12 @@ function getIPAddress() {
 }
 
 console.log('\n ======================================\n');
-console.log(` --> Server running at ${NODEJS_SERVER_OPTIONS.type}://${getIPAddress()}:${PORT}/ (SSL_ENABLED: ${SSL_ENABLED})`);
-console.log('   --> Make sure to remove addBlockers! (avoids the net::ERR_BLOCKED_BY_CLIENT issue)')
-console.log('   --> Make sure to allow self-signed certificates! (avoids the net::ERR_CERT_AUTHORITY_INVALID issue)')
-console.log('   --> Try to set chrome://flags/#allow-insecure-localhost to Enabled !! (avoids the net::ERR_CERT_COMMON_NAME_INVALID issue in Chrome/Edge)')
+console.log(` --> Server running at ${NODEJS_SERVER_OPTIONS.type}://${getIPAddress()}:${PORT_NODEJS}/ (SSL_ENABLED: ${SSL_ENABLED})`);
+console.log('   --> [net::ERR_CONNECTION_REFUSED]       Server is inaccessible !!')
+console.log('   --> [net::ERR_BLOCKED_BY_CLIENT]        Make sure to remove addBlockers !!')
+console.log('   --> [net::ERR_CERT_AUTHORITY_INVALID]   Make sure to allow self-signed certificates !!')
+console.log('   --> [net::ERR_CERT_COMMON_NAME_INVALID] Try to set chrome://flags/#allow-insecure-localhost to Enabled !!')
+
 console.log('\n ======================================\n');
 
 /**

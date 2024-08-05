@@ -14,7 +14,8 @@
     "docker-names": "^1.2.1",
     "fs": "^0.0.1-security",
     "http-proxy-middleware": "^3.0.0",
-    "http-server": "^14.1.1"
+    "http-server": "^14.1.1",
+    "lsof": "^0.1.0"
   },
   "name": "visualizer",
   "version": "1.0.0",

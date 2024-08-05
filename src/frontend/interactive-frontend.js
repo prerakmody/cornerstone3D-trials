@@ -92,7 +92,7 @@ const SEG_TYPE_CONTOUR  = 'CONTOUR'
 // Python server
 // const PYTHON_SERVER_CERT        = fs.readFileSync('../backend/hostCert.pem')
 // const PYTHON_SERVER_HTTPSAGENT = new https.Agent({ ca: PYTHON_SERVER_CERT })
-const URL_PYTHON_SERVER = 'https://localhost:55000' //`${window.location.origin}`
+const URL_PYTHON_SERVER = `${window.location.origin}`.replace('50000', '55000') //[`${window.location.origin}`, 'https://localhost:55000']
 const ENDPOINT_PREPARE  = '/prepare'
 const ENDPOINT_PROCESS  = '/process'
 const KEY_DATA          = 'data'
@@ -141,6 +141,7 @@ let orthanDataURLS = []
 
 async function createViewPortsHTML() {
 
+    ////////////////////////////////////////////////////////////////////// Step 0 - Create viewport grid
     const contentDiv = document.getElementById(contentDivId);
 
     const viewportGridDiv = document.createElement('div');
@@ -149,6 +150,7 @@ async function createViewPortsHTML() {
     viewportGridDiv.style.flexDirection = 'row';
     viewportGridDiv.oncontextmenu = (e) => e.preventDefault(); // Disable right click
 
+    ////////////////////////////////////////////////////////////////////// Create viewport elements (Axial, Sagittal, Coronal)
     // Step 1.1 - element for axial view
     const axialDiv = document.createElement('div');
     axialDiv.style.width = '500px';
@@ -167,7 +169,7 @@ async function createViewPortsHTML() {
     coronalDiv.style.height = '500px';
     coronalDiv.id = coronalID;
 
-    // Step 2.1.1 - On the top-left of axialDiv add a div to indicate server status
+    ////////////////////////////////////////////////////////////////////// Step 2 - On the top-left of axialDiv add a div to indicate server status
     axialDiv.style.position = 'relative';
     const serverStatusDiv = document.createElement('div');
     serverStatusDiv.style.position = 'absolute'; // Change to absolute
@@ -223,7 +225,7 @@ async function createViewPortsHTML() {
         serverStatusTextDiv.style.display = 'none';
     });
 
-    // Step 2.2.1 - On the  top-right of axialDiv add a div for the slice number
+    ////////////////////////////////////////////////////////////////////// Step 3.1 - On the  top-right of axialDiv add a div for the slice number
     axialDiv.style.position = 'relative';
     const axialSliceDiv = document.createElement('div');
     axialSliceDiv.style.position = 'absolute'; // Change to absolute
@@ -236,7 +238,7 @@ async function createViewPortsHTML() {
     axialSliceDiv.id = 'axialSliceDiv';
     axialDiv.appendChild(axialSliceDiv);
 
-    // Step 2.2.2 - On the  top-right of sagittalDiv add a div for the slice number
+    ////////////////////////////////////////////////////////////////////// Step 3.2 - On the  top-right of sagittalDiv add a div for the slice number
     sagittalDiv.style.position = 'relative';
     const sagittalSliceDiv = document.createElement('div');
     sagittalSliceDiv.style.position = 'absolute'; // Change to absolute
@@ -249,7 +251,7 @@ async function createViewPortsHTML() {
     sagittalSliceDiv.id = 'sagittalSliceDiv';
     sagittalDiv.appendChild(sagittalSliceDiv);
 
-    // Step 2.2.3 - On the  top-right of coronalDiv add a div for the slice number
+    ////////////////////////////////////////////////////////////////////// Step 3.3 - On the  top-right of coronalDiv add a div for the slice number
     coronalDiv.style.position = 'relative';
     const coronalSliceDiv = document.createElement('div');
     coronalSliceDiv.style.position = 'absolute'; // Change to absolute
@@ -261,7 +263,6 @@ async function createViewPortsHTML() {
     coronalSliceDiv.style.zIndex = '1000'; // Ensure zIndex is a string
     coronalSliceDiv.id = 'coronalSliceDiv';
     coronalDiv.appendChild(coronalSliceDiv);
-
 
     viewportGridDiv.appendChild(axialDiv);
     viewportGridDiv.appendChild(sagittalDiv);
@@ -275,7 +276,7 @@ const {axialDiv, sagittalDiv, coronalDiv, axialSliceDiv, sagittalSliceDiv, coron
 
 async function createContouringHTML() {
 
-    // Step 1.0 - Get interactionButtonsDiv and contouringButtonDiv
+    //////////////////////////////////////////////////////////////////////////// Step 1.0 - Get interactionButtonsDiv and contouringButtonDiv
     const interactionButtonsDiv = document.getElementById(interactionButtonsDivId);
     const contouringButtonDiv = document.createElement('div');
     contouringButtonDiv.id = contouringButtonDivId;
@@ -284,72 +285,117 @@ async function createContouringHTML() {
     contouringButtonInnerDiv.style.display = 'flex';
     contouringButtonInnerDiv.style.flexDirection = 'row';
 
-    // Step 1.1 - Create a button to enable PlanarFreehandContourSegmentationTool
+    ////////////////////////////////////////////////////////////////////////////  Step 2 - Create a button to enable PlanarFreehandContourSegmentationTool
+    // Step 2.1 - Create a button
     const contourSegmentationToolButton = document.createElement('button');
     contourSegmentationToolButton.id = contourSegmentationToolButtonId;
-    contourSegmentationToolButton.innerHTML = 'Enable Circle Brush';
+    contourSegmentationToolButton.title = 'Enable Circle Brush \n (+/- to change brush size)'; // Tooltip text
+
+    // Step 2.2 - Create an image element for the logo
+    const logoBrush = document.createElement('img');
+    logoBrush.src = './logo-brush.png'; // Replace with the actual path to your logo
+    logoBrush.alt = 'Circle Brush';
+    logoBrush.style.width = '50px'; // Adjust the size as needed
+    logoBrush.style.height = '50px'; // Adjust the size as needed
+    logoBrush.style.marginRight = '5px'; // Optional: Add some space between the logo and the text
+    contourSegmentationToolButton.appendChild(logoBrush);
+
+    // Step 2.3 - Create a text node for the button text
+    const buttonText = document.createTextNode('Circle Brush');
+    contourSegmentationToolButton.appendChild(buttonText);
+    contourSegmentationToolButton.style.fontSize = '10px';
+
+    contourSegmentationToolButton.style.display = 'flex';
+    contourSegmentationToolButton.style.flexDirection = 'column';
+    contourSegmentationToolButton.style.alignItems = 'center';
     
-    // Step 1.2 - Create a button to enable SculptorTool
+    ////////////////////////////////////////////////////////////////////////////   Step 3 - Create a button to enable SculptorTool
+    // Step 3.1 - Create a button
     const sculptorToolButton = document.createElement('button');
     sculptorToolButton.id = sculptorToolButtonId;
-    sculptorToolButton.innerHTML = 'Enable Circle Eraser';
+    sculptorToolButton.title = 'Enable Circle Eraser \n (+/- to change brush size)';
+
+    // Step 3.2 - Create an image element for the logo
+    const logoEraser = document.createElement('img');
+    logoEraser.src = './logo-eraser.png'; // Replace with the actual path to your logo
+    logoEraser.alt = 'Circle Eraser';
+    logoEraser.style.width = '50px'; // Adjust the size as needed
+    logoEraser.style.height = '50px'; // Adjust the size as needed
+    sculptorToolButton.style.marginRight = '5px'; // Optional: Add some space between the logo and the text
+    sculptorToolButton.appendChild(logoEraser);
+
+    // Step 3.3 - Create a text node for the button text
+    const sculptorButtonText = document.createTextNode('Circle Eraser');
+    sculptorToolButton.appendChild(sculptorButtonText);
+    sculptorToolButton.style.fontSize = '10px';
+
+    sculptorToolButton.style.display = 'flex';
+    sculptorToolButton.style.flexDirection = 'column';
+    sculptorToolButton.style.alignItems = 'center';
     
-    // Step 1.3 - No contouring button
+    //////////////////////////////////////////////////////////////////////////// Step 4 - No contouring button
+    // Step 4.1 - Create a button
     const windowLevelButton     = document.createElement('button');
     windowLevelButton.id        = windowLevelButtonId;
-    windowLevelButton.innerHTML = 'Enable WindowLevelTool';
+    windowLevelButton.title = 'Enable WindowLevelTool';
 
-    // Step 1.4 - Add show/unshow contour button
-    const showHideContourButton = document.createElement('button');
-    showHideContourButton.id = 'showHideContourButton';
-    showHideContourButton.innerHTML = 'Show/Hide Contour';
-    showHideContourButton.disabled = true;
+    // Step 4.2 - Create an image element for the logo
+    const logoWindowLevel = document.createElement('img');
+    logoWindowLevel.src = './logo-windowing.png'; // Replace with the actual path to your logo
+    logoWindowLevel.alt = 'WindowLevel';
+    logoWindowLevel.style.width = '50px'; // Adjust the size as needed
+    logoWindowLevel.style.height = '50px'; // Adjust the size as needed
+    windowLevelButton.style.marginRight = '5px'; // Optional: Add some space between the logo and the text
+    windowLevelButton.appendChild(logoWindowLevel);
+
+    // Step 4.3 - Create a text node for the button text
+    const windowLevelButtonText = document.createTextNode('WindowLevel');
+    windowLevelButton.appendChild(windowLevelButtonText);
+    windowLevelButton.style.fontSize = '10px';
+
+    windowLevelButton.style.display = 'flex';
+    windowLevelButton.style.flexDirection = 'column'; 
+    windowLevelButton.style.alignItems = 'center';
+
     
-    // Step 1.5 - Add a para
-    const para = document.createElement('p');
-    para.innerHTML = 'Contouring Tools (use +/- to change brushSize):';
-    para.style.margin = '0';
+    ////////////////////////////////////////////////////////////////////////////////// Step 5 - AI scribble button
 
-    // Step 1.6 - Edit main contour vs scribble contour. Add buttons for that
-    const choseContourToEditHTML = document.createElement('div');
-    choseContourToEditHTML.style.display = 'flex';
-    choseContourToEditHTML.style.flexDirection = 'row';
-
-    // Step 1.6.1
-    const paraEdit     = document.createElement('p');
-    paraEdit.innerHTML = 'Edit Predicted Contour:';
-    choseContourToEditHTML.appendChild(paraEdit);
+    // Step 5.1 - Create a div
+    const editBaseContourViaScribbleDiv = document.createElement('div');
+    editBaseContourViaScribbleDiv.style.display = 'flex';
+    editBaseContourViaScribbleDiv.style.flexDirection = 'row';
     
-    // Step 1.6.2
-    const editBaseContourViaBrushButton     = document.createElement('button');
-    editBaseContourViaBrushButton.id        = 'editBaseContourViaBrushButton';
-    editBaseContourViaBrushButton.innerHTML = '(using brush)';
-    editBaseContourViaBrushButton.disabled  = true;
-    choseContourToEditHTML.appendChild(editBaseContourViaBrushButton);
-    
-    // Step 1.6.3
-    const paraEdit2 = document.createElement('p');
-    paraEdit2.innerHTML = ' or ';
-    choseContourToEditHTML.appendChild(paraEdit2);
-
-    // Step 1.6.4
+    // Step 5.2 - Create a button
     const editBaseContourViaScribbleButton     = document.createElement('button');
     editBaseContourViaScribbleButton.id        = 'editBaseContourViaScribbleButton';
-    editBaseContourViaScribbleButton.innerHTML = '(using AI-scribble)';
-    choseContourToEditHTML.appendChild(editBaseContourViaScribbleButton);
-    // editBaseContourViaScribbleButton.addEventListener('click', function() {
-    //     if (scribbleSegmentationUIDs != undefined){
-    //         cornerstone3DTools.segmentation.activeSegmentation.setActiveSegmentationRepresentation(scribbleSegmentationUIDs[0]);
-    //         setButtonBoundaryColor(editBaseContourViaBrushButton, false);
-    //         setButtonBoundaryColor(editBaseContourViaScribbleButton, true);
-    //     }
-    // });
+    editBaseContourViaScribbleButton.title     = 'Enable AI-scribble';
+    editBaseContourViaScribbleDiv.appendChild(editBaseContourViaScribbleButton);
+    
+    // Step 5.3 - Create an image element for the logo
+    const logoScribble = document.createElement('img');
+    logoScribble.src = './logo-scribble.png'; // Replace with the actual path to your logo
+    logoScribble.alt = 'AI-Scribble';
+    logoScribble.style.width = '50px'; // Adjust the size as needed
+    logoScribble.style.height = '50px'; // Adjust the size as needed
+    editBaseContourViaScribbleButton.appendChild(logoScribble);
 
-    // Step 1.5.6 - Add checkboxes for fgd and bgd
+    // Step 5.4 - Create a text node for the button text
+    const editBaseContourViaScribbleButtonText = document.createTextNode('AI-Scribble');
+    editBaseContourViaScribbleButton.appendChild(editBaseContourViaScribbleButtonText);
+    editBaseContourViaScribbleButton.style.fontSize = '10px';
+
+    editBaseContourViaScribbleButton.style.display = 'flex';
+    editBaseContourViaScribbleButton.style.flexDirection = 'column';
+    editBaseContourViaScribbleButton.style.alignItems = 'center';
+
+    ////////////////////////////////////////////////////////////////////////////////// Step 6 - Add checkboxes for fgd and bgd
+    
+    // Step 6.1 - Create div(s) for the checkbox(es)
     const scribbleCheckboxDiv = document.createElement('div');
     scribbleCheckboxDiv.style.display = 'flex';
     scribbleCheckboxDiv.style.flexDirection = 'column';
-    choseContourToEditHTML.appendChild(scribbleCheckboxDiv);
+    scribbleCheckboxDiv.style.justifyContent = 'center';
+    editBaseContourViaScribbleDiv.appendChild(scribbleCheckboxDiv);
 
     const fgdChecBoxParentDiv = document.createElement('div');
     fgdChecBoxParentDiv.style.display = 'flex';
@@ -361,13 +407,14 @@ async function createContouringHTML() {
     bgdCheckboxParentDiv.style.flexDirection = 'row';
     scribbleCheckboxDiv.appendChild(bgdCheckboxParentDiv);
 
-    // Step 1.6.6.1 - Add checkbox for fgd
+    // Step 6.2.1 - Add checkbox for fgd
     const fgdCheckbox = document.createElement('input');
     fgdCheckbox.type = 'checkbox';
     fgdCheckbox.id = 'fgdCheckbox';
     fgdCheckbox.name = 'Foreground Scribble';
     fgdCheckbox.value = 'Foreground Scribble';
     fgdCheckbox.checked = true;
+    fgdCheckbox.style.transform = 'scale(1.5)';
     fgdCheckbox.addEventListener('change', function() {
         if (this.checked){
             bgdCheckbox.checked = false;
@@ -376,7 +423,7 @@ async function createContouringHTML() {
     });
     fgdChecBoxParentDiv.appendChild(fgdCheckbox);
 
-    // Step 1.6.6.2 - Add label for fgd
+    // Step 6.2.2 - Add label for fgd
     const fgdLabel = document.createElement('label');
     fgdLabel.htmlFor = 'fgdCheckbox';
     fgdLabel.style.color = COLOR_RGB_FGD // 'goldenrod'; // '#DAA520', 'rgb(218, 165, 32)'
@@ -384,13 +431,14 @@ async function createContouringHTML() {
     fgdChecBoxParentDiv.appendChild(fgdLabel);
     
 
-    // Step 1.6.6.3 - Add checkbox for bgd
+    // Step 6.3 - Add checkbox for bgd
     const bgdCheckbox = document.createElement('input');
     bgdCheckbox.type = 'checkbox';
     bgdCheckbox.id = 'bgdCheckbox';
     bgdCheckbox.name = 'Background Scribble';
     bgdCheckbox.value = 'Background Scribble';
     bgdCheckbox.checked = false;
+    bgdCheckbox.style.transform = 'scale(1.5)';
     bgdCheckbox.addEventListener('change', function() {
         if (this.checked){
             fgdCheckbox.checked = false;
@@ -399,30 +447,28 @@ async function createContouringHTML() {
     });
     bgdCheckboxParentDiv.appendChild(bgdCheckbox);
 
-    // Step 1.6.6.4 - Add label for bgd
+    // Step 6.4 - Add label for bgd
     const bgdLabel = document.createElement('label');
     bgdLabel.htmlFor = 'bgdCheckbox';
     bgdLabel.style.color = COLOR_RGB_BGD;
     bgdLabel.appendChild(document.createTextNode('Background Scribble'));
     bgdCheckboxParentDiv.appendChild(bgdLabel);
 
-
-    // Step 1.99 - Add buttons to contouringButtonDiv
-    contouringButtonDiv.appendChild(para);
+    ////////////////////////////////////////////////////////////////////////////////////
+    //////////////////////////////////////////////////////////////////////////////////// Step 1.99 - Add buttons to contouringButtonDiv
     contouringButtonDiv.appendChild(contouringButtonInnerDiv);
     contouringButtonInnerDiv.appendChild(contourSegmentationToolButton);
     contouringButtonInnerDiv.appendChild(sculptorToolButton);
     contouringButtonInnerDiv.appendChild(windowLevelButton);
-    contouringButtonInnerDiv.appendChild(showHideContourButton);
-    contouringButtonDiv.appendChild(choseContourToEditHTML);
-
-    // Step 1.6 - Add contouringButtonDiv to contentDiv
+    contouringButtonInnerDiv.appendChild(editBaseContourViaScribbleDiv);
+    
+    // Step 7 - Add contouringButtonDiv to contentDiv
     interactionButtonsDiv.appendChild(contouringButtonDiv); 
     
-    return {windowLevelButton, contourSegmentationToolButton, sculptorToolButton, editBaseContourViaBrushButton, editBaseContourViaScribbleButton, fgdCheckbox, bgdCheckbox};
+    return {windowLevelButton, contourSegmentationToolButton, sculptorToolButton, editBaseContourViaScribbleButton, fgdCheckbox, bgdCheckbox};
 
 }
-const {windowLevelButton, contourSegmentationToolButton, sculptorToolButton, editBaseContourViaBrushButton, editBaseContourViaScribbleButton, fgdCheckbox, bgdCheckbox} = await createContouringHTML();
+const {windowLevelButton, contourSegmentationToolButton, sculptorToolButton, editBaseContourViaScribbleButton, fgdCheckbox, bgdCheckbox} = await createContouringHTML();
 
 async function otherHTMLElements(){
 
@@ -438,12 +484,7 @@ async function otherHTMLElements(){
     resetViewButton.id = 'resetViewButton';
     resetViewButton.innerHTML = 'Reset View';
     resetViewButton.addEventListener('click', function() {
-        const renderingEngine = cornerstone3D.getRenderingEngine(renderingEngineId);
-        [axialID, sagittalID, coronalID].forEach((viewportId) => {
-            const viewportTmp = renderingEngine.getViewport(viewportId);
-            viewportTmp.resetCamera();
-            viewportTmp.render();
-        });
+        resetView();
     });
 
     // Step 3.0 - Show PET button
@@ -479,8 +520,19 @@ async function otherHTMLElements(){
     });
 
     // Step 4.0 - Show hoverelements
+    // const mouseHoverDiv = document.createElement('div');
+    // mouseHoverDiv.id = 'mouseHoverDiv';
     const mouseHoverDiv = document.createElement('div');
+    mouseHoverDiv.style.position = 'absolute'; // Change to absolute
+    mouseHoverDiv.style.bottom = '3';
+    mouseHoverDiv.style.left = '3';
+    mouseHoverDiv.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
+    mouseHoverDiv.style.color = 'white';
+    mouseHoverDiv.style.padding = '5px';
+    mouseHoverDiv.style.zIndex = '1000'; // Ensure zIndex is a string
     mouseHoverDiv.id = 'mouseHoverDiv';
+    mouseHoverDiv.style.fontSize = '10px';
+    axialDiv.appendChild(mouseHoverDiv);
 
     const canvasPosHTML = document.createElement('p');
     const ctValueHTML = document.createElement('p');
@@ -503,7 +555,7 @@ async function otherHTMLElements(){
                     let index3D       = getIndex(volumeCTThis, worldPos) //.forEach((val) => Math.round(val));
                     if (canvasPos != undefined && index3D != undefined && worldPos != undefined){
                         index3D       = index3D.map((val) => Math.round(val));
-                        canvasPosHTML.innerText = `Canvas position: (${viewportIds[index]}) => (${canvasPos[0]}, ${canvasPos[1]}) || (${index3D[0]}, ${index3D[1]}, ${index3D[2]})`;
+                        canvasPosHTML.innerText = `Canvas position: (${viewportIds[index]}) \n ==> (${canvasPos[0]}, ${canvasPos[1]}) || (${index3D[0]}, ${index3D[1]}, ${index3D[2]})`;
                         ctValueHTML.innerText = `CT value: ${getValue(volumeCTThis, worldPos)}`;
                         if (volumeIdPET != undefined){
                             const volumePTThis = cornerstone3D.cache.getVolume(volumeIdPET);
@@ -535,12 +587,21 @@ async function otherHTMLElements(){
     otherButtonsDiv.appendChild(caseSelectionHTML);
     otherButtonsDiv.appendChild(resetViewButton);
     otherButtonsDiv.appendChild(showPETButton);
-    otherButtonsDiv.appendChild(mouseHoverDiv);
+    // otherButtonsDiv.appendChild(mouseHoverDiv);
     interactionButtonsDiv.appendChild(otherButtonsDiv);
 
     return {caseSelectionHTML, resetViewButton, showPETButton};
 }
 const {caseSelectionHTML, showPETButton} = await otherHTMLElements(0);
+
+function resetView(){
+    const renderingEngine = cornerstone3D.getRenderingEngine(renderingEngineId);
+    [axialID, sagittalID, coronalID].forEach((viewportId) => {
+        const viewportTmp = renderingEngine.getViewport(viewportId);
+        viewportTmp.resetCamera();
+        viewportTmp.render();
+    });
+}
 
 async function getLoaderHTML(){
 
@@ -1689,6 +1750,10 @@ async function getToolsAndToolGroup() {
                 showToast(`Brush size: ${newBrushSize}`);
             }
         }
+
+        if (event.key === 'r'){
+            resetView();
+        }
     });
     
 }
@@ -1809,7 +1874,6 @@ function setContouringButtonsLogic(verbose=true){
                     toolGroupContours.setToolPassive(planarFreehandROITool.toolName);  
                     
                     setButtonBoundaryColor(windowLevelButton, true);
-                    setButtonBoundaryColor(editBaseContourViaBrushButton, false);
                     setButtonBoundaryColor(contourSegmentationToolButton, false);
                     setButtonBoundaryColor(sculptorToolButton, false);
                     setButtonBoundaryColor(editBaseContourViaScribbleButton, false);
@@ -1838,7 +1902,6 @@ function setContouringButtonsLogic(verbose=true){
 
                             // Step 3 - Set boundary colors 
                             setButtonBoundaryColor(windowLevelButton, false);
-                            setButtonBoundaryColor(editBaseContourViaBrushButton, true);
                             setButtonBoundaryColor(contourSegmentationToolButton, true);
                             setButtonBoundaryColor(sculptorToolButton, false);
                             setButtonBoundaryColor(editBaseContourViaScribbleButton, false);
@@ -1875,7 +1938,6 @@ function setContouringButtonsLogic(verbose=true){
 
                             // Step 3 - Set boundary colors
                             setButtonBoundaryColor(windowLevelButton, false);
-                            setButtonBoundaryColor(editBaseContourViaBrushButton, true);
                             setButtonBoundaryColor(contourSegmentationToolButton, false);
                             setButtonBoundaryColor(sculptorToolButton, true);
                             setButtonBoundaryColor(editBaseContourViaScribbleButton, false);
@@ -1911,7 +1973,6 @@ function setContouringButtonsLogic(verbose=true){
 
                             // Step 3 - Set boundary colors
                             setButtonBoundaryColor(windowLevelButton, false);
-                            setButtonBoundaryColor(editBaseContourViaBrushButton, false);
                             setButtonBoundaryColor(contourSegmentationToolButton, false);
                             setButtonBoundaryColor(sculptorToolButton, false);
                             setButtonBoundaryColor(editBaseContourViaScribbleButton, true);
@@ -2243,7 +2304,7 @@ async function restart() {
         printHeaderInConsole('Step 0 - restart()');
 
         // Step 1 - Block GUI
-        [windowLevelButton, contourSegmentationToolButton, sculptorToolButton, editBaseContourViaBrushButton, editBaseContourViaScribbleButton, showPETButton].forEach((buttonHTML) => {
+        [windowLevelButton, contourSegmentationToolButton, sculptorToolButton, editBaseContourViaScribbleButton, showPETButton].forEach((buttonHTML) => {
             if (buttonHTML === null) return;
             setButtonBoundaryColor(buttonHTML, false);
             buttonHTML.disabled = true;
@@ -2478,7 +2539,7 @@ async function setup(patientIdx){
 }
 
 // Some debug params
-global.patientIdx = 18;
+global.patientIdx = 13;
 MODALITY_CONTOURS = MODALITY_SEG
 
 if (process.env.NETLIFY === "true")
