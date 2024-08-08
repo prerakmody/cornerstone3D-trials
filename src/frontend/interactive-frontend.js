@@ -14,10 +14,9 @@ import createImageIdsAndCacheMetaData from './helpers/createImageIdsAndCacheMeta
 
 import * as dockerNames from 'docker-names'
 import { vec3 } from 'gl-matrix';
-import * as chart from 'chart.js';
-
-window.Chart = chart.Chart
-chart.Chart.register(chart.BarController, chart.BarElement, chart.BarElement, chart.CategoryScale, chart.LinearScale);
+import Highcharts from 'highcharts';
+import Histogram from 'highcharts/modules/histogram-bellcurve';
+Histogram(Highcharts)
 
 const instanceName = dockerNames.getRandomName()
 console.log(' ------------ instanceName: ', instanceName)
@@ -526,60 +525,141 @@ async function otherHTMLElements(){
     histContainer.style.display = 'none';
     histContainer.style.position = 'absolute';
     histContainer.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
-    histContainer.zIndex = '1002'; // Ensure zIndex is a string
-
-    const histCanvas = document.createElement('canvas');
-    histCanvas.id = 'histCanvas';
-    histCanvas.width = 200;
-    histCanvas.height = 200;
-    histContainer.appendChild(histCanvas);  
+    histContainer.width = '200px';
+    histContainer.height = '200px';
+    histContainer.zIndex = '15002'; // Ensure zIndex is a string
 
     // Sample data for the histogram
     const dataList = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100];
+    const data = [ 3.5, 3, 3.2, 3.1, 3.6, 3.9, 3.4, 3.4, 2.9, 3.1, 3.7, 3.4, 3, 3, 4, 4.4, 3.9, 3.5, 3.8, 3.8, 3.4, 3.7, 3.6, 3.3, 3.4, 3, 3.4, 3.5, 3.4, 3.2, 3.1, 3.4, 4.1, 4.2, 3.1, 3.2, 3.5, 3.6, 3, 3.4, 3.5, 2.3, 3.2, 3.5, 3.8, 3, 3.8, 3.2, 3.7, 3.3, 3.2, 3.2, 3.1, 2.3, 2.8, 2.8, 3.3, 2.4, 2.9, 2.7, 2, 3, 2.2, 2.9, 2.9, 3.1, 3, 2.7, 2.2, 2.5, 3.2, 2.8, 2.5, 2.8, 2.9, 3, 2.8, 3, 2.9, 2.6, 2.4, 2.4, 2.7, 2.7, 3, 3.4, 3.1, 2.3, 3, 2.5, 2.6, 3, 2.6, 2.3, 2.7, 3, 2.9, 2.9, 2.5, 2.8, 3.3, 2.7, 3, 2.9, 3, 3, 2.5, 2.9, 2.5, 3.6, 3.2, 2.7, 3, 2.5, 2.8, 3.2, 3, 3.8, 2.6, 2.2, 3.2, 2.8, 2.8, 2.7, 3.3, 3.2, 2.8, 3, 2.8, 3, 2.8, 3.8, 2.8, 2.8, 2.6, 3, 3.4, 3.1, 3, 3.1, 3.1, 3.1, 2.7, 3.2, 3.3, 3, 2.5, 3, 3.4, 3 ];
 
     // Create the histogram using Chart.js
+    // https://www.highcharts.com/docs/chart-and-series-types/histogram-series
     document.addEventListener('DOMContentLoaded', () => {
-        console.log(chart)
         console.log('DOMContentLoaded!!!!!!!!!!!!!!!!!');
-        console.log(histCanvas)
-        const ctx = histCanvas.getContext('2d');
-        console.log(ctx)    
-        const histogramChart = new chart.Chart(ctx, {
-            // type: 'bar',
-            // data: {
-            //     labels: dataList.map((_, index) => `Bin ${index + 1}`),
-            //     datasets: [{
-            //         label: 'Sample Data',
-            //         data: dataList,
-            //         backgroundColor: 'rgba(75, 192, 192, 0.2)',
-            //         borderColor: 'rgba(75, 192, 192, 1)',
-            //         borderWidth: 1
-            //     }]
+        
+        Highcharts.chart('histContainer', {
+            // chart: {
+            //   type: 'bar'
             // },
-            // options: {
-            //     scales: {
-            //         y: {
-            //             beginAtZero: true
+            // title: {
+            //   text: 'Fruit Consumption'
+            // },
+            // xAxis: {
+            //   categories: ['Apples', 'Bananas', 'Oranges']
+            // },
+            // yAxis: {
+            //   title: {
+            //     text: 'Fruit eaten'
+            //   }
+            // },
+            // series: [{
+            //   name: 'Jane',
+            //   data: [1, 0, 4]
+            // }, {
+            //   name: 'John',
+            //   data: [5, 7, 3]
+            // }]
+
+            // chart: {
+            //     type: 'column'
+            //   },
+            //   title: {
+            //     text: 'Histogram of Sample Data'
+            //   },
+            //   xAxis: {
+            //     title: {
+            //       text: 'Data Value'
+            //     }
+            //   },
+            //   yAxis: {
+            //     title: {
+            //       text: 'Frequency'
+            //     }
+            //   },
+            //   series: [{
+            //     name: 'Frequency',
+            //     data: dataList.reduce((acc, val) => {
+            //       acc[val] = (acc[val] || 0) + 1;
+            //       return acc;
+            //     }, []).map((freq, val) => [val, freq])
+            //   }]
+
+            // title: {
+            //     text: '[WIP] PET SUV Values'
+            // },
+        
+            // xAxis: [{
+            //     title: { text: 'Data' },
+            //     alignTicks: false
+            // }, {
+            //     title: { text: 'Histogram' },
+            //     alignTicks: false,
+            //     opposite: true
+            // }],
+        
+            // yAxis: [{
+            //     title: { text: 'Data' }
+            // }, {
+            //     title: { text: 'Histogram' },
+            //     opposite: true
+            // }],
+        
+            // plotOptions: {
+            //     histogram: {
+            //         accessibility: {
+            //             point: {
+            //                 valueDescriptionFormat: '{index}. {point.x:.3f} to ' +
+            //                     '{point.x2:.3f}, {point.y}.'
+            //             }
             //         }
             //     }
-            // }
-            type: 'bar',
-            data: {
-            labels: ['Red', 'Blue', 'Yellow', 'Green', 'Purple', 'Orange'],
-            datasets: [{
-                label: '# of Votes',
-                data: [12, 19, 3, 5, 2, 3],
-                borderWidth: 1
-            }]
-            },
-            options: {
-                scales: {
-                    y: {
-                    beginAtZero: true
-                    }
-                }
-            }
+            // },
+        
+            // series: [{
+            //     name: 'Histogram',
+            //     type: 'histogram',
+            //     xAxis: 1,
+            //     yAxis: 1,
+            //     baseSeries: 's1',
+            //     zIndex: -1
+            // }, {
+            //     name: 'Data',
+            //     type: 'scatter',
+            //     data: data,
+            //     id: 's1',
+            //     marker: {
+            //         radius: 0
+            //     }
+            // }]
+
+            // chart: {
+            //     type: 'column'
+            //   },
+            //   title: {
+            //     text: 'Histogram of Sample Data'
+            //   },
+            //   xAxis: {
+            //     title: {
+            //       text: 'Data Value'
+            //     }
+            //   },
+            //   yAxis: {
+            //     title: {
+            //       text: 'Frequency'
+            //     }
+            //   },
+            //   series: [{
+            //     name: 'Frequency',
+            //     data: data.reduce((acc, val) => {
+            //       acc[val] = (acc[val] || 0) + 1;
+            //       return acc;
+            //     }, []).map((freq, val) => [val, freq])
+            //   }]
+
         });
+
+        histContainer.style.display = 'none'
     });
 
     showPETButton.addEventListener('mouseover', (event) => {
@@ -587,6 +667,7 @@ async function otherHTMLElements(){
         histContainer.style.display = 'block';
         histContainer.style.left = `${event.pageX + 10}px`;
         histContainer.style.top = `${event.pageY + 10}px`;
+        histContainer.style.zIndex = '15002'; // Ensure zIndex is a string
     });
 
     showPETButton.addEventListener('mouseout', () => {
