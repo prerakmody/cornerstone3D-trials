@@ -6,6 +6,7 @@ import json
 import timeit
 import psutil
 import logging
+import imageio
 import warnings
 import platform
 import datetime
@@ -1162,6 +1163,10 @@ def plotData(ctArray, ptArray, gtArray, predArray, refineArray=None, sliceId=Non
     ------
     ctArray, ptArray, gtArray, predArray, refineArray: np.ndarray, [H,W,depth]
     """
+
+    points3DDistanceMap, viewType, sliceId = None, None, None
+    pngName = None
+
     try:
 
         import matplotlib.colors
@@ -1326,7 +1331,8 @@ def plotData(ctArray, ptArray, gtArray, predArray, refineArray=None, sliceId=Non
         #     plt.show()
         if saveFolderPath is not None:
             Path(saveFolderPath).mkdir(parents=True, exist_ok=True)
-            saveFigPath = Path(saveFolderPath).joinpath('{}.png'.format(fileNameForSave(caseName, counter, str(viewType), int(sliceId))))
+            pngName     = fileNameForSave(caseName, counter, str(viewType), int(sliceId))
+            saveFigPath = Path(saveFolderPath).joinpath('{}.png'.format(pngName))
             plt.savefig(str(saveFigPath), bbox_inches='tight', dpi=SAVE_DPI)
             plt.close()
 
@@ -1335,13 +1341,75 @@ def plotData(ctArray, ptArray, gtArray, predArray, refineArray=None, sliceId=Non
         traceback.print_exc()
         if MODE_DEBUG: pdb.set_trace()
 
-def plot(preparedDataTorch, segArrayGT, caseName, counter, points3D, scribbleType, refineArray=None, saveFolderPath=None):
+    return points3DDistanceMap, viewType, sliceId, pngName
 
+def plotInteraction(points3DDistanceMap, viewType, sliceId, pngName, counter, ctArray, segArrayGT, segArrayPred, refineArray=None, saveFolderPath=None):
+    
+    try:
+        
+        if points3DDistanceMap is not None and viewType is not None and sliceId is not None and pngName is not None:
+            
+            # Step 0 - Init
+            rotAxial    = lambda x: x
+            rotSagittal = lambda x: np.rot90(x, k=1)
+            rotCoronal  = lambda x: np.rot90(x, k=1)
+
+            # Step 1 - Create image placeholder
+            image = np.zeros((ctArray.shape[0], ctArray.shape[1], 3))
+
+            # Step 2 - Chose prediuction map on basis of counter
+            if counter == 1:
+                segArrayPredThis = segArrayPred
+            else:
+                segArrayPredThis = refineArray
+            
+            # Step 3 - Create binary distance map (from gaussian)
+            points3DDistanceMapBinary = copy.deepcopy(points3DDistanceMap)
+            points3DDistanceMapBinary[points3DDistanceMapBinary < 1] = 0
+
+            # Step 4 - Add RGB channels at pred, GT, and scribble
+            if viewType == KEY_AXIAL:
+                image[:,:,0] = segArrayPred[:,:,sliceId] # R
+                image[:,:,1] = segArrayGT[:,:,sliceId]   # G
+                image[:,:,2] = points3DDistanceMapBinary[:,:,sliceId] # B
+            elif viewType == KEY_CORONAL:
+                image[:,:,0] = rotSagittal(segArrayPred[sliceId, :, :])
+                image[:,:,1] = rotSagittal(segArrayGT[sliceId, :, :])
+                image[:,:,2] = rotSagittal(points3DDistanceMapBinary[sliceId, :, :])
+            elif viewType == KEY_SAGITTAL:
+                image[:,:,0] = rotCoronal(segArrayPred[:, sliceId, :])
+                image[:,:,1] = rotCoronal(segArrayGT[:, sliceId, :])
+                image[:,:,2] = rotCoronal(points3DDistanceMapBinary[:,sliceId, :])
+
+            # Step 5 - Save image
+            imageInt = (image*255).astype(np.uint8)
+            pngNameForInteraction = Path(saveFolderPath, '{}-interaction.png'.format(pngName))
+            imageio.imwrite(pngNameForInteraction, imageInt)
+
+    except:
+        traceback.print_exc()
+        if MODE_DEBUG: pdb.set_trace()
+
+def plot(preparedDataTorch, segArrayGT, caseName, counter, points3D, scribbleType, refineArray=None, saveFolderPath=None):
+    """
+    Params
+    ------
+    preparedDataTorch: torch.Tensor, shape: (batch_size, 3, height, width)
+
+    """
     try:
         ctArray      = np.array(preparedDataTorch[0,0])
         ptArray      = np.array(preparedDataTorch[0,1])
         segArrayPred = np.array(preparedDataTorch[0,2])
-        plotData(ctArray, ptArray, segArrayGT, segArrayPred, refineArray, None, caseName, counter, points3D, scribbleType, saveFolderPath=saveFolderPath)
+
+        # PLotting data    
+        if 1:
+            points3DDistanceMap, viewType, sliceId, pngName = plotData(ctArray, ptArray, segArrayGT, segArrayPred, refineArray, None, caseName, counter, points3D, scribbleType, saveFolderPath=saveFolderPath)
+
+        # Saving interactions in RGB format (R=Pred, G=GT, B=Interaction)
+        if 1:
+            plotInteraction(points3DDistanceMap, viewType, sliceId, pngName, counter, ctArray, segArrayGT, segArrayPred, refineArray, saveFolderPath)
+            
 
     except:
         traceback.print_exc()

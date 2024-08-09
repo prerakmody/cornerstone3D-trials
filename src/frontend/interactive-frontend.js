@@ -125,6 +125,10 @@ let totalImagesIdsPET = undefined;
 let totalROIsRTSTRUCT = undefined;
 let patientIdx        = undefined;
 
+let globalSliceIdxVars = {axialSliceIdxHTML:-1   , axialSliceIdxViewportReference:-1   , axialViewPortReference: {}, axialCamera: {}
+                        , sagittalSliceIdxHTML:-1, sagittalSliceIdxViewportReference:-1, sagittalViewportReference: {}, sagittalCamera: {}
+                        , coronalSliceIdxHTML:-1 , coronalSliceIdxViewportReference:-1 , coronalViewportReference:{}, coronalCamera: {}
+                    };
 // let axialSliceId    = undefined;
 // let sagittalSliceId = undefined;
 // let coronalSliceId  = undefined;
@@ -488,35 +492,11 @@ async function otherHTMLElements(){
     });
 
     ///////////////////////////////////////////////////////////////////////////////////// Step 3.1 - Show PET button
-    const showPETButton = document.createElement('button');
-    showPETButton.id = 'showPETButton';
+    const showPETButton     = document.createElement('button');
+    showPETButton.id        = 'showPETButton';
     showPETButton.innerHTML = 'Show PET';
     showPETButton.addEventListener('click', async function() {
-        if (petBool){
-            const renderingEngine = cornerstone3D.getRenderingEngine(renderingEngineId);
-            if (fusedPETCT) {
-                viewportIds.forEach((viewportId) => {
-                    const viewportTmp = renderingEngine.getViewport(viewportId);
-                    viewportTmp.removeVolumeActors([volumeIdPET], true);
-                    fusedPETCT = false;
-                });
-                setButtonBoundaryColor(this, false);
-            }
-            else {
-                // [axialID, sagittalID, coronalID].forEach((viewportId) => {
-                for (const viewportId of viewportIds) {
-                    const viewportTmp = renderingEngine.getViewport(viewportId);
-                    await viewportTmp.addVolumes([{ volumeId: volumeIdPET,}], true); // immeditate=true
-                    fusedPETCT = true;
-                    viewportTmp.setProperties({ colormap: { name: 'hsv', opacity:0.5 }, voiRange: { upper: 50000, lower: 100, } }, volumeIdPET);
-                    // viewportTmp.setProperties({ colormap: { name: 'PET 20 Step', opacity:0.5 }, voiRange: { upper: 50000, lower: 100, } }, volumeIdPET);
-                    // console.log(' -- colormap: ', viewportTmp.getColormap(volumeIdPET), viewportTmp.getColormap(volumeIdCT)); 
-                };
-                setButtonBoundaryColor(this, true);
-            }
-        }else{
-            showToast('No PET data available')
-        }
+        showPET(this);
     });
 
     ///////////////////////////////////////////////////////////////////////////////////// hover functionality
@@ -536,7 +516,7 @@ async function otherHTMLElements(){
     // Create the histogram using Chart.js
     // https://www.highcharts.com/docs/chart-and-series-types/histogram-series
     document.addEventListener('DOMContentLoaded', () => {
-        console.log('DOMContentLoaded!!!!!!!!!!!!!!!!!');
+        // console.log('DOMContentLoaded!!!!!!!!!!!!!!!!!');
         
         Highcharts.chart('histContainer', {
             // chart: {
@@ -663,16 +643,16 @@ async function otherHTMLElements(){
     });
 
     showPETButton.addEventListener('mouseover', (event) => {
-        console.log('showing histogram');
-        histContainer.style.display = 'block';
-        histContainer.style.left = `${event.pageX + 10}px`;
-        histContainer.style.top = `${event.pageY + 10}px`;
-        histContainer.style.zIndex = '15002'; // Ensure zIndex is a string
+        // console.log('showing histogram');
+        // histContainer.style.display = 'block';
+        // histContainer.style.left = `${event.pageX + 10}px`;
+        // histContainer.style.top = `${event.pageY + 10}px`;
+        // histContainer.style.zIndex = '15002'; // Ensure zIndex is a string
     });
 
     showPETButton.addEventListener('mouseout', () => {
-        console.log('hiding histogram');    
-        histContainer.style.display = 'none';
+        // console.log('hiding histogram');    
+        // histContainer.style.display = 'none';
     });
 
     ///////////////////////////////////////////////////////////////////////////////////// Step 4.0 - Show hoverelements
@@ -758,6 +738,7 @@ function resetView(){
         viewportTmp.resetCamera();
         viewportTmp.render();
     });
+
 }
 
 async function getLoaderHTML(){
@@ -1474,6 +1455,42 @@ function setScribbleColor() {
     if (bgdCheckbox.checked) setAnnotationColor(COLOR_RGB_BGD);
 }
 
+async function showPET(thisButton){
+    // NOTE: petBool=if pet data is available and loaded, fusedPETCT=if true, then PET shown, otherwise not
+
+    // Step 0 - Init
+    if (thisButton === undefined)
+        thisButton = document.getElementById('showPETButton');
+
+    if (petBool){
+        const renderingEngine = cornerstone3D.getRenderingEngine(renderingEngineId);
+        if (fusedPETCT) {
+            viewportIds.forEach((viewportId) => {
+                const viewportTmp = renderingEngine.getViewport(viewportId);
+                // viewportTmp.removeVolumeActors([volumeIdPET], true);
+                viewportTmp.removeVolumeActors([volumeIdPET], false);
+                fusedPETCT = false;
+            });
+            setButtonBoundaryColor(thisButton, false);
+        }
+        else {
+            // [axialID, sagittalID, coronalID].forEach((viewportId) => {
+            for (const viewportId of viewportIds) {
+                const viewportTmp = renderingEngine.getViewport(viewportId);
+                // await viewportTmp.addVolumes([{ volumeId: volumeIdPET,}], true); // immediate=true
+                await viewportTmp.addVolumes([{ volumeId: volumeIdPET,}], false); // immediate=false had not effect for the jarring-effect from showPET() followed by setSliceIdxForViewPortFromGlobalSliceIdxVars() 
+                fusedPETCT = true;
+                viewportTmp.setProperties({ colormap: { name: 'hsv', opacity:0.5 }, voiRange: { upper: 50000, lower: 100, } }, volumeIdPET);
+                // viewportTmp.setProperties({ colormap: { name: 'PET 20 Step', opacity:0.5 }, voiRange: { upper: 50000, lower: 100, } }, volumeIdPET);
+                // console.log(' -- colormap: ', viewportTmp.getColormap(volumeIdPET), viewportTmp.getColormap(volumeIdCT)); 
+            };
+            setButtonBoundaryColor(thisButton, true);
+        }
+    }else{
+        showToast('No PET data available')
+    }
+}
+
 async function makeRequestToPrepare(patientIdx){
 
     let requestStatus = false;
@@ -1508,12 +1525,44 @@ async function makeRequestToPrepare(patientIdx){
 
     } catch (error){
         requestStatus = false;
-        setServerStatus(1, 'Error in /process: ' + error);
+        setServerStatus(1, 'Error in /prepare: ' + error);
         console.log('   -- [makeRequestToPrepare()] Error: ', error);
         showToast('Python server - /prepare failed', 3000)
     }
 
     return requestStatus;
+}
+
+async function getSliceIdxinPoints3D(points3D) {
+    let returnStr = 'Meh?';
+
+    // Step 1 - Make [N,3] to [3,N]
+    const transpose = (matrix) => matrix[0].map((_, colIndex) => matrix.map(row => row[colIndex]));
+
+    // Step 2 - Find unique values in each column
+    const findUniqueValues = (matrix) => {
+        const transposedMatrix = transpose(matrix);
+        return transposedMatrix.map(column => {
+            const uniqueValues = new Set(column);
+            return Array.from(uniqueValues);
+        });
+    };
+
+    // Step 3 - Find and return the single unique value in each column
+    const colIndextoColColNames = {0: 'Sagittal', 1: 'Coronal', 2: 'Axial'};
+    const printSingleUniqueValues = (matrix) => {
+        const uniqueValuesInColumns = findUniqueValues(matrix);
+        for (let colIndex = 0; colIndex < uniqueValuesInColumns.length; colIndex++) {
+            const uniqueValues = uniqueValuesInColumns[colIndex];
+            if (uniqueValues.length === 1) {
+                return `Column: ${colIndextoColColNames[colIndex]}, Slice Idx: ${uniqueValues[0]}`;
+            }
+        }
+        return 'No column has exactly one unique value';
+    };
+
+    returnStr = printSingleUniqueValues(points3D);
+    return returnStr;
 }
 
 async function makeRequestToProcess(points3D, scribbleAnnotationUID, verbose=false){
@@ -1523,12 +1572,13 @@ async function makeRequestToProcess(points3D, scribbleAnnotationUID, verbose=fal
     const now = new Date();
     try{
 
-        // Step 0 - Init=
+        //------------------------------------------------------- Step 0 - Init
         console.log(' \n ----------------- Python server (/process) ----------------- \n')
         console.log('   -- [makeRequestToProcess()] patientIdx: ', global.patientIdx);
         console.log('   -- [makeRequestToProcess()] caseName: ', orthanDataURLS[global.patientIdx]['caseName']);
+        setGlobalSliceIdxViewPortReferenceVars(verbose=true)
 
-        // Step 1 - Make a request to /process
+        //------------------------------------------------------- Step 1 - Make a request to /process
         const scribbleType = await getScribbleType();
         const processPayload = {
             [KEY_DATA]: {[KEY_POINTS_3D]: points3D, [KEY_SCRIB_TYPE]:scribbleType, [KEY_CASE_NAME]: orthanDataURLS[global.patientIdx]['caseName'],}
@@ -1541,17 +1591,19 @@ async function makeRequestToProcess(points3D, scribbleAnnotationUID, verbose=fal
             const response = await fetch(URL_PYTHON_SERVER + ENDPOINT_PROCESS, {method: METHOD_POST, headers: HEADERS_JSON, body: JSON.stringify(processPayload), credentials: 'include',}); // credentials: 'include' is important for cross-origin requests
             const responseJSON = await response.json();
             requestStatus = true;
+            console.log('   -- [makeRequestToProcess()] (view,sliceIdx): ', await getSliceIdxinPoints3D(points3D));
             console.log('   -- [makeRequestToProcess()] response       : ', response);
             console.log('   -- [makeRequestToProcess()] response.json(): ', responseJSON);
             
-            // Step 2 - Remove old scribble annotation
+            
+            //------------------------------------------------------- Step 2 - Remove old scribble annotation
             if (verbose) console.log('\n --------------- Removing old annotation ...  ---------------: ', scribbleAnnotationUID)
             await handleStuffAfterProcessEndpoint(scribbleAnnotationUID);
 
             if (response.status == 200){
                 responseData = responseJSON.responseData    
 
-                // Step 3 - Remove old segmentation
+                //------------------------------------------------------- Step 3 - Remove old segmentation
                 const nowPostAIScribbleResponseDate = new Date();
                 if (verbose) console.log('\n --------------- Removing old segmentation ...  ---------------: ')
                 const allSegObjs = cornerstone3DTools.segmentation.state.getSegmentations();
@@ -1570,7 +1622,8 @@ async function makeRequestToProcess(points3D, scribbleAnnotationUID, verbose=fal
                 });
                 if (verbose) console.log('   -- [makeRequestToProcess()] new allSegObjs: ', cornerstone3DTools.segmentation.state.getSegmentations())
                 if (verbose) console.log('   -- [makeRequestToProcess()] new     allSegRepsObjs: ', cornerstone3DTools.segmentation.state.getAllSegmentationRepresentations())
-
+                
+                //------------------------------------------------------- Step 4 - Add new segmentation
                 if (verbose) console.log('\n --------------- Adding new segmentation ...  ---------------: ')
                 try{
                     if (verbose) console.log(' - responseData: ', responseData)
@@ -1587,6 +1640,13 @@ async function makeRequestToProcess(points3D, scribbleAnnotationUID, verbose=fal
                 const totalAIScribbleProcessingSeconds = (new Date() - now) / 1000;
                 showToast(`AI Processing completed in ${totalAIScribbleProcessingSeconds} s`, 3000);
                 console.log('   -- [makeRequestToProcess()] Round-trip AI Processing completed in ', totalAIScribbleProcessingSeconds, ' s with ', totalPostAIScribbleResponseSeconds, ' s post-AI scribble response processing');
+
+                //------------------------------------------------------- Step 5 - Reset view to what it was
+
+                setTimeout(async () => {
+                    await setSliceIdxForViewPortFromGlobalSliceIdxVars(false)
+                }, 100);
+
             } else {
                 showToast('Python server - /process failed <br/>' + responseJSON.detail, 30000)
                 await handleStuffAfterProcessEndpoint(scribbleAnnotationUID);
@@ -1890,7 +1950,7 @@ async function getToolsAndToolGroup() {
 
     // Step 6 - Add events
     // Listen for keydown event
-    window.addEventListener('keydown', function(event) {
+    window.addEventListener('keydown', async function(event) {
         // For brush tool radius        
         if (MODALITY_CONTOURS == MODALITY_SEG){
             const toolGroupContours = cornerstone3DTools.ToolGroupManager.getToolGroup(toolGroupIdContours);
@@ -1908,24 +1968,127 @@ async function getToolsAndToolGroup() {
             }
         }
 
+        // Shortcut 1 - Reset view
         if (event.key === 'r'){
             resetView();
+            setSliceIdxHTMLForAllHTML()
         }
+
+        else if (event.key == 'p'){
+            await showPET();
+            await setSliceIdxForViewPortFromGlobalSliceIdxVars(false);
+        }
+
     });
     
 }
 
-function setInnerHTMLForSliceId(activeViewportId, imageIdxForViewport, totalImagesForViewPort){
-    
+function setSliceIdxHTMLForViewPort(activeViewportId, sliceIdxHTMLForViewport, totalImagesForViewPort){
+    // NOTE: There is a difference betwen the numerical value of sliceIdxHTML and SliceIdxViewportReference
     if (activeViewportId == axialID){
         // console.log('Axial: ', imageIdxForViewport, totalImagesForViewPort)
-        axialSliceDiv.innerHTML = `Axial: ${imageIdxForViewport+1}/${totalImagesForViewPort}`
+        axialSliceDiv.innerHTML = `Axial: ${sliceIdxHTMLForViewport+1}/${totalImagesForViewPort}`
     } else if (activeViewportId == sagittalID){
         // console.log('Sagittal: ', imageIdxForViewport, totalImagesForViewPort)
-        sagittalSliceDiv.innerHTML = `Sagittal: ${imageIdxForViewport+1}/${totalImagesForViewPort}`
+        sagittalSliceDiv.innerHTML = `Sagittal: ${sliceIdxHTMLForViewport+1}/${totalImagesForViewPort}`
     } else if (activeViewportId == coronalID){
         // console.log('Coronal: ', imageIdxForViewport, totalImagesForViewPort)
-        coronalSliceDiv.innerHTML = `Coronal: ${imageIdxForViewport+1}/${totalImagesForViewPort}`
+        coronalSliceDiv.innerHTML = `Coronal: ${sliceIdxHTMLForViewport+1}/${totalImagesForViewPort}`
+    }
+
+}
+
+function setSliceIdxHTMLForAllHTML(){
+    // NOTE: There is a difference betwen the numerical value of sliceIdxHTML and SliceIdxViewportReference
+    const {viewport: axialViewport, viewportId: axialViewportId}       = cornerstone3D.getEnabledElement(axialDiv);
+    const {viewport: sagittalViewport, viewportId: sagittalViewportId} = cornerstone3D.getEnabledElement(sagittalDiv);
+    const {viewport: coronalViewport, viewportId: coronalViewportId}   = cornerstone3D.getEnabledElement(coronalDiv);
+
+    // Update slice numbers
+    setSliceIdxHTMLForViewPort(axialViewportId, axialViewport.getCurrentImageIdIndex(), axialViewport.getNumberOfSlices())
+    setSliceIdxHTMLForViewPort(sagittalViewportId, sagittalViewport.getCurrentImageIdIndex(), sagittalViewport.getNumberOfSlices())
+    setSliceIdxHTMLForViewPort(coronalViewportId, coronalViewport.getCurrentImageIdIndex(), coronalViewport.getNumberOfSlices())
+}
+
+function setGlobalSliceIdxViewPortReferenceVars(verbose=false){
+
+    const {viewport: axialViewport, viewportId: axialViewportId}       = cornerstone3D.getEnabledElement(axialDiv);
+    const {viewport: sagittalViewport, viewportId: sagittalViewportId} = cornerstone3D.getEnabledElement(sagittalDiv);
+    const {viewport: coronalViewport, viewportId: coronalViewportId}   = cornerstone3D.getEnabledElement(coronalDiv);
+
+    globalSliceIdxVars.axialSliceIdxHTML              = axialViewport.getCurrentImageIdIndex()
+    globalSliceIdxVars.axialSliceIdxViewportReference = convertSliceIdxHTMLToSliceIdxViewportReference(globalSliceIdxVars.axialSliceIdxHTML, axialViewportId, axialViewport.getNumberOfSlices())
+    globalSliceIdxVars.axialViewPortReference         = axialViewport.getViewReference()
+    globalSliceIdxVars.axialCamera                    = axialViewport.getCamera()
+    
+    globalSliceIdxVars.sagittalSliceIdxHTML              = sagittalViewport.getCurrentImageIdIndex()
+    globalSliceIdxVars.sagittalSliceIdxViewportReference = convertSliceIdxHTMLToSliceIdxViewportReference(globalSliceIdxVars.sagittalSliceIdxHTML, sagittalViewportId, sagittalViewport.getNumberOfSlices())
+    globalSliceIdxVars.sagittalViewportReference         = sagittalViewport.getViewReference()
+    globalSliceIdxVars.sagittalCamera                    = sagittalViewport.getCamera()
+
+    globalSliceIdxVars.coronalSliceIdxHTML              = coronalViewport.getCurrentImageIdIndex()
+    globalSliceIdxVars.coronalSliceIdxViewportReference = convertSliceIdxHTMLToSliceIdxViewportReference(globalSliceIdxVars.coronalSliceIdxHTML, coronalViewportId, coronalViewport.getNumberOfSlices())
+    globalSliceIdxVars.coronalViewport                  = coronalViewport.getViewReference()
+    globalSliceIdxVars.coronalCamera                    = coronalViewport.getCamera()
+    
+    if (verbose)
+        console.log(' - [setGlobalSliceIdxVars()] Setting globalSliceIdxVars:', globalSliceIdxVars)
+}
+
+function convertSliceIdxHTMLToSliceIdxViewportReference(sliceIdxHTML, viewportId, totalImagesForViewPort){
+    
+    let sliceIdxViewportReference;
+    
+    if (viewportId == sagittalID){
+        sliceIdxViewportReference = sliceIdxHTML
+    } else if (viewportId == coronalID || viewportId == axialID){
+       sliceIdxViewportReference = (totalImagesForViewPort-1) - (sliceIdxHTML);
+    }
+    return sliceIdxViewportReference
+}
+
+async function setSliceIdxForViewPortFromGlobalSliceIdxVars(verbose=false){
+
+    const {viewport: axialViewport, viewportId: axialViewportId}       = cornerstone3D.getEnabledElement(axialDiv);
+    const {viewport: sagittalViewport, viewportId: sagittalViewportId} = cornerstone3D.getEnabledElement(sagittalDiv);
+    const {viewport: coronalViewport, viewportId: coronalViewportId}   = cornerstone3D.getEnabledElement(coronalDiv);
+
+    if (verbose)
+        console.log(' - [setSliceIdxForViewPortFromGlobalSliceIdxVars()] Setting sliceIdx for viewport:', globalSliceIdxVars)   
+
+    if (true){
+        let axialViewportViewReference  = globalSliceIdxVars.axialViewPortReference
+        await axialViewport.setViewReference(axialViewportViewReference)
+        await axialViewport.setCamera(globalSliceIdxVars.axialCamera)
+
+        let sagittalViewportViewReference = globalSliceIdxVars.sagittalViewportReference
+        await sagittalViewport.setViewReference(sagittalViewportViewReference)
+        await sagittalViewport.setCamera(globalSliceIdxVars.sagittalCamera)
+
+        let coronalViewportViewReference = globalSliceIdxVars.coronalViewportReference
+        await coronalViewport.setViewReference(coronalViewportViewReference)
+        await coronalViewport.setCamera(globalSliceIdxVars.coronalCamera)
+
+    } else if (false) {
+        let axialViewportViewReference = axialViewport.getViewReference()
+        axialViewportViewReference.sliceIndex = globalSliceIdxVars.axialSliceIdxViewportReference
+        await axialViewport.setViewReference(axialViewportViewReference)
+
+        let sagittalViewportViewReference = sagittalViewport.getViewReference()
+        sagittalViewportViewReference.sliceIndex = globalSliceIdxVars.sagittalSliceIdxViewportReference
+        await sagittalViewport.setViewReference(sagittalViewportViewReference)
+
+        let coronalViewportViewReference  = coronalViewport.getViewReference()
+        coronalViewportViewReference.sliceIndex = globalSliceIdxVars.coronalSliceIdxViewportReference
+        await coronalViewport.setViewReference(coronalViewportViewReference)
+
+    }
+
+    await renderNow()
+
+    if (verbose){
+        setGlobalSliceIdxViewPortReferenceVars()
+        console.log(' - [setSliceIdxForViewPortFromGlobalSliceIdxVars()] Actual setting for viewport:', globalSliceIdxVars)
     }
 
 }
@@ -1935,16 +2098,18 @@ function setMouseAndKeyboardEvents(){
     // handle scroll event
     document.addEventListener('wheel', function(evt) {
         if (evt.target.className == 'cornerstone-canvas') {
-            const {viewport: activeViewport, viewportId: activeViewportId} = cornerstone3D.getEnabledElement(evt.target.offsetParent.parentElement);
-            // console.log(activeViewport, activeViewportId)
-            const imageIdxForViewport = activeViewport.getCurrentImageIdIndex()
-            const totalImagesForViewPort = activeViewport.getNumberOfSlices()
-            setInnerHTMLForSliceId(activeViewportId, imageIdxForViewport, totalImagesForViewPort)
+            // NOTE: Here we only change the slideIdxHTML, not the sliceIdxViewportReference
+            const divObj = evt.target.offsetParent.parentElement
+            const {viewport: activeViewport, viewportId: activeViewportId} = cornerstone3D.getEnabledElement(divObj);
+            const imageIdxHTMLForViewport = activeViewport.getCurrentImageIdIndex()
+            const totalImagesForViewPort  = activeViewport.getNumberOfSlices()
+            setSliceIdxHTMLForViewPort(activeViewportId, imageIdxHTMLForViewport, totalImagesForViewPort)
+            setGlobalSliceIdxViewPortReferenceVars()
         }
     });
 
     // handle left-arrow and right-arrow keydown event
-    document.addEventListener('keydown', function(evt) {
+    document.addEventListener('keydown', async function(evt) {
         
         // For slice traversal
         if (viewportIds.includes(evt.target.id)){
@@ -1954,42 +2119,28 @@ function setMouseAndKeyboardEvents(){
 
                     // Step 1 - Init
                     const {viewport: activeViewport, viewportId: activeViewportId} = cornerstone3D.getEnabledElement(evt.target);
-                    const imageIdxForViewport    = activeViewport.getCurrentImageIdIndex()
-                    const totalImagesForViewPort = activeViewport.getNumberOfSlices()
-                    let viewportViewReference  = activeViewport.getViewReference()
+                    const sliceIdxHTMLForViewport = activeViewport.getCurrentImageIdIndex()
+                    const totalImagesForViewPort  = activeViewport.getNumberOfSlices()
+                    let viewportViewReference     = activeViewport.getViewReference()
                     
-                    // Step 2 - Handle keydown event
-                    let newImageIdxForViewportForHTML = imageIdxForViewport;
-                    let newImageIdxForViewport = imageIdxForViewport;
+                    // Step 2 - Handle keydown event 
+                    // Step 2.1 - Update sliceIdxHTMLForViewport
+                    let newSliceIdxHTMLForViewport;
                     if (evt.key == SHORTCUT_KEY_ARROW_LEFT){
-                        newImageIdxForViewportForHTML = imageIdxForViewport - 1;
+                        newSliceIdxHTMLForViewport = sliceIdxHTMLForViewport - 1;
                     } else if (evt.key == SHORTCUT_KEY_ARROW_RIGHT){
-                        newImageIdxForViewportForHTML = imageIdxForViewport + 1;
+                        newSliceIdxHTMLForViewport = sliceIdxHTMLForViewport + 1;
                     }
-                    if (newImageIdxForViewportForHTML < 0) newImageIdxForViewportForHTML = 0;
-                    if (newImageIdxForViewportForHTML > totalImagesForViewPort-1) newImageIdxForViewportForHTML = totalImagesForViewPort - 1;
-                    if (activeViewportId == sagittalID){
-                        newImageIdxForViewport = newImageIdxForViewportForHTML
-                    } else if (activeViewportId == coronalID || activeViewportId == axialID){
-                        if (evt.key == SHORTCUT_KEY_ARROW_LEFT){
-                            newImageIdxForViewport = (totalImagesForViewPort-1) - (imageIdxForViewport - 1);
-                        } else if (evt.key == SHORTCUT_KEY_ARROW_RIGHT){
-                            newImageIdxForViewport = (totalImagesForViewPort-1) - (imageIdxForViewport + 1);
-                        }
-                        // if (newImageIdxForViewport < 0) newImageIdxForViewport = 0;
-                        // if (newImageIdxForViewport > totalImagesForViewPort-1) newImageIdxForViewport = totalImagesForViewPort - 1;
-                    }
+                    if (newSliceIdxHTMLForViewport < 0) newSliceIdxHTMLForViewport = 0;
+                    if (newSliceIdxHTMLForViewport > totalImagesForViewPort-1) newSliceIdxHTMLForViewport = totalImagesForViewPort - 1;
+                    setSliceIdxHTMLForViewPort(activeViewportId, newSliceIdxHTMLForViewport, totalImagesForViewPort)
 
-                    // Step 3 - Update the viewport
-                    // console.log('   -- [',evt.key,'] imageIdxForViewport: ', imageIdxForViewport, ' --> ',newImageIdxForViewport, ' || cameraFocalPoint: ', viewportViewReference.cameraFocalPoint, ' || sliceIndex: ', viewportViewReference.sliceIndex, '(',(totalImagesForViewPort-1)-(imageIdxForViewport),')')
-                    // if (evt.key == 'ArrowLeft')
-                    //     console.log('         ----> ', (totalImagesForViewPort-1)-(imageIdxForViewport-1))
-                    // else if (evt.key == 'ArrowRight')
-                    //     console.log('         ----> ', (totalImagesForViewPort-1)-(imageIdxForViewport+1))
-                    setInnerHTMLForSliceId(activeViewportId, newImageIdxForViewportForHTML, totalImagesForViewPort)
-                    viewportViewReference.sliceIndex = newImageIdxForViewport;
-                    activeViewport.setViewReference(viewportViewReference);
+                    // Step 2.2 - Update the viewport itself
+                    const newSliceIdxViewPortReference = convertSliceIdxHTMLToSliceIdxViewportReference(newSliceIdxHTMLForViewport, activeViewportId, totalImagesForViewPort)
+                    viewportViewReference.sliceIndex = newSliceIdxViewPortReference;
+                    await activeViewport.setViewReference(viewportViewReference);
                     renderNow();
+
                 } catch (error){
                     console.error('   -- [keydown] Error: ', error);
                 }
@@ -2000,6 +2151,10 @@ function setMouseAndKeyboardEvents(){
         if (evt.key === SHORTCUT_KEY_C) {
             showUnshowAllSegmentations()
         }
+
+        // Update sliceIdx vars
+        setGlobalSliceIdxViewPortReferenceVars()
+
     });
 }
 
@@ -2163,7 +2318,8 @@ function setContouringButtonsLogic(verbose=true){
                             const points3D = polyline.map(function(point) {
                                 return getIndex(cornerstone3D.cache.getVolume(volumeIdCT), point);
                             });
-                            const points3DInt = points3D.map(x => x.map(y => Math.floor(y)));
+                            // console.log(' - [setContouringButtonsLogic()] points3D: ', points3D);
+                            const points3DInt = points3D.map(x => x.map(y => Math.abs(Math.round(y))));
                             await makeRequestToProcess(points3DInt, scribbleAnnotationUID);
                         }
                     } else {
@@ -2202,7 +2358,8 @@ async function setRenderingEngineAndViewports(){
     // return {renderingEngine};
 }
 
-function renderNow(){
+async function renderNow(){
+    // return NOTE: cant do this since the left-right arrow keys wont work to change slice Id
     try {
         // console.log(cornerstone3DTools.ToolGroupManager getToolGroup(toolGroupId)
         const viewportsInfo = cornerstone3DTools.ToolGroupManager.getToolGroup(toolGroupIdContours).getViewportsInfo();
@@ -2213,6 +2370,9 @@ function renderNow(){
           );
           enabledElement.viewport.render();
         });
+
+        setSliceIdxHTMLForAllHTML()
+
     } catch {
         console.error('Error in renderNow()');
     }
@@ -2696,7 +2856,7 @@ async function setup(patientIdx){
 }
 
 // Some debug params
-global.patientIdx = 13;
+global.patientIdx = 14;
 MODALITY_CONTOURS = MODALITY_SEG
 
 if (process.env.NETLIFY === "true")
@@ -2713,3 +2873,12 @@ TO-DO
     - https://github.com/cornerstonejs/cornerstone3D/issues/1351
 4. Sometimes mouseUp event does not capture events
  */
+
+/**
+1. Function that resets viewports to default
+ - resetView() --> self-defined
+ - ??
+
+2. showSliceIds()
+ - need to connect this to an event that might be released when the scroll is done
+*/

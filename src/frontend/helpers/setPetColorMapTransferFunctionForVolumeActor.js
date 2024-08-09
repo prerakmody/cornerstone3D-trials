@@ -18,8 +18,8 @@ export default function setPetColorMapTransferFunctionForVolumeActor(
 
   // Create scalar opacity function
   const ofun = vtkPiecewiseFunction.newInstance();
-  ofun.addPoint(0, 0.0);
-  ofun.addPoint(0.1, 5000);
+  // ofun.addPoint(0, 0.0);
+  // ofun.addPoint(0.1, 5000);
   ofun.addPoint(5001, 20000);
 
   volumeActor.getProperty().setScalarOpacity(0, ofun);
