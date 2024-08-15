@@ -2856,7 +2856,7 @@ async function setup(patientIdx){
 }
 
 // Some debug params
-global.patientIdx = 14;
+global.patientIdx = 13;
 MODALITY_CONTOURS = MODALITY_SEG
 
 if (process.env.NETLIFY === "true")

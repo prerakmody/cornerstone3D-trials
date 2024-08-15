@@ -74,6 +74,7 @@ if 1:
     # Keys - Input + session-data json
     KEY_DATA                 = 'data'
     KEY_TORCH_DATA           = 'torchData'
+    KEY_SCRIBBLE_MAP         = 'scribbleMap' # a 3D map of 1's for bgd and 2's for fgd
     KEY_CLIENT_IDENTIFIER    = 'clientIdentifier'
     KEY_DCM_LIST             = 'dcmList'
     KEY_SCRIBBLE_COUNTER     = 'scribbleCounter'
@@ -83,6 +84,9 @@ if 1:
     KEY_SEG_SOP_INSTANCE_UID    = 'segSOPInstanceUID'
     KEY_SEG_SERIES_INSTANCE_UID = 'segSeriesInstanceUID'
     KEY_SEG_ORTHANC_ID          = 'segOrthancID'
+
+    VALUE_INT_FGD = 1
+    VALUE_INT_BGD = 2
 
 
     KEY_SCRIBBLE_TYPE = 'scribbleType'
@@ -428,10 +432,10 @@ def loadModel(modelPath, modelName=None, model=None, device=None, loadOnnx=False
                     modelPathOnnx = Path(modelPath).with_suffix(KEY_EXT_ONNX)
                     # Path(modelPathOnnx).unlink(missing_ok=True)
                     if not Path(modelPathOnnx).exists():
-                        convertToOnnx(model, modelPathOnnx, randomInput)
+                        convertToOnnxAndSaveToDisk(model, modelPathOnnx, randomInput)
                     
                     # Step 2.3.2 - Convert existing model to onnx
-                    modelOnnx = torch.onnx.dynamo_export(model, randomInput) # type(loadedModel) == torch.onnx.ONNXProgram
+                    modelOnnx = torch.onnx.dynamo_export(model, randomInput) # type(loadedModel) == torch.onnx.ONNXProgram # [TODO: This is a repetitve line of code!!!]
 
                     # Step 2.3.3 - Get onnxruntime session
                     ortSession = onnxruntime.InferenceSession(modelPathOnnx, providers=['CPUExecutionProvider'])
@@ -573,7 +577,14 @@ def doInference(model, ortSession, preparedDataTorch):
 
     return segArrayRefinedTorch, segArrayRefinedNumpy
 
-def convertToOnnx(model, modelPathOnnx, randomInput):
+def convertToOnnxAndSaveToDisk(model, modelPathOnnx, randomInput):
+    """
+    Params
+    ------
+    model        : torch.Module 
+    modelPathOnnx: Path
+    randomInput  : torch.Tensor
+    """
 
     try:
         
@@ -645,9 +656,10 @@ def getCTArray(client, patientData):
         thisShapeTensor[3] = ctArray.shape[1]
         thisShapeTensor[4] = ctArray.shape[2]
         
-        patientData[KEY_TORCH_DATA] = torch.zeros(thisShapeTensor, dtype=torch.float32, device=DEVICE)
+        patientData[KEY_TORCH_DATA]                = torch.zeros(thisShapeTensor, dtype=torch.float32, device=DEVICE)
         patientData[KEY_TORCH_DATA][0, 0, :, :, :] = torch.tensor(ctArrayProcessed, dtype=torch.float32, device=DEVICE)
-        patientData[KEY_DCM_LIST] = ctInstances
+        patientData[KEY_DCM_LIST]                  = ctInstances
+        patientData[KEY_SCRIBBLE_MAP]              = np.zeros_like(ctArray)
 
         ctArrayProcessedBool = True
 
@@ -1101,7 +1113,7 @@ def getScribbleColorMap(cmap, opacityBoolForScribblePoints):
     
     return cmapNew, normNew
 
-def getGaussianDistanceMap(ctArrayShape, points3D, distZ, sigma):
+def getGaussianDistanceMapOld(ctArrayShape, points3D, distZ, sigma):
 
     gaussianDistanceMap = None
     viewType, sliceId = None, None
@@ -1134,7 +1146,7 @@ def getGaussianDistanceMap(ctArrayShape, points3D, distZ, sigma):
     
     return gaussianDistanceMap, viewType, sliceId
 
-def getDistanceMap(preparedDataTorch, scribbleType, points3D, distMapZ, distMapSigma):
+def getDistanceMapOld(preparedDataTorch, scribbleType, points3D, distMapZ, distMapSigma):
 
     viewType, sliceId = None, None
 
@@ -1157,7 +1169,72 @@ def getDistanceMap(preparedDataTorch, scribbleType, points3D, distMapZ, distMapS
     
     return preparedDataTorch, viewType, sliceId
 
-def plotData(ctArray, ptArray, gtArray, predArray, refineArray=None, sliceId=None, caseName='', counter=0, points3D=None, scribbleType=None, extraSlices=7, saveFolderPath=False):
+def getGaussianDistanceMap(scribbleMapData, distZ, sigma):
+
+    # Step 0 - Init
+    gaussianDistanceMap = None
+
+    try:
+        
+        # Step 1 - Get distance map
+        euclideanDistanceMap = scipy.ndimage.distance_transform_edt(1-scribbleMapData, sampling=distZ)
+        maxVal               = euclideanDistanceMap.max()
+        euclideanDistanceMap = 1 - (euclideanDistanceMap / maxVal)
+        
+        # Step 2 - Get gaussian distance map
+        gaussianDistanceMap = np.exp(-(1-euclideanDistanceMap)**2 / (2 * sigma**2))
+
+    except:
+        traceback.print_exc()
+        if MODE_DEBUG: pdb.set_trace()
+    
+    return gaussianDistanceMap
+
+def getDistanceMap(scribbleMapData, preparedDataTorch, scribbleType, points3D, distMapZ, distMapSigma):
+
+    # Step 0 - Init
+    viewType, sliceId = None, None # [NOTE: only for viz purposes]
+
+    try:
+        
+        # Step 1 - Identify viewType and sliceID
+        viewType, sliceId = getViewTypeAndSliceId(points3D) # [TODO: Do I need this?]
+
+        # Step 2 - Update scribbleMapData
+        if scribbleType == KEY_SCRIBBLE_FGD:
+            scribbleMapData[points3D[:,1], points3D[:,0], points3D[:,2]] = VALUE_INT_FGD
+        elif scribbleType == KEY_SCRIBBLE_BGD:
+            scribbleMapData[points3D[:,1], points3D[:,0], points3D[:,2]] = VALUE_INT_BGD
+
+        # Step 2 - Get gaussian distance maps
+        ctArrayShape   = tuple(preparedDataTorch[0,0].shape)
+        fgdMap, bgdMap = np.zeros(ctArrayShape), np.zeros(ctArrayShape)
+
+        # Step 2.1 - Get fgd map
+        scribbleMapDataFgd = copy.deepcopy(scribbleMapData)
+        scribbleMapDataFgd[scribbleMapDataFgd != VALUE_INT_FGD] = 0
+        scribbleMapDataFgd[scribbleMapDataFgd == VALUE_INT_FGD] = 1
+        fgdMap                 = getGaussianDistanceMap(scribbleMapDataFgd, distZ=distMapZ, sigma=distMapSigma)
+        preparedDataTorch[0,3] = torch.tensor(fgdMap, dtype=torch.float32, device=DEVICE)
+        
+        # Step 2.2 - Get bgd map
+        scribbleMapDataBgd = copy.deepcopy(scribbleMapData)
+        scribbleMapDataBgd[scribbleMapDataBgd != VALUE_INT_BGD] = 0
+        scribbleMapDataBgd[scribbleMapDataBgd == VALUE_INT_BGD] = 1
+        bgdMap                 = getGaussianDistanceMap(scribbleMapDataBgd, distZ=distMapZ, sigma=distMapSigma)
+        preparedDataTorch[0,4] = torch.tensor(bgdMap, dtype=torch.float32, device=DEVICE)
+
+    except:
+        traceback.print_exc()
+        if MODE_DEBUG: pdb.set_trace()
+    
+    return scribbleMapData, preparedDataTorch, viewType, sliceId
+
+#################################################################
+#                        PLOTTING UTILS
+#################################################################
+
+def plotData(scribbleMapData, ctArray, ptArray, gtArray, predArray, refineArray=None, sliceId=None, caseName='', counter=0, points3D=None, scribbleType=None, extraSlices=7, saveFolderPath=False):
     """
     Params
     ------
@@ -1188,97 +1265,114 @@ def plotData(ctArray, ptArray, gtArray, predArray, refineArray=None, sliceId=Non
         viewType = None
         if points3D is not None:
             ctArrayShape = tuple(ctArray.shape)
-            points3DDistanceMap, viewType, sliceId = getGaussianDistanceMap(ctArrayShape, points3D, distZ=DISTMAP_Z, sigma=DISTMAP_SIGMA)
+            points3DDistanceMap, viewType, sliceId = getGaussianDistanceMapOld(ctArrayShape, points3D, distZ=DISTMAP_Z, sigma=DISTMAP_SIGMA)
+        
+        scribbleMapDataFgd = copy.deepcopy(scribbleMapData)
+        scribbleMapDataFgd[scribbleMapDataFgd != VALUE_INT_FGD] = 0
+        scribbleMapDataFgd[scribbleMapDataFgd == VALUE_INT_FGD] = 1
+        scribbleMapDataBgd = copy.deepcopy(scribbleMapData)
+        scribbleMapDataBgd[scribbleMapDataBgd != VALUE_INT_BGD] = 0
+        scribbleMapDataBgd[scribbleMapDataBgd == VALUE_INT_BGD] = 1
+        points3DDistanceMapFgd = getGaussianDistanceMap(scribbleMapDataFgd, distZ=DISTMAP_Z, sigma=DISTMAP_SIGMA)
+        points3DDistanceMapBgd = getGaussianDistanceMap(scribbleMapDataBgd, distZ=DISTMAP_Z, sigma=DISTMAP_SIGMA)
                     
         # Step 1 - Set up figure
-        rows = 3
-        columns = 2
+        rows         = 3
+        baseColumns  = 3
+        totalColumns = baseColumns
         extraSliceIdsAndColumnIds = []
         if points3D is not None:
-            columns += extraSlices # +3,-3 slices for each view
+            totalColumns += extraSlices # +3,-3 slices for each view
             for sliceDelta in range(-extraSlices//2+1, extraSlices//2+1):
                 sliceNeighborId = sliceId + sliceDelta
-                columnId        = 2 + extraSlices//2 + sliceDelta
+                columnId        = baseColumns + extraSlices//2 + sliceDelta
                 if sliceNeighborId >= 0 and sliceNeighborId < ctArray.shape[2]:
                     extraSliceIdsAndColumnIds.append((sliceNeighborId, columnId))
         if extraSlices > 0 or extraSlices is not None:
-            f,axarr = plt.subplots(3,columns, figsize=(30, 8))
+            f,axarr = plt.subplots(rows,totalColumns, figsize=(30, 8))
         else:
-            f,axarr = plt.subplots(3,2)
+            f,axarr = plt.subplots(rows,totalColumns)
         plt.subplots_adjust(left=0.1,bottom=0.1, right=0.9, top=0.9, wspace=0.05, hspace=0.05)
         
         # Step 2 - Show different views (Axial/Sagittal/Coronal)
         if 1:
-
+            LINEWIDTHS = 0.25
             # Step 2.1 - Axial slice
             axarr[0,0].set_ylabel('Axial')
             axarr[0,0].imshow(ctArray[:, :, sliceId], cmap=COLORSTR_GRAY)
             axarr[0,1].imshow(ptArray[:, :, sliceId], cmap=COLORSTR_GRAY)
+            axarr[0,2].imshow(ctArray[:, :, sliceId], cmap=COLORSTR_GRAY)
             if gtArray is not None:
-                axarr[0,0].contour(gtArray[:, :, sliceId], colors=COLORSTR_GREEN)
-                axarr[0,1].contour(gtArray[:, :, sliceId], colors=COLORSTR_GREEN)
+                axarr[0,0].contour(gtArray[:, :, sliceId], colors=COLORSTR_GREEN, linewidths=LINEWIDTHS)
+                axarr[0,1].contour(gtArray[:, :, sliceId], colors=COLORSTR_GREEN, linewidths=LINEWIDTHS)
             if predArray is not None:
-                axarr[0,0].contour(predArray[:, :, sliceId], colors=COLORSTR_RED)
-                axarr[0,1].contour(predArray[:, :, sliceId], colors=COLORSTR_RED)
+                axarr[0,0].contour(predArray[:, :, sliceId], colors=COLORSTR_RED, linewidths=LINEWIDTHS)
+                axarr[0,1].contour(predArray[:, :, sliceId], colors=COLORSTR_RED, linewidths=LINEWIDTHS)
             if refineArray is not None:
-                axarr[0,0].contour(refineArray[:, :, sliceId], colors=COLORSTR_PINK, linestyle='dotted', linewidths=1)
-                axarr[0,1].contour(refineArray[:, :, sliceId], colors=COLORSTR_PINK, linestyle='dotted', linewidths=1)
+                axarr[0,0].contour(refineArray[:, :, sliceId], colors=COLORSTR_PINK, linestyle='dotted', linewidths=LINEWIDTHS)
+                axarr[0,1].contour(refineArray[:, :, sliceId], colors=COLORSTR_PINK, linestyle='dotted', linewidths=LINEWIDTHS)
             for (sliceNeighborId, columnId) in extraSliceIdsAndColumnIds:
                 axarr[0,columnId].imshow(ctArray[:, :, sliceNeighborId], cmap=COLORSTR_GRAY)
                 axarr[0,columnId].imshow(ptArray[:, :, sliceNeighborId], cmap=COLORSTR_GRAY, alpha=0.3)
                 if gtArray is not None:
-                    axarr[0,columnId].contour(gtArray[:, :, sliceNeighborId], colors=COLORSTR_GREEN)
+                    axarr[0,columnId].contour(gtArray[:, :, sliceNeighborId], colors=COLORSTR_GREEN, linewidths=LINEWIDTHS)
                 if predArray is not None:
-                    axarr[0,columnId].contour(predArray[:, :, sliceNeighborId], colors=COLORSTR_RED)
+                    axarr[0,columnId].contour(predArray[:, :, sliceNeighborId], colors=COLORSTR_RED, linewidths=LINEWIDTHS)
                 if refineArray is not None:
-                    axarr[0,columnId].contour(refineArray[:, :, sliceNeighborId], colors=COLORSTR_PINK, linestyle='dotted', linewidths=1)
-                axarr[0,columnId].set_title('Slice: {}'.format(sliceNeighborId+1))
+                    axarr[0,columnId].contour(refineArray[:, :, sliceNeighborId], colors=COLORSTR_PINK, linestyle='dotted', linewidths=LINEWIDTHS)
+                
+                sliceDrawStr = ''
+                if sliceNeighborId == sliceId:
+                    sliceDrawStr = '**'
+                axarr[0,columnId].set_title('Slice: {}{}'.format(sliceNeighborId+1, sliceDrawStr))
             
             # Step 2.2 - Sagittal slice
             axarr[1,0].set_ylabel('Sagittal')
             axarr[1,0].imshow(rotSagittal(ctArray[:, sliceId, :]), cmap=COLORSTR_GRAY)
             axarr[1,1].imshow(rotSagittal(ptArray[:, sliceId, :]), cmap=COLORSTR_GRAY)
+            axarr[1,2].imshow(rotSagittal(ctArray[:, sliceId, :]), cmap=COLORSTR_GRAY)
             if gtArray is not None:
-                axarr[1,0].contour(rotSagittal(gtArray[:, sliceId, :]), colors=COLORSTR_GREEN)
-                axarr[1,1].contour(rotSagittal(gtArray[:, sliceId, :]), colors=COLORSTR_GREEN)
+                axarr[1,0].contour(rotSagittal(gtArray[:, sliceId, :]), colors=COLORSTR_GREEN, linewidths=LINEWIDTHS)
+                axarr[1,1].contour(rotSagittal(gtArray[:, sliceId, :]), colors=COLORSTR_GREEN, linewidths=LINEWIDTHS)
             if predArray is not None:
-                axarr[1,0].contour(rotSagittal(predArray[:, sliceId, :]), colors=COLORSTR_RED)
-                axarr[1,1].contour(rotSagittal(predArray[:, sliceId, :]), colors=COLORSTR_RED)
+                axarr[1,0].contour(rotSagittal(predArray[:, sliceId, :]), colors=COLORSTR_RED, linewidths=LINEWIDTHS)
+                axarr[1,1].contour(rotSagittal(predArray[:, sliceId, :]), colors=COLORSTR_RED, linewidths=LINEWIDTHS)
             if refineArray is not None:
-                axarr[1,0].contour(rotSagittal(refineArray[:, sliceId, :]), colors=COLORSTR_PINK, linestyle='dashed')
-                axarr[1,1].contour(rotSagittal(refineArray[:, sliceId, :]), colors=COLORSTR_PINK, linestyle='dashed')
+                axarr[1,0].contour(rotSagittal(refineArray[:, sliceId, :]), colors=COLORSTR_PINK, linestyle='dashed', linewidths=LINEWIDTHS)
+                axarr[1,1].contour(rotSagittal(refineArray[:, sliceId, :]), colors=COLORSTR_PINK, linestyle='dashed', linewidths=LINEWIDTHS)
             for (sliceNeighborId, columnId) in extraSliceIdsAndColumnIds:
                 axarr[1,columnId].imshow(rotSagittal(ctArray[:, sliceNeighborId, :]), cmap=COLORSTR_GRAY)
                 axarr[1,columnId].imshow(rotSagittal(ptArray[:, sliceNeighborId, :]), cmap=COLORSTR_GRAY, alpha=0.3)
                 if gtArray is not None:
-                    axarr[1,columnId].contour(rotSagittal(gtArray[:, sliceNeighborId, :]), colors=COLORSTR_GREEN)
+                    axarr[1,columnId].contour(rotSagittal(gtArray[:, sliceNeighborId, :]), colors=COLORSTR_GREEN, linewidths=LINEWIDTHS)
                 if predArray is not None:
-                    axarr[1,columnId].contour(rotSagittal(predArray[:, sliceNeighborId, :]), colors=COLORSTR_RED)
+                    axarr[1,columnId].contour(rotSagittal(predArray[:, sliceNeighborId, :]), colors=COLORSTR_RED, linewidths=LINEWIDTHS)
                 if refineArray is not None:
-                    axarr[1,columnId].contour(rotSagittal(refineArray[:, sliceNeighborId, :]), colors=COLORSTR_PINK, linestyle='dotted', linewidths=1)
+                    axarr[1,columnId].contour(rotSagittal(refineArray[:, sliceNeighborId, :]), colors=COLORSTR_PINK, linestyle='dotted', linewidths=LINEWIDTHS)
 
             # Step 2.3 - Coronal slice
             axarr[2,0].set_ylabel('Coronal')
             axarr[2,0].imshow(rotCoronal(ctArray[sliceId, :, :]), cmap=COLORSTR_GRAY)
             axarr[2,1].imshow(rotCoronal(ptArray[sliceId, :, :]), cmap=COLORSTR_GRAY)
+            axarr[2,2].imshow(rotCoronal(ctArray[sliceId, :, :]), cmap=COLORSTR_GRAY)
             if gtArray is not None:
-                axarr[2,0].contour(rotCoronal(gtArray[sliceId, :, :]), colors=COLORSTR_GREEN)
-                axarr[2,1].contour(rotCoronal(gtArray[sliceId, :, :]), colors=COLORSTR_GREEN)
+                axarr[2,0].contour(rotCoronal(gtArray[sliceId, :, :]), colors=COLORSTR_GREEN, linewidths=LINEWIDTHS)
+                axarr[2,1].contour(rotCoronal(gtArray[sliceId, :, :]), colors=COLORSTR_GREEN, linewidths=LINEWIDTHS)
             if predArray is not None:
-                axarr[2,0].contour(rotCoronal(predArray[sliceId, :, :]), colors=COLORSTR_RED)
-                axarr[2,1].contour(rotCoronal(predArray[sliceId, :, :]), colors=COLORSTR_RED)
+                axarr[2,0].contour(rotCoronal(predArray[sliceId, :, :]), colors=COLORSTR_RED, linewidths=LINEWIDTHS)
+                axarr[2,1].contour(rotCoronal(predArray[sliceId, :, :]), colors=COLORSTR_RED, linewidths=LINEWIDTHS)
             if refineArray is not None:
-                axarr[2,0].contour(rotCoronal(refineArray[sliceId, :, :]), colors=COLORSTR_PINK, linestyle='dashed')
-                axarr[2,1].contour(rotCoronal(refineArray[sliceId, :, :]), colors=COLORSTR_PINK, linestyle='dashed')
+                axarr[2,0].contour(rotCoronal(refineArray[sliceId, :, :]), colors=COLORSTR_PINK, linestyle='dashed', linewidths=LINEWIDTHS)
+                axarr[2,1].contour(rotCoronal(refineArray[sliceId, :, :]), colors=COLORSTR_PINK, linestyle='dashed', linewidths=LINEWIDTHS)
             for (sliceNeighborId, columnId) in extraSliceIdsAndColumnIds:
                 axarr[2,columnId].imshow(rotCoronal(ctArray[sliceNeighborId, :, :]), cmap=COLORSTR_GRAY)
                 axarr[2,columnId].imshow(rotCoronal(ptArray[sliceNeighborId, :, :]), cmap=COLORSTR_GRAY, alpha=0.3)
                 if gtArray is not None:
-                    axarr[2,columnId].contour(rotCoronal(gtArray[sliceNeighborId, :, :]), colors=COLORSTR_GREEN)
+                    axarr[2,columnId].contour(rotCoronal(gtArray[sliceNeighborId, :, :]), colors=COLORSTR_GREEN, linewidths=LINEWIDTHS)
                 if predArray is not None:
-                    axarr[2,columnId].contour(rotCoronal(predArray[sliceNeighborId, :, :]), colors=COLORSTR_RED)
+                    axarr[2,columnId].contour(rotCoronal(predArray[sliceNeighborId, :, :]), colors=COLORSTR_RED, linewidths=LINEWIDTHS)
                 if refineArray is not None:
-                    axarr[2,columnId].contour(rotCoronal(refineArray[sliceNeighborId, :, :]), colors=COLORSTR_PINK, linestyle='dotted', linewidths=1)
+                    axarr[2,columnId].contour(rotCoronal(refineArray[sliceNeighborId, :, :]), colors=COLORSTR_PINK, linestyle='dotted', linewidths=LINEWIDTHS)
         
         # Step 3 - Show distance map
         if 1:
@@ -1292,8 +1386,13 @@ def plotData(ctArray, ptArray, gtArray, predArray, refineArray=None, sliceId=Non
                     scribbleColor = RGBA_ARRAY_BLUE
                     scribbleColorStr = 'blue'
                 scribbleColorMapBase = matplotlib.colors.ListedColormap([scribbleColor for _ in range(256)])
-                scribbleColorMap, scribbleNorm = getScribbleColorMap(scribbleColorMapBase, opacityBoolForScribblePoints=True)
+                scribbleColorMap, scribbleNorm     = getScribbleColorMap(scribbleColorMapBase, opacityBoolForScribblePoints=True)
                 cmapScribbleDist, normScribbleDist = getScribbleColorMap(CMAP_DEFAULT, opacityBoolForScribblePoints=False)
+
+                scribbleColorMapBaseFgd              = matplotlib.colors.ListedColormap([RGBA_ARRAY_YELLOW for _ in range(256)])
+                scribbleColorMapFgd, scribbleNormFgd = getScribbleColorMap(scribbleColorMapBaseFgd, opacityBoolForScribblePoints=True)
+                scribbleColorMapBaseBgd              = matplotlib.colors.ListedColormap([RGBA_ARRAY_BLUE for _ in range(256)])
+                scribbleColorMapBgd, scribbleNormBgd = getScribbleColorMap(scribbleColorMapBaseBgd, opacityBoolForScribblePoints=True)
 
                 # Step 3.2 - Get binary distance map
                 points3DDistanceMapBinary = copy.deepcopy(points3DDistanceMap)
@@ -1303,28 +1402,37 @@ def plotData(ctArray, ptArray, gtArray, predArray, refineArray=None, sliceId=Non
                     axial2DSlice = skimage.morphology.binary_dilation(points3DDistanceMapBinary[:, :, sliceId])
                     axarr[0,0].imshow(axial2DSlice, cmap=scribbleColorMap, norm=scribbleNorm)
                     axarr[0,1].imshow(axial2DSlice, cmap=scribbleColorMap, norm=scribbleNorm)
-                    # axial2DSlice = points3DDistanceMapBinary[:, :, sliceId]
-                    # axarr[0,0].contour(axial2DSlice, color=scribbleColorStr)
-                    # axarr[0,1].contour(axial2DSlice, color=scribbleColorStr)
+                    axarr[0,2].imshow(skimage.morphology.binary_dilation(scribbleMapDataFgd[:,:,sliceId]), cmap=scribbleColorMapFgd, norm=scribbleNormFgd)
+                    axarr[0,2].imshow(skimage.morphology.binary_dilation(scribbleMapDataBgd[:,:,sliceId]), cmap=scribbleColorMapBgd, norm=scribbleNormBgd)
                     for (sliceNeighborId, columnId) in extraSliceIdsAndColumnIds:
-                        axarr[0,columnId].imshow(points3DDistanceMap[:, :, sliceNeighborId], cmap=cmapScribbleDist, norm=normScribbleDist)
+                        # axarr[0,columnId].imshow(points3DDistanceMap[:, :, sliceNeighborId], cmap=cmapScribbleDist, norm=normScribbleDist)
+                        if scribbleType == KEY_SCRIBBLE_FGD  : axarr[0,columnId].imshow(points3DDistanceMapFgd[:, :, sliceNeighborId], cmap=cmapScribbleDist, norm=normScribbleDist)
+                        elif scribbleType == KEY_SCRIBBLE_BGD: axarr[0,columnId].imshow(points3DDistanceMapBgd[:, :, sliceNeighborId], cmap=cmapScribbleDist, norm=normScribbleDist)
                 elif viewType == KEY_SAGITTAL:
                     sagittal2DSlice = skimage.morphology.binary_dilation(rotSagittal(points3DDistanceMapBinary[:, sliceId, :]))
                     axarr[1,0].imshow(sagittal2DSlice, cmap=scribbleColorMap, norm=scribbleNorm)
                     axarr[1,1].imshow(sagittal2DSlice, cmap=scribbleColorMap, norm=scribbleNorm)
+                    axarr[1,2].imshow(skimage.morphology.binary_dilation(rotSagittal(scribbleMapDataFgd[:,sliceId,:])), cmap=scribbleColorMapFgd, norm=scribbleNormFgd)
+                    axarr[1,2].imshow(skimage.morphology.binary_dilation(rotSagittal(scribbleMapDataBgd[:,sliceId,:])), cmap=scribbleColorMapBgd, norm=scribbleNormBgd)
                     for (sliceNeighborId, columnId) in extraSliceIdsAndColumnIds:
-                        axarr[1,columnId].imshow(rotSagittal(points3DDistanceMap[:, sliceNeighborId, :]), cmap=cmapScribbleDist, norm=normScribbleDist)
+                        # axarr[1,columnId].imshow(rotSagittal(points3DDistanceMap[:, sliceNeighborId, :]), cmap=cmapScribbleDist, norm=normScribbleDist)
+                        if scribbleType == KEY_SCRIBBLE_FGD  : axarr[1,columnId].imshow(rotSagittal(points3DDistanceMapFgd[:, sliceNeighborId, :]), cmap=cmapScribbleDist, norm=normScribbleDist)
+                        elif scribbleType == KEY_SCRIBBLE_BGD: axarr[1,columnId].imshow(rotSagittal(points3DDistanceMapBgd[:, sliceNeighborId, :]), cmap=cmapScribbleDist, norm=normScribbleDist)
                 elif viewType == KEY_CORONAL:
                     coronal2DSlice = skimage.morphology.binary_dilation(rotCoronal(points3DDistanceMapBinary[sliceId, :, :]))
                     axarr[2,0].imshow(coronal2DSlice, cmap=scribbleColorMap, norm=scribbleNorm)
                     axarr[2,1].imshow(coronal2DSlice, cmap=scribbleColorMap, norm=scribbleNorm)
+                    axarr[2,2].imshow(skimage.morphology.binary_dilation(rotCoronal(scribbleMapDataFgd[sliceId,:,:])), cmap=scribbleColorMapFgd, norm=scribbleNormFgd)
+                    axarr[2,2].imshow(skimage.morphology.binary_dilation(rotCoronal(scribbleMapDataBgd[sliceId,:,:])), cmap=scribbleColorMapBgd, norm=scribbleNormBgd)
                     for (sliceNeighborId, columnId) in extraSliceIdsAndColumnIds:
-                        axarr[2,columnId].imshow(rotCoronal(points3DDistanceMap[sliceNeighborId, :, :]), cmap=cmapScribbleDist, norm=normScribbleDist)
+                        # axarr[2,columnId].imshow(rotCoronal(points3DDistanceMap[sliceNeighborId, :, :]), cmap=cmapScribbleDist, norm=normScribbleDist)
+                        if scribbleType == KEY_SCRIBBLE_FGD  : axarr[2,columnId].imshow(rotCoronal(points3DDistanceMapFgd[sliceNeighborId, :, :]), cmap=cmapScribbleDist, norm=normScribbleDist)
+                        elif scribbleType == KEY_SCRIBBLE_BGD: axarr[2,columnId].imshow(rotCoronal(points3DDistanceMapBgd[sliceNeighborId, :, :]), cmap=cmapScribbleDist, norm=normScribbleDist)
         
         supTitleStr = 'CaseName: {} | SliceIdx: {} | SlideID: (per GUI): {}'.format(caseName, sliceId, sliceId+1)
         if points3D is not None:
             supTitleStr += '\n ( scribbleType: {} in view: {})'.format(scribbleType, viewType) 
-        supTitleStr += r'\n(\textcolor{GT}{green}, \textcolor{Prev Pred}{red}, \textcolor{Refined Pred}{pink}, \textcolor{distance-hmap}{orange}'
+        supTitleStr += r'\n(\\textcolor{GT}{green}, \\textcolor{Prev Pred}{red}, \textcolor{Refined Pred}{pink}, \textcolor{distance-hmap}{orange}'
         plt.suptitle(supTitleStr) #, usetex=True)
         
         # if saveFolderPath is None:
@@ -1343,7 +1451,7 @@ def plotData(ctArray, ptArray, gtArray, predArray, refineArray=None, sliceId=Non
 
     return points3DDistanceMap, viewType, sliceId, pngName
 
-def plotInteraction(points3DDistanceMap, viewType, sliceId, pngName, counter, ctArray, segArrayGT, segArrayPred, refineArray=None, saveFolderPath=None):
+def plot2DInteractionAsRGB(points3DDistanceMap, viewType, sliceId, pngName, counter, ctArray, segArrayGT, segArrayPred, refineArray=None, saveFolderPath=None):
     
     try:
         
@@ -1390,7 +1498,7 @@ def plotInteraction(points3DDistanceMap, viewType, sliceId, pngName, counter, ct
         traceback.print_exc()
         if MODE_DEBUG: pdb.set_trace()
 
-def plot(preparedDataTorch, segArrayGT, caseName, counter, points3D, scribbleType, refineArray=None, saveFolderPath=None):
+def plot(scribbleMapData, preparedDataTorch, segArrayGT, caseName, counter, points3D, scribbleType, refineArray=None, saveFolderPath=None):
     """
     Params
     ------
@@ -1404,11 +1512,11 @@ def plot(preparedDataTorch, segArrayGT, caseName, counter, points3D, scribbleTyp
 
         # PLotting data    
         if 1:
-            points3DDistanceMap, viewType, sliceId, pngName = plotData(ctArray, ptArray, segArrayGT, segArrayPred, refineArray, None, caseName, counter, points3D, scribbleType, saveFolderPath=saveFolderPath)
+            points3DDistanceMap, viewType, sliceId, pngName = plotData(scribbleMapData, ctArray, ptArray, segArrayGT, segArrayPred, refineArray, None, caseName, counter, points3D, scribbleType, saveFolderPath=saveFolderPath)
 
         # Saving interactions in RGB format (R=Pred, G=GT, B=Interaction)
         if 1:
-            plotInteraction(points3DDistanceMap, viewType, sliceId, pngName, counter, ctArray, segArrayGT, segArrayPred, refineArray, saveFolderPath)
+            plot2DInteractionAsRGB(points3DDistanceMap, viewType, sliceId, pngName, counter, ctArray, segArrayGT, segArrayPred, refineArray, saveFolderPath)
             
 
     except:
@@ -1478,7 +1586,7 @@ async def lifespan(app: fastapi.FastAPI):
         epoch     = 150
         modelType = KEY_UNET_V1 # type == <class 'monai.networks.nets.unet.UNet'>
         # DEVICE    = torch.device('cpu')
-        loadOnnx  = True
+        loadOnnx  = False # True, False
 
     MODEL, ORT_SESSION = loadModelUsingUserPath(DEVICE, expName, epoch, modelType, loadOnnx)
     LOAD_ONNX = loadOnnx
@@ -1563,7 +1671,7 @@ async def prepare(payload: PayloadPrepare, request: starlette.requests.Request):
             SESSIONSGLOBAL[clientIdentifier] = {'userAgent': userAgent, KEY_CLIENT_IDENTIFIER: clientIdentifier}
         
         if patientName not in SESSIONSGLOBAL[clientIdentifier]:
-            SESSIONSGLOBAL[clientIdentifier][patientName] = {KEY_DATA:{}, KEY_TORCH_DATA: {}
+            SESSIONSGLOBAL[clientIdentifier][patientName] = {KEY_DATA:{}, KEY_TORCH_DATA: [], KEY_SCRIBBLE_MAP: []
                                                 , KEY_DCM_LIST: [], KEY_SCRIBBLE_COUNTER: 0
                                                 , KEY_SEG_SOP_INSTANCE_UID: None, KEY_SEG_SERIES_INSTANCE_UID: None
                                                 , KEY_SEG_ORTHANC_ID: None
@@ -1680,6 +1788,7 @@ async def process(payload: PayloadProcess, request: starlette.requests.Request):
             preparedDataTorch = patientData[KEY_TORCH_DATA]
             preparedDataTorch[0,3] = torch.zeros_like(preparedDataTorch[0,1])
             preparedDataTorch[0,4] = torch.zeros_like(preparedDataTorch[0,1])
+            scribbleMapData   = patientData[KEY_SCRIBBLE_MAP]
             
             # Step 3.1 - Extract data
             points3D     = processPayloadData[KEY_POINTS_3D] # [(h/w, h/w, d), (), ..., ()] [NOTE: cornerstone3D sends array-indexed data, so now +1/-1 needed]
@@ -1688,7 +1797,8 @@ async def process(payload: PayloadProcess, request: starlette.requests.Request):
 
             # Step 3.2 - Get distance map
             tDistMapStart = time.time()
-            preparedDataTorch, viewType, sliceId = getDistanceMap(preparedDataTorch, scribbleType, points3D, DISTMAP_Z, DISTMAP_SIGMA)
+            # preparedDataTorch, viewType, sliceId = getDistanceMapOld(preparedDataTorch, scribbleType, points3D, DISTMAP_Z, DISTMAP_SIGMA)
+            scribbleMapData, preparedDataTorch, viewType, sliceId = getDistanceMap(scribbleMapData, preparedDataTorch, scribbleType, points3D, DISTMAP_Z, DISTMAP_SIGMA)
             if viewType is None or sliceId is None:
                 raise fastapi.HTTPException(status_code=500, detail="Error in /process => getDistanceMap() failed")
             print (' - [process()] torch.sum(preparedDataTorch, dim=(2,3,4)): ', torch.sum(preparedDataTorch, dim=(2,3,4)))
@@ -1712,9 +1822,9 @@ async def process(payload: PayloadProcess, request: starlette.requests.Request):
             # Step 4.99 - Plot refined segmentation
             if 1:
                 try: 
-                    segArrayGT = patientData[KEY_SEG_ARRAY_GT]
+                    segArrayGT     = patientData[KEY_SEG_ARRAY_GT]
                     preparedDataNp = copy.deepcopy(to_numpy(preparedDataTorch))
-                    thread = threading.Thread(target=run_executor_in_thread, args=(plot, preparedDataNp, segArrayGT, patientName, patientData[KEY_SCRIBBLE_COUNTER], points3D, scribbleType, segArrayRefinedNumpy, patientData[KEY_PATH_SAVE]))
+                    thread = threading.Thread(target=run_executor_in_thread, args=(plot, scribbleMapData, preparedDataNp, segArrayGT, patientName, patientData[KEY_SCRIBBLE_COUNTER], points3D, scribbleType, segArrayRefinedNumpy, patientData[KEY_PATH_SAVE]))
                     thread.daemon = True  # This makes the thread a daemon thread
                     thread.start()
                 except:
@@ -1722,8 +1832,9 @@ async def process(payload: PayloadProcess, request: starlette.requests.Request):
                     if MODE_DEBUG: pdb.set_trace()
             
             # Step 5 - Update global data
-            preparedDataTorch[0,2]      = segArrayRefinedTorch
-            patientData[KEY_TORCH_DATA] = preparedDataTorch
+            preparedDataTorch[0,2]        = segArrayRefinedTorch
+            patientData[KEY_TORCH_DATA]   = preparedDataTorch
+            patientData[KEY_SCRIBBLE_MAP] = scribbleMapData
             SESSIONSGLOBAL[clientIdentifier][patientName] = patientData
 
             if not makeSEGDICOMStatus:
