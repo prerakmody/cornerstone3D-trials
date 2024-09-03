@@ -1,30 +1,31 @@
-import dcmjs, { data } from 'dcmjs';
 import dicomParser from 'dicom-parser';
-import * as dicomWebClient from "dicomweb-client";
 
 import * as cornerstone3D from '@cornerstonejs/core';
-import * as cornerstone3DTools from '@cornerstonejs/tools';
-import * as cornerstoneAdapters from "@cornerstonejs/adapters";
+import * as cornerstoneAdapters from "@cornerstonejs/adapters"; // dont remove this, gives cirucular dependency error: ReferenceError: Cannot access '__WEBPACK_DEFAULT_EXPORT__' before initialization
 import * as cornerstoneDICOMImageLoader from '@cornerstonejs/dicom-image-loader';
 import * as cornerstoneStreamingImageLoader from '@cornerstonejs/streaming-image-volume-loader';
 
-import createImageIdsAndCacheMetaData from './helpers/createImageIdsAndCacheMetaData'; // https://github.com/cornerstonejs/cornerstone3D/blob/a4ca4dde651d17e658a4aec5a4e3ec1b274dc580/utils/demo/helpers/createImageIdsAndCacheMetaData.js
-// import setPetColorMapTransferFunctionForVolumeActor from './helpers/setPetColorMapTransferFunctionForVolumeActor'; //https://github.com/cornerstonejs/cornerstone3D/blob/v1.77.13/utils/demo/helpers/setPetColorMapTransferFunctionForVolumeActor.js
-// import setCtTransferFunctionForVolumeActor from './helpers/setCtTransferFunctionForVolumeActor'; // https://github.com/cornerstonejs/cornerstone3D/blob/v1.77.13/utils/demo/helpers/setCtTransferFunctionForVolumeActor.js
+import * as cornerstone3DTools from '@cornerstonejs/tools';
 
-import * as dockerNames from 'docker-names'
+import createImageIdsAndCacheMetaData from './helpers/createImageIdsAndCacheMetaData'; // https://github.com/cornerstonejs/cornerstone3D/blob/a4ca4dde651d17e658a4aec5a4e3ec1b274dc580/utils/demo/helpers/createImageIdsAndCacheMetaData.js
+// // import setPetColorMapTransferFunctionForVolumeActor from './helpers/setPetColorMapTransferFunctionForVolumeActor'; //https://github.com/cornerstonejs/cornerstone3D/blob/v1.77.13/utils/demo/helpers/setPetColorMapTransferFunctionForVolumeActor.js
+// // import setCtTransferFunctionForVolumeActor from './helpers/setCtTransferFunctionForVolumeActor'; // https://github.com/cornerstonejs/cornerstone3D/blob/v1.77.13/utils/demo/helpers/setCtTransferFunctionForVolumeActor.js
+
+import * as config from './helpers/config'
+import * as makeGUIElementsHelper from './helpers/makeGUIElementsHelper'
+import * as updateGUIElementsHelper from './helpers/updateGUIElementsHelper'
+import * as keyboardEventsHelper from './helpers/keyboardEventsHelper'
+import * as cornerstoneHelpers from './helpers/cornerstoneHelpers'
+import * as apiEndpointHelpers from './helpers/apiEndpointHelpers'
+import * as segmentationHelpers from './helpers/segmentationHelpers'
+
 import { vec3 } from 'gl-matrix';
 import Highcharts from 'highcharts';
 import Histogram from 'highcharts/modules/histogram-bellcurve';
 Histogram(Highcharts)
 
-const instanceName = dockerNames.getRandomName()
-console.log(' ------------ instanceName: ', instanceName)
 
-import * as config from './helpers/config'
-import * as makeGUIElementsHelper from './helpers/makeGUIElementsHelper'
-import * as keyboardEventsHelper from './helpers/keyboardEventsHelper'
-import * as cornerstoneHelpers from './helpers/cornerstoneHelpers'
+
 /****************************************************************
 *                             VARIABLES  
 ******************************************************************/
@@ -56,8 +57,8 @@ const toolGroupIdAll           = [toolGroupIdContours, toolGroupIdScribble];
 const volumeLoaderScheme       = 'cornerstoneStreamingImageVolume';
 const volumeIdPETBase      = `${volumeLoaderScheme}:myVolumePET`; //+ cornerstone3D.utilities.uuidv4()
 const volumeIdCTBase       = `${volumeLoaderScheme}:myVolumeCT`;
-let volumeIdCT;
-let volumeIdPET;
+// let volumeIdCT;
+// let volumeIdPET;
 
 // Colors
 const COLOR_RGB_FGD = 'rgb(218, 165, 32)' // 'goldenrod'
@@ -80,67 +81,31 @@ const INIT_BRUSH_SIZE = 5
 
 const scribbleSegmentationIdBase = `SCRIBBLE_SEGMENTATION_ID`; // this should not change for different scribbles
 
-const gtSegmentationIdBase   = ["LOAD_SEGMENTATION_ID", MASK_TYPE_GT].join('::') 
-const predSegmentationIdBase = ["LOAD_SEGMENTATION_ID", MASK_TYPE_PRED].join('::')
 let scribbleSegmentationId;
-let scribbleSegmentationUIDs;
-let gtSegmentationId
-let gtSegmentationUIDs;
-let predSegmentationId;
-let predSegmentationUIDs;
 
 const SEG_TYPE_LABELMAP = 'LABELMAP'
-const SEG_TYPE_CONTOUR  = 'CONTOUR'
 
 // Python server
 // const PYTHON_SERVER_CERT        = fs.readFileSync('../backend/hostCert.pem')
 // const PYTHON_SERVER_HTTPSAGENT = new https.Agent({ ca: PYTHON_SERVER_CERT })
 const URL_PYTHON_SERVER = `${window.location.origin}`.replace('50000', '55000') //[`${window.location.origin}`, 'https://localhost:55000']
 const ENDPOINT_PREPARE  = '/prepare'
-const ENDPOINT_PROCESS  = '/process'
 const KEY_DATA          = 'data'
 const KEY_IDENTIFIER    = 'identifier'
-const KEY_POINTS_3D     = 'points3D'
-const KEY_SCRIB_TYPE    = 'scribbleType'
-const KEY_CASE_NAME     = 'caseName'
 const METHOD_POST       = 'POST'
 const HEADERS_JSON      = {'Content-Type': 'application/json',}
 
-const KEY_FGD = 'fgd'
-const KEY_BGD = 'bgd'
 
 // Tools
 const MODE_ACTIVE  = 'Active';
-const MODE_PASSIVE = 'Passive';
-const MODE_ENABLED = 'Enabled';
-const MODE_DISABLED = 'Disabled';
-const SHORTCUT_KEY_C = 'c';
-const SHORTCUT_KEY_ARROW_LEFT = 'ArrowLeft';
-const SHORTCUT_KEY_ARROW_RIGHT = 'ArrowRight';
 
 // General
-let imageIdsCT   = []
 let ctFetchBool  = false;
 let fusedPETCT   = false;
 let petBool      = false;
 let totalImagesIdsCT = undefined;
 let totalImagesIdsPET = undefined;
 let totalROIsRTSTRUCT = undefined;
-let patientIdx        = undefined;
-
-let globalSliceIdxVars = {axialSliceIdxHTML:-1   , axialSliceIdxViewportReference:-1   , axialViewPortReference: {}, axialCamera: {}
-                        , sagittalSliceIdxHTML:-1, sagittalSliceIdxViewportReference:-1, sagittalViewportReference: {}, sagittalCamera: {}
-                        , coronalSliceIdxHTML:-1 , coronalSliceIdxViewportReference:-1 , coronalViewportReference:{}, coronalCamera: {}
-                    };
-// let axialSliceId    = undefined;
-// let sagittalSliceId = undefined;
-// let coronalSliceId  = undefined;
-// let maxAxialId      = undefined;
-// let maxSagittalId   = undefined;
-// let maxCoronalId    = undefined;
-
-// Orthan Data
-let orthanDataURLS = []
 
 /****************************************************************
 *                         HTML ELEMENTS  
@@ -150,8 +115,8 @@ await makeGUIElementsHelper.createViewPortsHTML();
 let axialDiv=config.getAxialDiv(), sagittalDiv=config.getSagittalDiv(), coronalDiv=config.getCoronalDiv();
 let axialDivPT=config.getAxialDivPT(), sagittalDivPT=config.getSagittalDivPT(), coronalDivPT=config.getCoronalDivPT();
 let serverStatusCircle=config.getServerStatusCircle(), serverStatusTextDiv=config.getServerStatusTextDiv();
-let axialSliceDiv=config.getAxialSliceDiv(), sagittalSliceDiv=config.getSagittalSliceDiv(), coronalSliceDiv=config.getCoronalSliceDiv();
-let axialSliceDivPT=config.getAxialSliceDivPT(), sagittalSliceDivPT=config.getSagittalSliceDivPT(), coronalSliceDivPT=config.getCoronalSliceDivPT();
+// let axialSliceDiv=config.getAxialSliceDiv(), sagittalSliceDiv=config.getSagittalSliceDiv(), coronalSliceDiv=config.getCoronalSliceDiv();
+// let axialSliceDivPT=config.getAxialSliceDivPT(), sagittalSliceDivPT=config.getSagittalSliceDivPT(), coronalSliceDivPT=config.getCoronalSliceDivPT();
 
 // const {axialDiv, sagittalDiv, coronalDiv, axialSliceDiv, sagittalSliceDiv, coronalSliceDiv
 //     , serverStatusCircle, serverStatusTextDiv
@@ -538,57 +503,57 @@ async function otherHTMLElements(){
     ///////////////////////////////////////////////////////////////////////////////////// Step 4.0 - Show hoverelements
     // const mouseHoverDiv = document.createElement('div');
     // mouseHoverDiv.id = 'mouseHoverDiv';
-    const mouseHoverDiv = document.createElement('div');
-    mouseHoverDiv.style.position = 'absolute'; // Change to absolute
-    mouseHoverDiv.style.bottom = '3';
-    mouseHoverDiv.style.left = '3';
-    mouseHoverDiv.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
-    mouseHoverDiv.style.color = 'white';
-    mouseHoverDiv.style.padding = '5px';
-    mouseHoverDiv.style.zIndex = '1000'; // Ensure zIndex is a string
-    mouseHoverDiv.id = 'mouseHoverDiv';
-    mouseHoverDiv.style.fontSize = '10px';
-    axialDiv.appendChild(mouseHoverDiv);
+    // const mouseHoverDiv = document.createElement('div');
+    // mouseHoverDiv.style.position = 'absolute'; // Change to absolute
+    // mouseHoverDiv.style.bottom = '3';
+    // mouseHoverDiv.style.left = '3';
+    // mouseHoverDiv.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
+    // mouseHoverDiv.style.color = 'white';
+    // mouseHoverDiv.style.padding = '5px';
+    // mouseHoverDiv.style.zIndex = '1000'; // Ensure zIndex is a string
+    // mouseHoverDiv.id = 'mouseHoverDiv';
+    // mouseHoverDiv.style.fontSize = '10px';
+    // axialDiv.appendChild(mouseHoverDiv);
 
-    const canvasPosHTML = document.createElement('p');
-    const ctValueHTML = document.createElement('p');
-    const ptValueHTML = document.createElement('p');
-    canvasPosHTML.innerText = 'Canvas position:';
-    ctValueHTML.innerText = 'CT value:';
-    ptValueHTML.innerText = 'PT value:';
+    // const canvasPosHTML = document.createElement('p');
+    // const ctValueHTML = document.createElement('p');
+    // const ptValueHTML = document.createElement('p');
+    // canvasPosHTML.innerText = 'Canvas position:';
+    // ctValueHTML.innerText = 'CT value:';
+    // ptValueHTML.innerText = 'PT value:';
 
-    viewportIds.forEach((viewportId_, index) => {
-        const viewportDiv = document.getElementById(viewportIds[index]);
-        viewportDiv.addEventListener('mousemove', function(evt) {
-            if (volumeIdCT != undefined){
-                const volumeCTThis = cornerstone3D.cache.getVolume(volumeIdCT);
-                if (volumeCTThis != undefined){
-                    const renderingEngine = cornerstone3D.getRenderingEngine(renderingEngineId);
-                    const rect        = viewportDiv.getBoundingClientRect();
-                    const canvasPos   = [Math.floor(evt.clientX - rect.left),Math.floor(evt.clientY - rect.top),];
-                    const viewPortTmp = renderingEngine.getViewport(viewportIds[index]);
-                    const worldPos    = viewPortTmp.canvasToWorld(canvasPos);
-                    let index3D       = getIndex(volumeCTThis, worldPos) //.forEach((val) => Math.round(val));
-                    if (canvasPos != undefined && index3D != undefined && worldPos != undefined){
-                        index3D       = index3D.map((val) => Math.round(val));
-                        canvasPosHTML.innerText = `Canvas position: (${viewportIds[index]}) \n ==> (${canvasPos[0]}, ${canvasPos[1]}) || (${index3D[0]}, ${index3D[1]}, ${index3D[2]})`;
-                        ctValueHTML.innerText = `CT value: ${getValue(volumeCTThis, worldPos)}`;
-                        if (volumeIdPET != undefined){
-                            const volumePTThis = cornerstone3D.cache.getVolume(volumeIdPET);
-                            ptValueHTML.innerText = `PT value: ${getValue(volumePTThis, worldPos)}`;
-                        }
-                    }else{
-                        showToast('Mousemove Event: Error in getting canvasPos, index3D, worldPos')
-                    }                    
+    // viewportIds.forEach((viewportId_, index) => {
+    //     const viewportDiv = document.getElementById(viewportIds[index]);
+    //     viewportDiv.addEventListener('mousemove', function(evt) {
+    //         if (volumeIdCT != undefined){
+    //             const volumeCTThis = cornerstone3D.cache.getVolume(volumeIdCT);
+    //             if (volumeCTThis != undefined){
+    //                 const renderingEngine = cornerstone3D.getRenderingEngine(renderingEngineId);
+    //                 const rect        = viewportDiv.getBoundingClientRect();
+    //                 const canvasPos   = [Math.floor(evt.clientX - rect.left),Math.floor(evt.clientY - rect.top),];
+    //                 const viewPortTmp = renderingEngine.getViewport(viewportIds[index]);
+    //                 const worldPos    = viewPortTmp.canvasToWorld(canvasPos);
+    //                 let index3D       = getIndex(volumeCTThis, worldPos) //.forEach((val) => Math.round(val));
+    //                 if (canvasPos != undefined && index3D != undefined && worldPos != undefined){
+    //                     index3D       = index3D.map((val) => Math.round(val));
+    //                     canvasPosHTML.innerText = `Canvas position: (${viewportIds[index]}) \n ==> (${canvasPos[0]}, ${canvasPos[1]}) || (${index3D[0]}, ${index3D[1]}, ${index3D[2]})`;
+    //                     ctValueHTML.innerText = `CT value: ${getValue(volumeCTThis, worldPos)}`;
+    //                     if (volumeIdPET != undefined){
+    //                         const volumePTThis = cornerstone3D.cache.getVolume(volumeIdPET);
+    //                         ptValueHTML.innerText = `PT value: ${getValue(volumePTThis, worldPos)}`;
+    //                     }
+    //                 }else{
+    //                     updateGUIElementsHelper.showToast('Mousemove Event: Error in getting canvasPos, index3D, worldPos')
+    //                 }                    
                     
-                }
-            }
-        });
-    });
+    //             }
+    //         }
+    //     });
+    // });
 
-    mouseHoverDiv.appendChild(canvasPosHTML);
-    mouseHoverDiv.appendChild(ctValueHTML);
-    mouseHoverDiv.appendChild(ptValueHTML);
+    // mouseHoverDiv.appendChild(canvasPosHTML);
+    // mouseHoverDiv.appendChild(ctValueHTML);
+    // mouseHoverDiv.appendChild(ptValueHTML);
 
     ///////////////////////////////////////////////////////////////////////////////////// Step 5 - Create dropdown for case selection
     const caseSelectionHTML     = document.createElement('select');
@@ -611,120 +576,6 @@ async function otherHTMLElements(){
 }
 const {caseSelectionHTML, showPETButton} = await otherHTMLElements(0);
 
-async function getLoaderHTML(){
-
-    // Step 1 - Create a loaderDiv
-    const loaderDiv = document.getElementById('loaderDiv');
-    if (loaderDiv == null){
-        const loaderDiv = document.createElement('div');
-        loaderDiv.id = 'loaderDiv';
-        loaderDiv.style.display = 'none'; // Initially hidden
-
-        // Step 2 - Create the gray-out div
-        const grayOutDiv                 = document.createElement('div');
-        grayOutDiv.id                    = 'grayOutDiv';
-        grayOutDiv.style.position        = 'absolute';
-        grayOutDiv.style.backgroundColor = 'rgba(128, 128, 128, 0.5)'; // Semi-transparent gray
-        grayOutDiv.style.zIndex          = '999'; // Ensure it's below the loadingIndicator but above everything else
-        // grayOutDiv.style.display         = 'none'; // Initially hidden
-
-        // Step 3 - Create the loadingIndicatorDiv
-        const loadingIndicatorDiv = document.createElement('div');
-        loadingIndicatorDiv.id                 = 'loadingIndicatorDiv';
-        loadingIndicatorDiv.style.width        = '50px';
-        loadingIndicatorDiv.style.height       = '50px';
-        loadingIndicatorDiv.style.borderRadius = '50%';
-        loadingIndicatorDiv.style.border       = '5px solid #f3f3f3';
-        loadingIndicatorDiv.style.borderTop    = '5px solid #3498db';
-        loadingIndicatorDiv.style.animation    = 'spin 2s linear infinite';
-        loadingIndicatorDiv.style.margin       = 'auto';
-        loadingIndicatorDiv.style.zIndex       = '1000'; // Ensure it's on top
-        // loadingIndicatorDiv.style.display      = 'none'; // Initially hidden
-
-        // Step 4 - Add the children to the loaderDiv
-        loaderDiv.appendChild(grayOutDiv);
-        loaderDiv.appendChild(loadingIndicatorDiv);
-        document.body.appendChild(loaderDiv);
-        document.head.appendChild(document.createElement('style')).textContent = `
-            @keyframes spin {
-                0% { transform: rotate(0deg); }
-                100% { transform: rotate(360deg); }
-            }
-            `;
-
-        // Step 5 - Position the grayOutDiv and loadingIndicatorDiv 
-        await setLoaderHTMLPosition();
-        // const contentDiv = document.getElementById(contentDivId);
-        // const contentDivRect = contentDiv.getBoundingClientRect();
-        // // console.log(' -- contentDivRect: ', contentDivRect);
-
-        // // Step 5.1 - Position the loadingIndicatorDiv
-        // loadingIndicatorDiv.style.position = 'absolute';
-        // loadingIndicatorDiv.style.top = `${(contentDivRect.top + (contentDivRect.bottom - contentDivRect.top) / 2) - (loadingIndicatorDiv.offsetHeight / 2)}px`;
-        // loadingIndicatorDiv.style.left = `${(contentDivRect.left + (contentDivRect.right - contentDivRect.left) / 2) - (loadingIndicatorDiv.offsetWidth / 2)}px`;
-        
-
-        // // Step 5.2 - place the grayOutDiv on top of contentDiv
-        // grayOutDiv.style.top = `${contentDivRect.top}px`;
-        // grayOutDiv.style.left = `${contentDivRect.left}px`;
-        // grayOutDiv.style.width = `${contentDivRect.right - contentDivRect.left}px`;
-        // grayOutDiv.style.height = `${contentDivRect.bottom - contentDivRect.top}px`;
-    }
-
-    return {loaderDiv};
-}
-
-async function setLoaderHTMLPosition(set=true){
-
-    // Step 1 - Get divs
-    const contentDiv          = document.getElementById(contentDivId);
-    const loadingIndicatorDiv = document.getElementById('loadingIndicatorDiv');
-    const grayOutDiv          = document.getElementById('grayOutDiv');
-
-    if (set){
-        // Step 2 - Get the bounding rect of contentDiv
-        const contentDivRect = contentDiv.getBoundingClientRect();
-        // console.log(' -- contentDivRect: ', contentDivRect);
-
-        // Step 3 - Position the loadingIndicatorDiv
-        loadingIndicatorDiv.style.position = 'absolute';
-        loadingIndicatorDiv.style.top = `${(contentDivRect.top + (contentDivRect.bottom - contentDivRect.top) / 2) - (loadingIndicatorDiv.offsetHeight / 2)}px`;
-        loadingIndicatorDiv.style.left = `${(contentDivRect.left + (contentDivRect.right - contentDivRect.left) / 2) - (loadingIndicatorDiv.offsetWidth / 2)}px`;
-        
-        // Step 4 - place the grayOutDiv on top of contentDiv
-        grayOutDiv.style.top = `${contentDivRect.top}px`;
-        grayOutDiv.style.left = `${contentDivRect.left}px`;
-        grayOutDiv.style.width = `${contentDivRect.right - contentDivRect.left}px`;
-        grayOutDiv.style.height = `${contentDivRect.bottom - contentDivRect.top}px`;
-    }else {
-        loadingIndicatorDiv.style.position = 'absolute';
-        loadingIndicatorDiv.style.top = `0`;
-        loadingIndicatorDiv.style.left = `0`;
-
-        grayOutDiv.width = '0';
-        grayOutDiv.height = '0';
-    }
-    
-
-}
-
-async function showLoaderAnimation() {
-
-    const {loaderDiv} = await getLoaderHTML();
-    if (loaderDiv) {
-        loaderDiv.style.display = 'block';
-        setLoaderHTMLPosition(true);
-    }
-}
-
-async function unshowLoaderAnimation() {
-
-    const {loaderDiv} = await getLoaderHTML();
-    if (loaderDiv) {
-        loaderDiv.style.display = 'none';
-        setLoaderHTMLPosition(false);
-    }
-}
 
 function printHeaderInConsole(strToPrint){
     console.log(`\n\n | ================================================================ ${strToPrint} ================================================================ | \n\n`)
@@ -756,477 +607,8 @@ function setServerStatus(serverMessageId, serverMessageStr){
 *                             UTILS  
 *****************************************************************/
 
-
-
-const URL_ROOT = `${window.location.origin}`;
-
-const KEY_ORTHANC_ID = 'OrthancId';
-const KEY_STUDIES    = 'Studies';
-const KEY_SERIES     = 'Series';
-const KEY_STUDIES_ORTHANC_ID  = 'StudiesOrthancId';
-const KEY_SERIES_ORTHANC_ID   = 'SeriesOrthancId';
-const KEY_INSTANCE_ORTHANC_ID = 'InstanceOrthancId';
-const KEY_STUDY_UID     = 'StudyUID';
-const KEY_SERIES_UID    = 'SeriesUID';
-const KEY_INSTANCE_UID  = 'InstanceUID';
-const KEY_MODALITY      = 'Modality';
-
-const KEY_MODALITY_SEG = 'SEG';
-const KEY_SERIES_DESC = 'SeriesDescription';
-
 let orthancHeaders = new Headers();
 orthancHeaders.set('Authorization', 'Basic ' + btoa('orthanc'+ ":" + 'orthanc'));
-
-async function getOrthancPatientIds() {
-    let res = {};
-
-    try {
-        // Step 1 - Get Orthanc Patient IDs
-        let query = `${URL_ROOT}/patients`;
-        let response = await fetch(query);
-        if (response.ok) {
-            let patientOrthancIds = await response.json();
-            for (let patientOrthancId of patientOrthancIds) {
-
-                // Step 2 - Get Patient Data
-                let patientQuery = `${URL_ROOT}/patients/${patientOrthancId}`;
-                let patientResponse = await fetch(patientQuery);
-                if (patientResponse.ok) {
-                    let patientData = await patientResponse.json();
-                    let patientActualId = patientData.MainDicomTags.PatientID;
-                    let patientStudiesOrthancIds = patientData.Studies;
-                    res[patientActualId] = {
-                        [KEY_ORTHANC_ID]: patientOrthancId,
-                        [KEY_STUDIES]: []
-                    };
-                    for (let patientStudiesOrthancId of patientStudiesOrthancIds) {
-                        res[patientActualId][KEY_STUDIES].push({[KEY_STUDIES_ORTHANC_ID]: patientStudiesOrthancId, [KEY_STUDY_UID]: null, [KEY_SERIES]: []});
-                        
-                        // Step 3 - Get Study Data
-                        let studyRequest = `${URL_ROOT}/studies/${patientStudiesOrthancId}`;
-                        let studyResponse = await fetch(studyRequest);
-                        if (studyResponse.ok) {
-                            let studyData = await studyResponse.json();
-                            let studyUID = studyData.MainDicomTags.StudyInstanceUID;
-                            res[patientActualId][KEY_STUDIES][res[patientActualId][KEY_STUDIES].length - 1][KEY_STUDY_UID] = studyUID;
-                            let seriesOrthancIds = studyData.Series;
-                            for (let seriesOrthancId of seriesOrthancIds) {
-                                res[patientActualId][KEY_STUDIES][res[patientActualId][KEY_STUDIES].length - 1][KEY_SERIES].push(
-                                    {
-                                        [KEY_SERIES_ORTHANC_ID]: seriesOrthancId
-                                        , [KEY_SERIES_DESC]: null
-                                        , [KEY_SERIES_UID]: null
-                                        , [KEY_MODALITY]: null
-                                        , [KEY_INSTANCE_UID]: null
-                                        , [KEY_INSTANCE_ORTHANC_ID]: null
-                                    }
-                                );
-                                
-                                // Step 4 - Get Series Data
-                                let seriesRequest = `${URL_ROOT}/series/${seriesOrthancId}`;
-                                let seriesResponse = await fetch(seriesRequest);
-                                if (seriesResponse.ok) {
-                                    let seriesData = await seriesResponse.json();
-                                    let seriesDesc = seriesData.MainDicomTags.SeriesDescription || null;
-                                    let seriesUID = seriesData.MainDicomTags.SeriesInstanceUID;
-                                    let modality = seriesData.MainDicomTags.Modality;
-                                    let lastSeriesIndex = res[patientActualId][KEY_STUDIES][res[patientActualId][KEY_STUDIES].length - 1][KEY_SERIES].length - 1;
-                                    res[patientActualId][KEY_STUDIES][res[patientActualId][KEY_STUDIES].length - 1][KEY_SERIES][lastSeriesIndex][KEY_SERIES_DESC] = seriesDesc;
-                                    res[patientActualId][KEY_STUDIES][res[patientActualId][KEY_STUDIES].length - 1][KEY_SERIES][lastSeriesIndex][KEY_SERIES_UID] = seriesUID;
-                                    res[patientActualId][KEY_STUDIES][res[patientActualId][KEY_STUDIES].length - 1][KEY_SERIES][lastSeriesIndex][KEY_MODALITY] = modality;
-                                    
-                                    // Step 5 - Get Instance Data (for SEG only)
-                                    if (modality === MODALITY_SEG || modality === MODALITY_RTSTRUCT) {
-                                        let instanceRequest = `${URL_ROOT}/instances/${seriesData.Instances[0]}`;
-                                        let instanceResponse = await fetch(instanceRequest);
-                                        if (instanceResponse.ok) {
-                                            let instanceData = await instanceResponse.json();
-                                            let instanceUID = instanceData.MainDicomTags.SOPInstanceUID;
-                                            res[patientActualId][KEY_STUDIES][res[patientActualId][KEY_STUDIES].length - 1][KEY_SERIES][lastSeriesIndex][KEY_INSTANCE_UID] = instanceUID;
-                                            res[patientActualId][KEY_STUDIES][res[patientActualId][KEY_STUDIES].length - 1][KEY_SERIES][lastSeriesIndex][KEY_INSTANCE_ORTHANC_ID] = instanceData.ID;
-                                        } else {
-                                            console.error(' - [getOrthancPatientIds()] instanceResponse: ', instanceResponse.status, instanceResponse.statusText);
-                                        }
-                                    }
-                                } else {
-                                    console.error(' - [getOrthancPatientIds()] seriesResponse: ', seriesResponse.status, seriesResponse.statusText);
-                                }
-                            }
-                        } else {
-                            console.error(' - [getOrthancPatientIds()] studyResponse: ', studyResponse.status, studyResponse.statusText);
-                        }
-                    }
-                } else {
-                    console.error(' - [getOrthancPatientIds()] patientResponse: ', patientResponse.status, patientResponse.statusText);
-                }
-            }
-        } else {
-            console.error(' - [getOrthancPatientIds()] response: ', response.status, response.statusText);
-        }
-    } catch (error) {
-        console.error(error);
-    }
-
-    console.log(' - [getOrthancPatientIds()] res: ', res);
-    return res;
-}
-
-async function getDataURLs(verbose = false){
-
-    ////////////////// Non-SEG Datasets //////////////////
-    // Example 1 (C3D - CT + PET)
-    orthanDataURLS.push({
-        caseName : 'C3D - CT + PET',
-        reverseImageIds  : true,
-        searchObjCT: {
-            StudyInstanceUID : '1.3.6.1.4.1.14519.5.2.1.7009.2403.334240657131972136850343327463',
-            SeriesInstanceUID:'1.3.6.1.4.1.14519.5.2.1.7009.2403.226151125820845824875394858561',
-            wadoRsRoot       : 'https://d3t6nz73ql33tx.cloudfront.net/dicomweb',
-        }, searchObjPET:{
-            StudyInstanceUID : '1.3.6.1.4.1.14519.5.2.1.7009.2403.334240657131972136850343327463',
-            SeriesInstanceUID: '1.3.6.1.4.1.14519.5.2.1.7009.2403.879445243400782656317561081015',
-            wadoRsRoot       : 'https://d3t6nz73ql33tx.cloudfront.net/dicomweb',
-        }, searchObjRTSGT:{
-            StudyInstanceUID: '',
-            SeriesInstanceUID:'',
-            SOPInstanceUID:'',
-            wadoRsRoot: '',
-        }, searchObjRTSPred:{
-            StudyInstanceUID: '',
-            SeriesInstanceUID:'',
-            SOPInstanceUID:'',
-            wadoRsRoot: '',
-        },
-    });
-
-    ////////////////// SEG Datasets //////////////////
-    // Example 2 (C3D - Abdominal CT + SEG) (StageII-Colorectal-CT-005: ) - https://www.cornerstonejs.org/live-examples/segmentationvolume
-    // [NOTE: Unable to find on SEG on TCIA]
-    orthanDataURLS.push({
-        caseName :'C3D - Abdominal CT + SEG',
-        reverseImageIds  : true,
-        searchObjCT:{
-            StudyInstanceUID : "1.3.6.1.4.1.14519.5.2.1.256467663913010332776401703474716742458",
-            SeriesInstanceUID: "1.3.6.1.4.1.14519.5.2.1.40445112212390159711541259681923198035",
-            wadoRsRoot       : "https://d33do7qe4w26qo.cloudfront.net/dicomweb"
-        }, searchObjPET:{
-            StudyInstanceUID: '',
-            SeriesInstanceUID:'',
-            wadoRsRoot: '',
-        },searchObjRTSGT : {
-            StudyInstanceUID : "1.3.6.1.4.1.14519.5.2.1.256467663913010332776401703474716742458",
-            SeriesInstanceUID: "1.2.276.0.7230010.3.1.3.481034752.2667.1663086918.611582",
-            SOPInstanceUID   : "1.2.276.0.7230010.3.1.4.481034752.2667.1663086918.611583",
-            wadoRsRoot       : "https://d33do7qe4w26qo.cloudfront.net/dicomweb"
-        }, searchObjRTSPred:{
-            StudyInstanceUID: '',
-            SeriesInstanceUID:'',
-            SOPInstanceUID:'',
-            wadoRsRoot: '',
-        },
-    });
-    // Try in postman - https://d33do7qe4w26qo.cloudfront.net/dicomweb/studies/1.3.6.1.4.1.14519.5.2.1.256467663913010332776401703474716742458/series/1.3.6.1.4.1.14519.5.2.1.40445112212390159711541259681923198035/metadata
-
-    // Example 3 (C3D - MR + SEG) - https://www.cornerstonejs.org/live-examples/segmentationvolume
-    orthanDataURLS.push({
-        caseName : 'C3D - MR + SEG',
-        reverseImageIds  : true,
-        searchObjCT : {
-            StudyInstanceUID : "1.3.12.2.1107.5.2.32.35162.30000015050317233592200000046",
-            SeriesInstanceUID: "1.3.12.2.1107.5.2.32.35162.1999123112191238897317963.0.0.0",
-            wadoRsRoot       : "https://d33do7qe4w26qo.cloudfront.net/dicomweb"
-        }, searchObjPET:{
-            StudyInstanceUID: '',
-            SeriesInstanceUID:'',
-            wadoRsRoot: '',
-        }, searchObjRTSGT : {
-            StudyInstanceUID : "1.3.12.2.1107.5.2.32.35162.30000015050317233592200000046",
-            SeriesInstanceUID: "1.2.276.0.7230010.3.1.3.296485376.8.1542816659.201008",
-            SOPInstanceUID   : "1.2.276.0.7230010.3.1.4.296485376.8.1542816659.201009",
-            wadoRsRoot       : "https://d33do7qe4w26qo.cloudfront.net/dicomweb"
-        }, searchObjRTSPred:{
-            StudyInstanceUID: '',
-            SeriesInstanceUID:'',
-            SOPInstanceUID:'',
-            wadoRsRoot: '',
-        },
-    });
-
-    // Example 4 (C3D - HCC - CT + SEG) (HCC-TACE-SEG --> HCC_004) (no e.g. figured out from https://d33do7qe4w26qo.cloudfront.net/dicomweb/studies)
-    // CT: https://d33do7qe4w26qo.cloudfront.net/dicomweb/studies/1.3.6.1.4.1.14519.5.2.1.1706.8374.643249677828306008300337414785/series/1.3.6.1.4.1.14519.5.2.1.1706.8374.285388762605622963541285440661/metadata
-    // SEG: https://d33do7qe4w26qo.cloudfront.net/dicomweb/studies/1.3.6.1.4.1.14519.5.2.1.1706.8374.643249677828306008300337414785/series/1.2.276.0.7230010.3.1.3.8323329.773.1600928601.639561/metadata (Ctrl+F="instances")
-    //  - https://d33do7qe4w26qo.cloudfront.net/dicomweb/studies/1.3.6.1.4.1.14519.5.2.1.1706.8374.643249677828306008300337414785/series/1.2.276.0.7230010.3.1.3.8323329.773.1600928601.639561/instances
-    //  - [Works] https://d33do7qe4w26qo.cloudfront.net/dicomweb/studies/1.3.6.1.4.1.14519.5.2.1.1706.8374.643249677828306008300337414785/series/1.2.276.0.7230010.3.1.3.8323329.773.1600928601.639561/instances/1.2.276.0.7230010.3.1.4.8323329.773.1600928601.639562/metadata
-    //  - [downloads] https://d33do7qe4w26qo.cloudfront.net/dicomweb/studies/1.3.6.1.4.1.14519.5.2.1.1706.8374.643249677828306008300337414785/series/1.2.276.0.7230010.3.1.3.8323329.773.1600928601.639561/instances/1.2.276.0.7230010.3.1.4.8323329.773.1600928601.639562
-    orthanDataURLS.push({
-        caseName : 'C3D - HCC - CT + SEG',
-        reverseImageIds  : true,
-        searchObjCT : {
-            StudyInstanceUID : "1.3.6.1.4.1.14519.5.2.1.1706.8374.643249677828306008300337414785",
-            SeriesInstanceUID: "1.3.6.1.4.1.14519.5.2.1.1706.8374.285388762605622963541285440661",
-            wadoRsRoot       : "https://d33do7qe4w26qo.cloudfront.net/dicomweb"
-        }, searchObjPET:{
-            StudyInstanceUID: '',
-            SeriesInstanceUID:'',
-            wadoRsRoot: '',
-        }, searchObjRTSGT : {
-            StudyInstanceUID : "1.3.6.1.4.1.14519.5.2.1.1706.8374.643249677828306008300337414785",
-            SeriesInstanceUID: "1.2.276.0.7230010.3.1.3.8323329.773.1600928601.639561",
-            SOPInstanceUID   : "1.2.276.0.7230010.3.1.4.8323329.773.1600928601.639562",
-            wadoRsRoot       : "https://d33do7qe4w26qo.cloudfront.net/dicomweb"
-        }, searchObjRTSPred:{
-            StudyInstanceUID: '',
-            SeriesInstanceUID:'',
-            SOPInstanceUID:'',
-            wadoRsRoot: '',
-        },
-    });
-
-    // Example 5 (C3D - Prostate MR + SEG) (QIN-PROSTATE-Repeatability --> PCAMPMRI-00012)
-    // NOTE: Issue with overlapping segmentations
-    orthanDataURLS.push({
-        caseName :'C3D - QIN Prostate MR + SEG',
-        reverseImageIds  : true,
-        searchObjCT:{
-            StudyInstanceUID : "1.3.6.1.4.1.14519.5.2.1.3671.4754.298665348758363466150039312520",
-            SeriesInstanceUID: "1.3.6.1.4.1.14519.5.2.1.3671.4754.230497515093449653192531406300",
-            wadoRsRoot       : "https://d33do7qe4w26qo.cloudfront.net/dicomweb"
-        }, searchObjPET:{
-            StudyInstanceUID: '',
-            SeriesInstanceUID:'',
-            wadoRsRoot: '',
-        },searchObjRTSGT : {
-            StudyInstanceUID : "1.3.6.1.4.1.14519.5.2.1.3671.4754.298665348758363466150039312520",
-            SeriesInstanceUID: "1.2.276.0.7230010.3.1.3.1426846371.300.1513205181.722",
-            SOPInstanceUID   : "1.2.276.0.7230010.3.1.4.1426846371.300.1513205181.723",
-            wadoRsRoot       : "https://d33do7qe4w26qo.cloudfront.net/dicomweb"
-        }, searchObjRTSPred:{
-            StudyInstanceUID: '',
-            SeriesInstanceUID:'',
-            SOPInstanceUID:'',
-            wadoRsRoot: '',
-        },
-    });
-
-    ////////////////// RTSTRUCT Datasets //////////////////
-    // Example 6 (C3D - Lung CT + RTSTruct) (NSCLC-Radiomics --> LUNG1-008)
-    // Note: Unable to find RTSTRUCT on cloudfront.net
-    // RTSTRUCT: https://d33do7qe4w26qo.cloudfront.net/dicomweb/studies/1.3.6.1.4.1.32722.99.99.62087908186665265759322018723889952421/series/1.3.6.1.4.1.32722.99.99.305113343545091133620858778081884399262
-    // -- https://d33do7qe4w26qo.cloudfront.net/dicomweb/studies/1.3.6.1.4.1.32722.99.99.62087908186665265759322018723889952421/series/1.3.6.1.4.1.32722.99.99.305113343545091133620858778081884399262/instances
-    // -- [Works] https://d33do7qe4w26qo.cloudfront.net/dicomweb/studies/1.3.6.1.4.1.32722.99.99.62087908186665265759322018723889952421/series/1.3.6.1.4.1.32722.99.99.305113343545091133620858778081884399262/instances/1.3.6.1.4.1.32722.99.99.220766358736397890612249814518504349204/metadata
-    // -- [Nope]  https://d33do7qe4w26qo.cloudfront.net/dicomweb/studies/1.3.6.1.4.1.32722.99.99.62087908186665265759322018723889952421/series/1.3.6.1.4.1.32722.99.99.305113343545091133620858778081884399262/instances/1.3.6.1.4.1.32722.99.99.220766358736397890612249814518504349204
-    const lungCTRTSTRUCTObj = {
-        caseName :'C3D - Lung CT + RTSTRUCT',
-        reverseImageIds  : true,
-        searchObjCT:{
-            StudyInstanceUID : "1.3.6.1.4.1.32722.99.99.62087908186665265759322018723889952421",
-            SeriesInstanceUID: "1.3.6.1.4.1.32722.99.99.12747108866907265023948393821781944475",
-            wadoRsRoot       : "https://d33do7qe4w26qo.cloudfront.net/dicomweb"
-        }, searchObjPET:{
-            StudyInstanceUID: '',
-            SeriesInstanceUID:'',
-            wadoRsRoot: '',
-        },searchObjRTSGT : {
-            StudyInstanceUID : "1.3.6.1.4.1.32722.99.99.62087908186665265759322018723889952421",
-            SeriesInstanceUID: "1.3.6.1.4.1.32722.99.99.305113343545091133620858778081884399262",
-            SOPInstanceUID   : "1.3.6.1.4.1.32722.99.99.220766358736397890612249814518504349204",
-            wadoRsRoot       : "https://d33do7qe4w26qo.cloudfront.net/dicomweb"
-        }, searchObjRTSPred:{
-            StudyInstanceUID: '',
-            SeriesInstanceUID:'',
-            SOPInstanceUID:'',
-            wadoRsRoot: '',
-        },
-    }
-    orthanDataURLS.push(lungCTRTSTRUCTObj);
-
-    if (process.env.NETLIFY === "true"){
-        if (verbose)        
-            console.log(' - [getData()] Running on Netlify. Getting data from cloudfront for caseNumber: ', caseNumber);   
-        
-    }
-    else {
-        if (verbose)
-            console.log(' - [getData()] Running on localhost. Getting data from local orthanc.')
-
-        if (false){
-            // Example 1 - ProstateX-004 
-            orthanDataURLS.push({
-                caseName : 'ProstateX-004',
-                searchObjCT: {
-                    StudyInstanceUID : '1.3.6.1.4.1.14519.5.2.1.7311.5101.170561193612723093192571245493',
-                    SeriesInstanceUID:'1.3.6.1.4.1.14519.5.2.1.7311.5101.206828891270520544417996275680',
-                    wadoRsRoot       : `${window.location.origin}/dicom-web`,
-                }, searchObjPET:{
-                    StudyInstanceUID: '',
-                    SeriesInstanceUID:'',
-                    wadoRsRoot: '',
-                }, searchObjRTSGT:{
-                    StudyInstanceUID: '',
-                    SeriesInstanceUID:'',
-                    SOPInstanceUID:'',
-                    wadoRsRoot: '',
-                }, searchObjRTSPred:{
-                    StudyInstanceUID: '',
-                    SeriesInstanceUID:'',
-                    SOPInstanceUID:'',
-                    wadoRsRoot: '',
-                },
-            });
-            // http://localhost:8042/dicom-web/studies/1.2.826.0.1.3680043.8.498.12735767346218857049599303193606099695
-            // http://localhost:8042/dicom-web/studies/1.2.826.0.1.3680043.8.498.12735767346218857049599303193606099695/series
-
-            // http://localhost:8042/dicom-web/studies/1.2.826.0.1.3680043.8.498.12735767346218857049599303193606099695/series/1.2.826.0.1.3680043.8.498.88933515603927308812086492012007971976
-            // http://localhost:8042/dicom-web/studies/1.2.826.0.1.3680043.8.498.12735767346218857049599303193606099695/series/1.2.826.0.1.3680043.8.498.88933515603927308812086492012007971976/instances
-            
-            // http://localhost:8042/dicom-web/studies/1.2.826.0.1.3680043.8.498.12735767346218857049599303193606099695/series/1.2.826.0.1.3680043.8.498.88933515603927308812086492012007971976/instances/1.2.826.0.1.3680043.8.498.11644186160694132628393551238679963095
-            // http://localhost:8042/dicom-web/studies/1.2.826.0.1.3680043.8.498.12735767346218857049599303193606099695/series/1.2.826.0.1.3680043.8.498.88933515603927308812086492012007971976/instances/1.2.826.0.1.3680043.8.498.11644186160694132628393551238679963095/metadata
-
-            // Example 2 - HCAI-Interactive-XX
-            //// --> (Try in postman) http://localhost:8042/dicom-web/studies/1.2.752.243.1.1.20240123155004085.1690.65801/series/1.2.752.243.1.1.20240123155004085.1700.14027/metadata
-            orthanDataURLS.push({
-                caseName : 'HCAI-Interactive-XX (CT + PET)',
-                searchObjCT : {
-                    StudyInstanceUID  : '1.2.752.243.1.1.20240123155004085.1690.65801',
-                    SeriesInstanceUID : '1.2.752.243.1.1.20240123155006526.5320.21561',
-                    wadoRsRoot        : `${window.location.origin}/dicom-web`
-                }, searchObjPET:{
-                    StudyInstanceUID : '1.2.752.243.1.1.20240123155004085.1690.65801',
-                    SeriesInstanceUID: '1.2.752.243.1.1.20240123155004085.1700.14027',
-                    wadoRsRoot       : `${window.location.origin}/dicom-web`
-                }, searchObjRTSGT:{
-                    StudyInstanceUID : '',
-                    SeriesInstanceUID:'',
-                    SOPInstanceUID   :'',
-                    wadoRsRoot       : '',
-                }, searchObjRTSPred:{
-                    StudyInstanceUID : '',
-                    SeriesInstanceUID:'',
-                    SOPInstanceUID   :'',
-                    wadoRsRoot       : '',
-                },
-            });
-
-            // Example 3 - https://www.cornerstonejs.org/live-examples/segmentationvolume
-            orthanDataURLS.push({
-                caseName :'C3D - Abdominal CT + RTSS',
-                searchObjCT:{
-                    StudyInstanceUID : "1.3.6.1.4.1.14519.5.2.1.256467663913010332776401703474716742458",
-                    SeriesInstanceUID: "1.3.6.1.4.1.14519.5.2.1.40445112212390159711541259681923198035",
-                    wadoRsRoot       : "https://d33do7qe4w26qo.cloudfront.net/dicomweb"
-                }, searchObjPET:{
-                    StudyInstanceUID: '',
-                    SeriesInstanceUID:'',
-                    wadoRsRoot: '',
-                },searchObjRTSGT : {
-                    StudyInstanceUID : "1.3.6.1.4.1.14519.5.2.1.256467663913010332776401703474716742458",
-                    SeriesInstanceUID: "1.2.276.0.7230010.3.1.3.481034752.2667.1663086918.611582",
-                    SOPInstanceUID   : "1.2.276.0.7230010.3.1.4.481034752.2667.1663086918.611583",
-                    wadoRsRoot       : "https://d33do7qe4w26qo.cloudfront.net/dicomweb"
-                }, searchObjRTSPred:{
-                    StudyInstanceUID: '',
-                    SeriesInstanceUID:'',
-                    SOPInstanceUID:'',
-                    wadoRsRoot: '',
-                },
-            });     
-        }else{
-            
-            const orthancData = await getOrthancPatientIds();
-            for (let patientId in orthancData) {
-                let patientObj = { caseName : patientId, 
-                    searchObjCT     : { StudyInstanceUID : '', SeriesInstanceUID : '', SOPInstanceUID : '', wadoRsRoot : '' }, 
-                    searchObjPET    : { StudyInstanceUID : '', SeriesInstanceUID : '', SOPInstanceUID : '', wadoRsRoot : '' }, 
-                    searchObjRTSGT  : { StudyInstanceUID : '', SeriesInstanceUID : '', SOPInstanceUID : '', wadoRsRoot : '', }, 
-                    searchObjRTSPred: { StudyInstanceUID : '', SeriesInstanceUID : '', SOPInstanceUID : '', wadoRsRoot : '', }, 
-                }
-
-                for (let study of orthancData[patientId][KEY_STUDIES]) {
-                    for (let series of study[KEY_SERIES]) {
-                        if (series[KEY_MODALITY] === MODALITY_CT || series[KEY_MODALITY] === MODALITY_MR) {
-                            patientObj.searchObjCT.StudyInstanceUID  = study[KEY_STUDY_UID];
-                            patientObj.searchObjCT.SeriesInstanceUID = series[KEY_SERIES_UID];
-                            patientObj.searchObjCT.wadoRsRoot        = `${window.location.origin}/dicom-web`;
-                        } else if (series[KEY_MODALITY] === MODALITY_PT) {
-                            patientObj.searchObjPET.StudyInstanceUID  = study[KEY_STUDY_UID];
-                            patientObj.searchObjPET.SeriesInstanceUID = series[KEY_SERIES_UID];
-                            patientObj.searchObjPET.wadoRsRoot        = `${window.location.origin}/dicom-web`;
-                        } else if (series[KEY_MODALITY] === MODALITY_SEG) {
-                            if (series[KEY_SERIES_DESC].toLowerCase().includes('seg-gt')) {
-                                patientObj.searchObjRTSGT.StudyInstanceUID  = study[KEY_STUDY_UID];
-                                patientObj.searchObjRTSGT.SeriesInstanceUID = series[KEY_SERIES_UID];
-                                patientObj.searchObjRTSGT.SOPInstanceUID    = series[KEY_INSTANCE_UID];
-                                patientObj.searchObjRTSGT.wadoRsRoot        = `${window.location.origin}/dicom-web`;
-                            } else if (series[KEY_SERIES_DESC].toLowerCase().includes('seg-pred')) {
-                                patientObj.searchObjRTSPred.StudyInstanceUID  = study[KEY_STUDY_UID];
-                                patientObj.searchObjRTSPred.SeriesInstanceUID = series[KEY_SERIES_UID];
-                                patientObj.searchObjRTSPred.SOPInstanceUID    = series[KEY_INSTANCE_UID];
-                                patientObj.searchObjRTSPred.wadoRsRoot        = `${window.location.origin}/dicom-web`;
-                            } else if (series[KEY_SERIES_DESC].toLowerCase().includes('refine')) {
-                                // skip this series
-                            }else {
-                                patientObj.searchObjRTSGT.StudyInstanceUID  = study[KEY_STUDY_UID];
-                                patientObj.searchObjRTSGT.SeriesInstanceUID = series[KEY_SERIES_UID];
-                                patientObj.searchObjRTSGT.SOPInstanceUID    = series[KEY_INSTANCE_UID];
-                                patientObj.searchObjRTSGT.wadoRsRoot        = `${window.location.origin}/dicom-web`;
-                                // patientObj.reverseImageIds = true;
-                            }
-                        } else if (series[KEY_MODALITY] === MODALITY_RTSTRUCT) {
-                            patientObj.searchObjRTSGT.StudyInstanceUID  = study[KEY_STUDY_UID];
-                            patientObj.searchObjRTSGT.SeriesInstanceUID = series[KEY_SERIES_UID];
-                            patientObj.searchObjRTSGT.SOPInstanceUID    = series[KEY_INSTANCE_UID];
-                            patientObj.searchObjRTSGT.wadoRsRoot        = `${window.location.origin}/dicom-web`;
-                        }
-                    }
-                }
-                orthanDataURLS.push(patientObj);
-            }
-        }
-        
-    }
-}
-
-function getIndex(volume, worldPos) {
-
-    try{
-        const {imageData} = volume;
-        const index = imageData.worldToIndex(worldPos);
-        return index
-    } catch (error){
-        console.error('   -- [getIndex()] Error: ', error);
-        return undefined;
-    }
-}
-
-function getValue(volume, worldPos) {
-
-    try{
-        if (volume === undefined || volume === null || volume.scalarData === undefined || volume.scalarData === null || volume.dimensions === undefined || volume.dimensions === null || volume.dimensions.length !== 3 || volume.imageData === undefined || volume.imageData === null) {
-            return;
-        }
-        const { dimensions, scalarData } = volume;
-
-        const index = getIndex(volume, worldPos);
-
-        index[0] = Math.floor(index[0]);
-        index[1] = Math.floor(index[1]);
-        index[2] = Math.floor(index[2]);
-
-        if (!cornerstone3D.utilities.indexWithinDimensions(index, dimensions)) {
-        return;
-        }
-
-        const yMultiple = dimensions[0];
-        const zMultiple = dimensions[0] * dimensions[1];
-
-        const value = scalarData[index[2] * zMultiple + index[1] * yMultiple + index[0]];
-
-        return value;
-    }catch (error){
-        console.error('   -- [getValue()] Error: ', error);
-        return undefined;
-    }
-}
 
 function setButtonBoundaryColor(button, shouldSet, color = 'red') {
     if (button instanceof HTMLElement) {
@@ -1238,48 +620,6 @@ function setButtonBoundaryColor(button, shouldSet, color = 'red') {
     } else {
         console.error('Provided argument is not a DOM element');
     }
-}
-
-function showToast(message, duration=1000, delayToast=false) {
-
-    if (message === '') return;
-
-    setTimeout(() => {
-        // Create a new div element
-        const toast = document.createElement('div');
-    
-        // Set the text
-        toast.textContent = message;
-    
-        // Add some styles
-        toast.style.position = 'fixed';
-        toast.style.bottom = '20px';
-        toast.style.left = '50%';
-        toast.style.transform = 'translateX(-50%)';
-        toast.style.background = '#333';
-        toast.style.color = '#fff';
-        toast.style.padding = '10px';
-        toast.style.borderRadius = '5px';
-        toast.style.zIndex = '1000';
-        toast.style.border = '1px solid #fff';
-
-        toast.style.opacity = '1';
-        toast.style.transition = 'opacity 0.5s';
-    
-        // Add the toast to the body
-        document.body.appendChild(toast);
-        
-        // After 'duration' milliseconds, remove the toast
-        // console.log('   -- Toast: ', message);
-        setTimeout(() => {
-            toast.style.opacity = '0';
-        }, duration);
-        
-        setTimeout(() => {
-        document.body.removeChild(toast);
-        }, duration + 500);
-    }, delayToast ? 1000 : 0);
-
 }
 
 async function getSegmentationIdsAndUIDs() {
@@ -1308,14 +648,6 @@ async function getSegmentationUIDforScribbleSegmentationId() {
         return undefined;
     }
     return allSegUIDs[idx];
-}
-
-async function getScribbleType() {
-    const fgdCheckbox = document.getElementById('fgdCheckbox');
-    const bgdCheckbox = document.getElementById('bgdCheckbox');
-    if (fgdCheckbox.checked) return KEY_FGD;
-    if (bgdCheckbox.checked) return KEY_BGD;
-    return '';
 }
 
 function setScribbleColor() {
@@ -1357,7 +689,7 @@ async function showPET(thisButton){
             setButtonBoundaryColor(thisButton, true);
         }
     }else{
-        showToast('No PET data available')
+        updateGUIElementsHelper.showToast('No PET data available')
     }
 }
 
@@ -1367,7 +699,7 @@ async function makeRequestToPrepare(patientIdx){
     try{
         
         // Step 1 - Init
-        const preparePayload = {[KEY_DATA]: orthanDataURLS[patientIdx],[KEY_IDENTIFIER]: instanceName,}
+        const preparePayload = {[KEY_DATA]: config.orthanDataURLS[patientIdx],[KEY_IDENTIFIER]: config.instanceName,}
         console.log(' \n ----------------- Python server (/prepare) ----------------- \n')
         console.log('   -- [makeRequestToPrepare()] preparePayload: ', preparePayload);
 
@@ -1397,158 +729,10 @@ async function makeRequestToPrepare(patientIdx){
         requestStatus = false;
         setServerStatus(1, 'Error in /prepare: ' + error);
         console.log('   -- [makeRequestToPrepare()] Error: ', error);
-        showToast('Python server - /prepare failed', 3000)
+        updateGUIElementsHelper.showToast('Python server - /prepare failed', 3000)
     }
 
     return requestStatus;
-}
-
-async function getSliceIdxinPoints3D(points3D) {
-    let returnStr = 'Meh?';
-
-    // Step 1 - Make [N,3] to [3,N]
-    const transpose = (matrix) => matrix[0].map((_, colIndex) => matrix.map(row => row[colIndex]));
-
-    // Step 2 - Find unique values in each column
-    const findUniqueValues = (matrix) => {
-        const transposedMatrix = transpose(matrix);
-        return transposedMatrix.map(column => {
-            const uniqueValues = new Set(column);
-            return Array.from(uniqueValues);
-        });
-    };
-
-    // Step 3 - Find and return the single unique value in each column
-    const colIndextoColColNames = {0: 'Sagittal', 1: 'Coronal', 2: 'Axial'};
-    const printSingleUniqueValues = (matrix) => {
-        const uniqueValuesInColumns = findUniqueValues(matrix);
-        for (let colIndex = 0; colIndex < uniqueValuesInColumns.length; colIndex++) {
-            const uniqueValues = uniqueValuesInColumns[colIndex];
-            if (uniqueValues.length === 1) {
-                return `Column: ${colIndextoColColNames[colIndex]}, Slice Idx: ${uniqueValues[0]}`;
-            }
-        }
-        return 'No column has exactly one unique value';
-    };
-
-    returnStr = printSingleUniqueValues(points3D);
-    return returnStr;
-}
-
-async function makeRequestToProcess(points3D, scribbleAnnotationUID, verbose=false){
-
-    let requestStatus = false;
-    let responseData  = {}
-    const now = new Date();
-    try{
-
-        //------------------------------------------------------- Step 0 - Init
-        console.log(' \n ----------------- Python server (/process) ----------------- \n')
-        console.log('   -- [makeRequestToProcess()] patientIdx: ', global.patientIdx);
-        console.log('   -- [makeRequestToProcess()] caseName: ', orthanDataURLS[global.patientIdx]['caseName']);
-        setGlobalSliceIdxViewPortReferenceVars(verbose=true)
-
-        //------------------------------------------------------- Step 1 - Make a request to /process
-        const scribbleType = await getScribbleType();
-        const processPayload = {
-            [KEY_DATA]: {[KEY_POINTS_3D]: points3D, [KEY_SCRIB_TYPE]:scribbleType, [KEY_CASE_NAME]: orthanDataURLS[global.patientIdx]['caseName'],}
-            , [KEY_IDENTIFIER]: instanceName,
-        }
-        await showLoaderAnimation();
-        
-        console.log('   -- [makeRequestToProcess()] processPayload: ', processPayload);
-        try{
-            const response = await fetch(URL_PYTHON_SERVER + ENDPOINT_PROCESS, {method: METHOD_POST, headers: HEADERS_JSON, body: JSON.stringify(processPayload), credentials: 'include',}); // credentials: 'include' is important for cross-origin requests
-            const responseJSON = await response.json();
-            requestStatus = true;
-            console.log('   -- [makeRequestToProcess()] (view,sliceIdx): ', await getSliceIdxinPoints3D(points3D));
-            console.log('   -- [makeRequestToProcess()] response       : ', response);
-            console.log('   -- [makeRequestToProcess()] response.json(): ', responseJSON);
-            
-            
-            //------------------------------------------------------- Step 2 - Remove old scribble annotation
-            if (verbose) console.log('\n --------------- Removing old annotation ...  ---------------: ', scribbleAnnotationUID)
-            await handleStuffAfterProcessEndpoint(scribbleAnnotationUID);
-
-            if (response.status == 200){
-                responseData = responseJSON.responseData    
-
-                //------------------------------------------------------- Step 3 - Remove old segmentation
-                const nowPostAIScribbleResponseDate = new Date();
-                if (verbose) console.log('\n --------------- Removing old segmentation ...  ---------------: ')
-                const allSegObjs = cornerstone3DTools.segmentation.state.getSegmentations();
-                const allSegRepsObjs = cornerstone3DTools.segmentation.state.getAllSegmentationRepresentations()[toolGroupIdContours];
-                allSegObjs.forEach(segObj => {
-                    if (segObj.segmentationId.includes(predSegmentationIdBase)){
-                        if (verbose)console.log('   -- [makeRequestToProcess()] Removing segObj: ', segObj.segmentationId);
-                        cornerstone3DTools.segmentation.state.removeSegmentation(segObj.segmentationId);
-                        const thisSegRepsObj = allSegRepsObjs.filter(obj => obj.segmentationId === segObj.segmentationId)[0]
-                        if (verbose)console.log('   -- [makeRequestToProcess()] Removing segRepsObj: ', thisSegRepsObj);
-                        cornerstone3DTools.segmentation.removeSegmentationsFromToolGroup(toolGroupIdContours, [thisSegRepsObj.segmentationRepresentationUID,], true);
-                        if (segObj.type == SEG_TYPE_LABELMAP){
-                            cornerstone3D.cache.removeVolumeLoadObject(segObj.segmentationId);
-                        }
-                    }
-                });
-                if (verbose) console.log('   -- [makeRequestToProcess()] new allSegObjs: ', cornerstone3DTools.segmentation.state.getSegmentations())
-                if (verbose) console.log('   -- [makeRequestToProcess()] new     allSegRepsObjs: ', cornerstone3DTools.segmentation.state.getAllSegmentationRepresentations())
-                
-                //------------------------------------------------------- Step 4 - Add new segmentation
-                if (verbose) console.log('\n --------------- Adding new segmentation ...  ---------------: ')
-                try{
-                    if (verbose) console.log(' - responseData: ', responseData)
-                    const nowDcmSEGFetch = new Date();
-                    await fetchAndLoadDCMSeg(responseData, global.imageIdsCT, MASK_TYPE_REFINE)
-                    const totalDcmSEGFetchSeconds = (new Date() - nowDcmSEGFetch) / 1000;
-                    console.log('   -- [makeRequestToProcess()] Round-trip DcmSEG fetch completed in ', totalDcmSEGFetchSeconds, ' s');
-                } catch (error){
-                    console.error(' - [loadData()] Error in makeRequestToProcess(responseData, global.imageIdsCT, MASK_TYPE_PRED): ', error);
-                    showToast('Error in loading refined segmentation data', 3000);
-                }
-                
-                const totalPostAIScribbleResponseSeconds = (new Date() - nowPostAIScribbleResponseDate) / 1000;
-                const totalAIScribbleProcessingSeconds = (new Date() - now) / 1000;
-                showToast(`AI Processing completed in ${totalAIScribbleProcessingSeconds} s`, 3000);
-                console.log('   -- [makeRequestToProcess()] Round-trip AI Processing completed in ', totalAIScribbleProcessingSeconds, ' s with ', totalPostAIScribbleResponseSeconds, ' s post-AI scribble response processing');
-
-                //------------------------------------------------------- Step 5 - Reset view to what it was
-
-                setTimeout(async () => {
-                    await setSliceIdxForViewPortFromGlobalSliceIdxVars(false)
-                }, 100);
-
-            } else {
-                showToast('Python server - /process failed <br/>' + responseJSON.detail, 30000)
-                await handleStuffAfterProcessEndpoint(scribbleAnnotationUID);
-            }
-
-        } catch (error){
-            requestStatus = false;
-            console.log('   -- [makeRequestToProcess()] Error: ', error);
-            showToast('Python server - /process failed', 3000)
-            await handleStuffAfterProcessEndpoint(scribbleAnnotationUID);
-        }
-
-    } catch (error){
-        requestStatus = false;
-        console.log('   -- [makeRequestToProcess()] Error: ', error);
-        showToast('Python server - /process failed', 3000)
-        await handleStuffAfterProcessEndpoint(scribbleAnnotationUID);
-    }
-
-    return {requestStatus, responseData};
-}
-
-async function handleStuffAfterProcessEndpoint(scribbleAnnotationUID){
-    cornerstone3DTools.annotation.state.removeAnnotation(scribbleAnnotationUID);
-    renderNow();
-    await unshowLoaderAnimation();
-}
-
-function getAllPlanFreeHandRoiAnnotations() {
-    const allAnnotations = cornerstone3DTools.annotation.state.getAllAnnotations();
-    const planFreeHandRoiAnnotations = allAnnotations.filter(annotation => annotation.metadata.toolName === cornerstone3DTools.PlanarFreehandROITool.toolName);
-    return planFreeHandRoiAnnotations;
 }
 
 function removeAllPlanFreeHandRoiAnnotations() {
@@ -1623,12 +807,6 @@ function sortImageIds(imageIds) {
     return sortedImageIds;
 }
 
-function setSegmentationIndexColor(paramToolGroupId, paramSegUID, segmentationIndex, colorRGBAArray) {
-    
-    cornerstone3DTools.segmentation.config.color.setColorForSegmentIndex(paramToolGroupId, paramSegUID, segmentationIndex, colorRGBAArray);
-    // cornerstone3DTools.segmentation.config.color.setColorForSegmentIndex(paramToolGroupId, paramSegUID, segmentationIndex, [0,255,0,255]);
-}
-
 function formatPoints(data){
 	let points = [];
 	if(data.length == 0){
@@ -1684,40 +862,7 @@ function setAllContouringToolsPassive() {
 
 }
 
-function showSliceIds(){
-
-    try{
-        const renderingEngine = cornerstone3D.getRenderingEngine(renderingEngineId);
-        viewportIds.forEach((viewportId) => {
-            const viewport               = renderingEngine.getViewport(viewportId);
-            const imageIdxForViewport    = viewport.getCurrentImageIdIndex()
-            const totalImagesForViewPort = viewport.getNumberOfSlices()
-            if (viewportId == axialID)
-                axialSliceDiv.innerHTML = `Axial: ${imageIdxForViewport+1}/${totalImagesForViewPort}`;
-            else if (viewportId == sagittalID)
-                sagittalSliceDiv.innerHTML = `Sagittal: ${imageIdxForViewport+1}/${totalImagesForViewPort}`;
-            else if (viewportId == coronalID)
-                coronalSliceDiv.innerHTML = `Coronal: ${imageIdxForViewport+1}/${totalImagesForViewPort}`;
-        });
-    } catch (error){
-        console.error('   -- [showSliceIds()] Error: ', error);
-    }
-}
-
-function showUnshowAllSegmentations() {
-    const toolGroupContours = cornerstone3DTools.ToolGroupManager.getToolGroup(toolGroupIdContours);
-    const segmentationDisplayTool = cornerstone3DTools.SegmentationDisplayTool;
-
-    if (toolGroupContours.toolOptions[segmentationDisplayTool.toolName].mode === MODE_ENABLED){
-        toolGroupContours.setToolDisabled(segmentationDisplayTool.toolName);
-    } else {
-        toolGroupContours.setToolEnabled(segmentationDisplayTool.toolName);
-    }
-}
-
-/****************************************************************
-*                      CORNERSTONE FUNCS  
-*****************************************************************/
+// ******************************* CORNERSTONE FUNCS *********************************
 
 async function cornerstoneInit() {
 
@@ -1993,35 +1138,6 @@ function setContouringButtonsLogic(verbose=true){
         console.log('   -- [setContouringButtonsLogic()] Error: ', error);
     }
 
-    // Step 3 - Add event listeners for mouseup event
-    [axialDiv, sagittalDiv, coronalDiv].forEach((viewportDiv, index) => {
-        viewportDiv.addEventListener('mouseup', function() {
-            setTimeout(async () => {
-                const freehandRoiToolMode = toolGroupContours.toolOptions[planarFreehandROITool.toolName].mode;
-                if (freehandRoiToolMode === MODE_ACTIVE){
-                    const scribbleAnnotations = getAllPlanFreeHandRoiAnnotations()
-                    if (scribbleAnnotations.length > 0){
-                        const scribbleAnnotationUID = scribbleAnnotations[scribbleAnnotations.length - 1].annotationUID;
-                        if (scribbleAnnotations.length > 0){
-                            const polyline           = scribbleAnnotations[0].data.contour.polyline;
-                            const points3D = polyline.map(function(point) {
-                                return getIndex(cornerstone3D.cache.getVolume(volumeIdCT), point);
-                            });
-                            // console.log(' - [setContouringButtonsLogic()] points3D: ', points3D);
-                            const points3DInt = points3D.map(x => x.map(y => Math.abs(Math.round(y))));
-                            await makeRequestToProcess(points3DInt, scribbleAnnotationUID);
-                        }
-                    } else {
-                        console.log(' - [setContouringButtonsLogic()] scribbleAnnotations: ', scribbleAnnotations);
-                        renderNow();
-                    }
-                } else {
-                    console.log('   -- [setContouringButtonsLogic()] freehandRoiToolMode: ', freehandRoiToolMode);
-                    showToast('Please enable the AI-scribble button to draw contours');
-                }
-            }, 100);
-        });
-    });
 }
 
 async function setRenderingEngineAndViewports(){
@@ -2046,262 +1162,6 @@ async function setRenderingEngineAndViewports(){
     );
 
     // return {renderingEngine};
-}
-
-async function renderNow(){
-    // return NOTE: cant do this since the left-right arrow keys wont work to change slice Id
-    try {
-        // console.log(cornerstone3DTools.ToolGroupManager getToolGroup(toolGroupId)
-        const viewportsInfo = cornerstone3DTools.ToolGroupManager.getToolGroup(toolGroupIdContours).getViewportsInfo();
-        viewportsInfo.forEach(({ viewportId, renderingEngineId }) => {
-          const enabledElement = cornerstone3D.getEnabledElementByIds(
-            viewportId,
-            renderingEngineId
-          );
-          enabledElement.viewport.render();
-        });
-
-        setSliceIdxHTMLForAllHTML()
-
-    } catch {
-        console.error('Error in renderNow()');
-    }
-}
-
-async function fetchAndLoadDCMSeg(searchObj, imageIds, maskType){
-
-    // Step 1.1 - Create client Obj
-    const client = new dicomWebClient.api.DICOMwebClient({
-        url: searchObj.wadoRsRoot
-    });
-
-    // Step 1.2 - Fetch and created seg/rtstruct dataset
-    let arrayBuffer;
-    let dataset;
-    try{
-
-        // NOTE: only works for modality=SEG, and not modality=RTSTRUCT
-        arrayBuffer = await client.retrieveInstance({
-            studyInstanceUID: searchObj.StudyInstanceUID,
-            seriesInstanceUID: searchObj.SeriesInstanceUID,
-            sopInstanceUID: searchObj.SOPInstanceUID
-        });
-        const dicomData = dcmjs.data.DicomMessage.readFile(arrayBuffer);
-        dataset         = dcmjs.data.DicomMetaDictionary.naturalizeDataset(dicomData.dict); 
-        dataset._meta   = dcmjs.data.DicomMetaDictionary.namifyDataset(dicomData.meta);
-
-    } catch (error){
-        try{
-            const dicomMetaData = await client.retrieveInstanceMetadata({
-                studyInstanceUID: searchObj.StudyInstanceUID,
-                seriesInstanceUID: searchObj.SeriesInstanceUID,
-                sopInstanceUID: searchObj.SOPInstanceUID
-            });
-
-            dataset         = dcmjs.data.DicomMetaDictionary.naturalizeDataset(dicomMetaData); 
-
-        } catch (error){
-            console.log('   -- [fetchAndLoadDCMSeg()] Error: ', error);
-            return;
-        }
-    }
-
-    if (dataset === undefined){
-        console.log('   -- [fetchAndLoadDCMSeg()] dataset is undefined. Returning ...');
-        return;
-    }
-    
-    // console.log('\n - [fetchAndLoadDCMSeg([',maskType,'])] dataset: ', dataset)
-    if (dataset.Modality === 'RTSTRUCT'){
-        
-        // Step 2 - Get main RTSTRUCT tags
-        const roiSequence = dataset.StructureSetROISequence; // (3006,0020) -- contains ROI name, number, algorithm
-        const roiObservationSequence = dataset.RTROIObservationsSequence; // (3006,0080) -- contains ROI name, number and type={ORGAN,PTV,CTV etc}
-        const contourData = dataset.ROIContourSequence; // (3006,0039) -- contains the polyline data
-        
-        // Step 3 - Loop over roiSequence and get the ROI name, number and color
-        let thisROISequence = [];
-        let thisROINumbers  = [];
-        let contourSets     = [];
-        roiSequence.forEach((item, index) => {
-            let ROINumber = item.ROINumber
-			let ROIName = item.ROIName
-			let color = []
-			for(var i=0;i<contourData.length;i++){
-				if(contourData[i].ReferencedROINumber == ROINumber){
-					color = contourData[i].ROIDisplayColor
-                    break;
-				}
-			}
-			
-			thisROISequence.push({
-				ROINumber,
-				ROIName,
-				color: color.join(",")
-			});
-			
-			thisROINumbers.push(ROINumber);
-		})
-        
-        // Step 4 - Loop over contourData(points)
-        contourData.forEach((item, index) => {
-			let color    = item.ROIDisplayColor
-            let number   = item.ReferencedROINumber;		
-			let sequence = item.ContourSequence;
-			
-			let data = [];
-			sequence.forEach(s => {
-				let ContourGeometricType = s.ContourGeometricType; // e.g. "CLOSED_PLANAR"
-				let ContourPoints        = s.NumberOfContourPoints;
-				let ContourData          = s.ContourData;
-				let obj = {
-					points: formatPoints(ContourData),
-					type: ContourGeometricType,
-                    count: ContourPoints
-				};
-				data.push(obj);
-			})
-			
-			let contour = {
-				data: data,
-				id: "contour_" + number,
-				color: color,
-				number: number,
-                name: thisROISequence[thisROINumbers.indexOf(number)].ROIName,
-				segmentIndex: number
-			}
-			
-			contourSets.push(contour);
-		})
-        
-        // console.log(' - [fetchAndLoadDCMSeg()] contourSets: ', contourSets)
-        // Ste p5 - Create geometries
-        let geometryIds = [];
-        // let annotationUIDsMap = {}; // annotationUIDsMap?: Map<number, Set<string>>; annotation --> data.segmentation.segmentIndex, metadata.{viewPlaneNormal, viewUp, sliceIdx}, interpolationUID
-        const promises = contourSets.map((contourSet) => {
-		
-            const geometryId = contourSet.id;
-            geometryIds.push(geometryId);
-            return cornerstone3D.geometryLoader.createAndCacheGeometry(geometryId, {
-                type: cornerstone3D.Enums.GeometryType.CONTOUR,
-                geometryData: contourSet, // [{data: [{points: [[x1,y1,z1], [x2,y2,z2], ...], type:<str> count: <int>}, {}, ...], id: <str>, color: [], number: <int>, name: <str>, segmentIndex: <int>}, {},  ...]
-            });
-        });
-        await Promise.all(promises);
-        totalROIsRTSTRUCT = thisROISequence.length;
-
-        // Step 5 - Add new segmentation to cornerstone3D
-        let segmentationId;
-        if (maskType == MASK_TYPE_GT){
-            segmentationId = [gtSegmentationIdBase, MODALITY_RTSTRUCT, cornerstone3D.utilities.uuidv4()].join('::');
-        } else if (maskType == MASK_TYPE_PRED){
-            segmentationId = [predSegmentationIdBase, MODALITY_RTSTRUCT, cornerstone3D.utilities.uuidv4()].join('::');
-        }
-        const {segReprUIDs} = await addSegmentationToState(segmentationId, cornerstone3DTools.Enums.SegmentationRepresentations.Contour, geometryIds);
-
-        // Step 5 - Set variables and colors
-        try{
-            // console.log(' - [fetchAndLoadDCMSeg(',maskType,')]: segReprUIDs: ', segReprUIDs)
-            if (maskType == MASK_TYPE_GT){
-                global.gtSegmentationId   = segmentationId;
-                global.gtSegmentationUIDs = segReprUIDs;
-                // setSegmentationIndexColor(toolGroupIdContours, segReprUIDs[0], 1, COLOR_RGBA_ARRAY_GREEN);
-            } else if (maskType == MASK_TYPE_PRED){
-                global.predSegmentationId   = segmentationId;
-                global.predSegmentationUIDs = segReprUIDs;
-                // setSegmentationIndexColor(toolGroupIdContours, segReprUIDs[0], 1, COLOR_RGBA_ARRAY_RED);
-            }
-        } catch (error){
-            console.log('   -- [fetchAndLoadDCMSeg()] Error: ', error);
-        }
-
-    }else if (dataset.Modality === 'SEG'){
-        // Step 2 - Read dicom tags and generate a "toolState".
-        // Important keys here are toolState.segmentsOnFrame (for debugging) and toolState.labelmapBufferArray
-        const generateToolState = await cornerstoneAdapters.adaptersSEG.Cornerstone3D.Segmentation.generateToolState(
-            imageIds,
-            arrayBuffer,
-            cornerstone3D.metaData
-        );
-        // console.log('\n - [fetchAndLoadDCMSeg()] generateToolState: ', generateToolState)
-
-        // Step 3 - Add a new segmentation to cornerstone3D
-        let segmentationId;
-        if (maskType == MASK_TYPE_GT){
-            segmentationId = [gtSegmentationIdBase, MODALITY_SEG, cornerstone3D.utilities.uuidv4()].join('::');
-        } else if (maskType == MASK_TYPE_PRED){
-            segmentationId = [predSegmentationIdBase, MODALITY_SEG, cornerstone3D.utilities.uuidv4()].join('::');
-        } else if (maskType == MASK_TYPE_REFINE){
-            segmentationId = [predSegmentationIdBase, MODALITY_SEG, cornerstone3D.utilities.uuidv4()].join('::');
-        }
-        const {derivedVolume, segReprUIDs} = await addSegmentationToState(segmentationId, cornerstone3DTools.Enums.SegmentationRepresentations.Labelmap);
-        
-        // Step 4 - Add the dicom buffer to cornerstone3D segmentation 
-        const derivedVolumeScalarData     = await derivedVolume.getScalarData();
-        await derivedVolumeScalarData.set(new Uint8Array(generateToolState.labelmapBufferArray[0]));
-        
-        // Step 5 - Set variables and colors
-        try{
-            // console.log(' - [fetchAndLoadDCMSeg(',maskType,')]: segReprUIDs: ', segReprUIDs)
-            if (maskType == MASK_TYPE_GT){
-                global.gtSegmentationId   = segmentationId;
-                global.gtSegmentationUIDs = segReprUIDs;
-                setSegmentationIndexColor(toolGroupIdContours, segReprUIDs[0], 1, COLOR_RGBA_ARRAY_GREEN);
-            } else if (maskType == MASK_TYPE_PRED){
-                global.predSegmentationId   = segmentationId;
-                global.predSegmentationUIDs = segReprUIDs;
-                setSegmentationIndexColor(toolGroupIdContours, segReprUIDs[0], 1, COLOR_RGBA_ARRAY_RED);
-            } else if (maskType == MASK_TYPE_REFINE){
-                global.predSegmentationId   = segmentationId;
-                global.predSegmentationUIDs = segReprUIDs;
-                setSegmentationIndexColor(toolGroupIdContours, segReprUIDs[0], 1, COLOR_RGBA_ARRAY_PINK);
-            }
-        } catch (error){
-            console.log('   -- [fetchAndLoadDCMSeg()] Error: ', error);
-        }
-        
-    }
-
-}
-
-async function addSegmentationToState(segmentationIdParam, segType, geometryIds=[], verbose=false){
-    // NOTE: segType = cornerstone3DTools.Enums.SegmentationRepresentations.{Labelmap, Contour}
-
-    // Step 0 - Init
-    let derivedVolume;
-    if (verbose) console.log(' - [addSegmentationToState(',segmentationIdParam,')][before] allSegIdsAndUIDs: ', await cornerstone3DTools.segmentation.state.getAllSegmentationRepresentations())
-
-    // Step 1 - Create a segmentation volume
-    if (segType === cornerstone3DTools.Enums.SegmentationRepresentations.Labelmap)
-        derivedVolume = await cornerstone3D.volumeLoader.createAndCacheDerivedSegmentationVolume(volumeIdCT, {volumeId: segmentationIdParam,});
-
-    // Step 2 - Add the segmentation to the state
-    if (segType === cornerstone3DTools.Enums.SegmentationRepresentations.Labelmap)
-        await cornerstone3DTools.segmentation.addSegmentations([{ segmentationId:segmentationIdParam, representation: { type: segType, data: { volumeId: segmentationIdParam, }, }, },]);
-    else if (segType === cornerstone3DTools.Enums.SegmentationRepresentations.Contour)
-        if (geometryIds.length === 0){
-            await cornerstone3DTools.segmentation.addSegmentations([{ segmentationId:segmentationIdParam, representation: { type: segType, }, },]);
-        } else {
-            await cornerstone3DTools.segmentation.addSegmentations([
-                { segmentationId:segmentationIdParam, representation: { type: segType, data:{geometryIds},}, },
-            ]);
-        }
-    
-    // Step 3 - Set the segmentation representation to the toolGroup
-    const segReprUIDs = await cornerstone3DTools.segmentation.addSegmentationRepresentations(toolGroupIdContours, [
-        // {segmentationId:segmentationIdParam, type: segType,}, //options: { polySeg: { enabled: true, }, },
-        {segmentationId:segmentationIdParam, type: segType, }, // options: { polySeg: { enabled: true, }, },
-    ]);
-
-    // Step 4 - More stuff for Contour
-    if (segType === cornerstone3DTools.Enums.SegmentationRepresentations.Contour){
-        const segmentation = cornerstone3DTools.segmentation;
-        segmentation.activeSegmentation.setActiveSegmentationRepresentation(toolGroupIdContours,segReprUIDs[0]);
-        segmentation.segmentIndex.setActiveSegmentIndex(segmentationIdParam, 1);
-    }
-    
-    if (verbose) console.log(' - [addSegmentationToState(',segmentationIdParam,')][after] allSegIdsAndUIDs: ', await cornerstone3DTools.segmentation.state.getAllSegmentationRepresentations())
-    return {derivedVolume, segReprUIDs}
 }
 
 // (Sub) MAIN FUNCTION
@@ -2337,17 +1197,17 @@ async function restart() {
 
         } catch (error){
             console.error(' - [restart()] Error in removing segmentations: ', error);
-            showToast('Error in removing segmentations', 3000);
+            updateGUIElementsHelper.showToast('Error in removing segmentations', 3000);
         }
 
         // Step 3 - Clear cache (images and volumes)
         // await cornerstone3D.cache.purgeCache(); // does cache.removeVolumeLoadObject() and cache.removeImageLoadObject() inside // cornerstone3D.cache.getVolumes(), cornerstone3D.cache.getCacheSize()
-        if (volumeIdCT != undefined) cornerstone3D.cache.removeVolumeLoadObject(volumeIdCT);
-        if (volumeIdPET != undefined) cornerstone3D.cache.removeVolumeLoadObject(volumeIdPET);
+        if (config.volumeIdCT != undefined) cornerstone3D.cache.removeVolumeLoadObject(config.volumeIdCT);
+        if (config.volumeIdPET != undefined) cornerstone3D.cache.removeVolumeLoadObject(config.volumeIdPET);
 
     } catch (error){
         console.error(' - [restart()] Error: ', error);
-        showToast('Error in restart()', 3000);
+        updateGUIElementsHelper.showToast('Error in restart()', 3000);
     }
     
     // Step 4 - Reset global variables
@@ -2358,8 +1218,10 @@ async function restart() {
     global.predSegmentationId        = undefined;
     global.predSegmentationUIDs      = undefined;
     global.scribbleSegmentationUIDs = undefined;
-    volumeIdCT  = undefined;
-    volumeIdPET = undefined;
+    // config.volumeIdCT  = undefined;
+    // config.volumeIdPET = undefined;
+    config.setVolumeIdCT(undefined);
+    config.setVolumeIdPET(undefined);
     totalImagesIdsCT  = undefined;
     totalImagesIdsPET = undefined;
     totalROIsRTSTRUCT = undefined;
@@ -2376,14 +1238,14 @@ async function restart() {
 // MAIN FUNCTION
 async function fetchAndLoadData(patientIdx){
 
-    await showLoaderAnimation();
+    await updateGUIElementsHelper.showLoaderAnimation();
     await restart();
     printHeaderInConsole('Step 1 - Getting .dcm data')
     
     //////////////////////////////////////////////////////////// Step 1 - Get search parameters
-    if (orthanDataURLS.length >= patientIdx+1){
+    if (config.orthanDataURLS.length >= patientIdx+1){
         
-        const {caseName, reverseImageIds, searchObjCT, searchObjPET, searchObjRTSGT, searchObjRTSPred} = orthanDataURLS[patientIdx];
+        const {caseName, reverseImageIds, searchObjCT, searchObjPET, searchObjRTSGT, searchObjRTSPred} = config.orthanDataURLS[patientIdx];
         
         ////////////////////////////////////////////////////////////// Step 2.1 - Create volume for CT
         if (searchObjCT.wadoRsRoot.length > 0){
@@ -2395,37 +1257,38 @@ async function fetchAndLoadData(patientIdx){
             makeRequestToPrepare(patientIdx)
 
             // Step 2.1.2 - Fetch CT data
-            volumeIdCT     = [volumeIdCTBase, cornerstone3D.utilities.uuidv4()].join(':');
+            config.setVolumeIdCT([volumeIdCTBase, cornerstone3D.utilities.uuidv4()].join(':'));
             global.ctFetchBool = false;
             try{
-                global.imageIdsCT = await createImageIdsAndCacheMetaData(searchObjCT);
-                global.imageIdsCT = sortImageIds(global.imageIdsCT);
+                let imageIdsCTTmp = await createImageIdsAndCacheMetaData(searchObjCT);
+                imageIdsCTTmp = sortImageIds(imageIdsCTTmp);
+                config.setImageIdsCT(imageIdsCTTmp);
                 global.ctFetchBool = true;
             } catch (error){
                 console.error(' - [loadData()] Error in createImageIdsAndCacheMetaData(searchObjCT): ', error);
-                showToast('Error in loading CT data', 3000);
+                updateGUIElementsHelper.showToast('Error in loading CT data', 3000);
             }
             
             // Step 2.1.3 - Load CT data
             if (global.ctFetchBool){
                 try{
                     if (reverseImageIds){
-                        global.imageIdsCT = global.imageIdsCT.reverse();
+                        config.setImageIdsCT(config.imageIdsCT.reverse());
                         console.log(' - [loadData()] Reversed imageIdsCT');
                     }
-                    totalImagesIdsCT = global.imageIdsCT.length;
-                    const volumeCT   = await cornerstone3D.volumeLoader.createAndCacheVolume(volumeIdCT, { imageIds:global.imageIdsCT});
+                    totalImagesIdsCT = config.imageIdsCT.length;
+                    const volumeCT   = await cornerstone3D.volumeLoader.createAndCacheVolume(config.volumeIdCT, { imageIds:config.imageIdsCT});
                     await volumeCT.load();
                 } catch (error){
                     console.error(' - [loadData()] Error in createAndCacheVolume(volumeIdCT, { imageIds:imageIdsCT }): ', error);
-                    showToast('Error in creating volume for CT data', 3000);
+                    updateGUIElementsHelper.showToast('Error in creating volume for CT data', 3000);
                 }
 
                 ////////////////////////////////////////////////////////////// Step 2.2 - Create volume for PET
                 if (searchObjPET.wadoRsRoot.length > 0){
                     
                     // Step 2.2.1 - Fetch PET data
-                    volumeIdPET      = [volumeIdPETBase, cornerstone3D.utilities.uuidv4()].join(':');
+                    config.setVolumeIdPET([volumeIdPETBase, cornerstone3D.utilities.uuidv4()].join(':'));
                     let petFetchBool  = false;
                     let imageIdsPET  = [];
                     try{
@@ -2433,7 +1296,7 @@ async function fetchAndLoadData(patientIdx){
                         petFetchBool = true;
                     } catch(error){
                         console.error(' - [loadData()] Error in createImageIdsAndCacheMetaData(searchObjPET): ', error);
-                        showToast('Error in loading PET data', 3000);
+                        updateGUIElementsHelper.showToast('Error in loading PET data', 3000);
                     }
 
                     // Step 2.2.2 - Load PET data
@@ -2445,20 +1308,20 @@ async function fetchAndLoadData(patientIdx){
                             }
                             totalImagesIdsPET = imageIdsPET.length;
                             if (totalImagesIdsPET != totalImagesIdsCT)
-                                showToast(`CT (${totalImagesIdsCT}) and PET (${totalImagesIdsPET}) have different number of imageIds`, 5000);
-                            const volumePT    = await cornerstone3D.volumeLoader.createAndCacheVolume(volumeIdPET, { imageIds: imageIdsPET });
+                                updateGUIElementsHelper.showToast(`CT (${totalImagesIdsCT}) and PET (${totalImagesIdsPET}) have different number of imageIds`, 5000);
+                            const volumePT    = await cornerstone3D.volumeLoader.createAndCacheVolume(config.volumeIdPET, { imageIds: imageIdsPET });
                             volumePT.load();
                             petBool = true;
                         } catch (error){
                             console.error(' - [loadData()] Error in createAndCacheVolume(volumeIdPET, { imageIds:imageIdsPET }): ', error);
-                            showToast('Error in creating volume for PET data', 3000);
+                            updateGUIElementsHelper.showToast('Error in creating volume for PET data', 3000);
                         }
                     }
                 }
 
                 ////////////////////////////////////////////////////////////// Step 3 - Set volumes for viewports
-                await cornerstone3D.setVolumesForViewports(renderingEngine, [{ volumeId:volumeIdCT}, ], viewportIds, true);
-                await cornerstone3D.setVolumesForViewports(renderingEngine, [{ volumeId:volumeIdPET}, ], config.viewPortPTIds, true);
+                await cornerstone3D.setVolumesForViewports(renderingEngine, [{ volumeId:config.volumeIdCT}, ], viewportIds, true);
+                await cornerstone3D.setVolumesForViewports(renderingEngine, [{ volumeId:config.volumeIdPET}, ], config.viewPortPTIds, true);
                 
                 ////////////////////////////////////////////////////////////// Step 4 - Render viewports
                 await renderingEngine.renderViewports(viewportIds);
@@ -2466,26 +1329,26 @@ async function fetchAndLoadData(patientIdx){
 
                 ////////////////////////////////////////////////////////////// Step 5 - setup segmentation
                 printHeaderInConsole(`Step 3 - Segmentation stuff (${caseName} - CT slices:${totalImagesIdsCT})`)
-                console.log(' - orthanDataURLS[caseNumber]: ', orthanDataURLS[patientIdx])
+                console.log(' - orthanDataURLS[caseNumber]: ', config.orthanDataURLS[patientIdx])
                 if (searchObjRTSGT.wadoRsRoot.length > 0){
                     try{
-                        await fetchAndLoadDCMSeg(searchObjRTSGT, global.imageIdsCT, MASK_TYPE_GT)
+                        await segmentationHelpers.fetchAndLoadDCMSeg(searchObjRTSGT, config.imageIdsCT, MASK_TYPE_GT)
                     } catch (error){
                         console.error(' - [loadData()] Error in fetchAndLoadDCMSeg(searchObjRTSGT, imageIdsCT): ', error);
-                        showToast('Error in loading GT segmentation data', 3000);
+                        updateGUIElementsHelper.showToast('Error in loading GT segmentation data', 3000);
                     }
                 }
                 if (searchObjRTSPred.wadoRsRoot.length > 0){
                     try{
-                        await fetchAndLoadDCMSeg(searchObjRTSPred, global.imageIdsCT, MASK_TYPE_PRED)
+                        await segmentationHelpers.fetchAndLoadDCMSeg(searchObjRTSPred, config.imageIdsCT, MASK_TYPE_PRED)
                     } catch (error){
                         console.error(' - [loadData()] Error in fetchAndLoadDCMSeg(searchObjRTSPred, imageIdsCT): ', error);
-                        showToast('Error in loading predicted segmentation data', 3000);
+                        updateGUIElementsHelper.showToast('Error in loading predicted segmentation data', 3000);
                     }
                 }
                 try{
                     scribbleSegmentationId = scribbleSegmentationIdBase + '::' + cornerstone3D.utilities.uuidv4();
-                    let { segReprUIDs} = await addSegmentationToState(scribbleSegmentationId, cornerstone3DTools.Enums.SegmentationRepresentations.Contour);
+                    let { segReprUIDs} = await segmentationHelpers.addSegmentationToState(scribbleSegmentationId, cornerstone3DTools.Enums.SegmentationRepresentations.Contour);
                     global.scribbleSegmentationUIDs = segReprUIDs;
                 } catch (error){
                     console.error(' - [loadData()] Error in addSegmentationToState(scribbleSegmentationId, cornerstone3DTools.Enums.SegmentationRepresentations.Contour): ', error);
@@ -2498,9 +1361,9 @@ async function fetchAndLoadData(patientIdx){
                 
                 ////////////////////////////////////////////////////////////// Step 99 - Done
                 caseSelectionHTML.selectedIndex = patientIdx;
-                unshowLoaderAnimation();
-                showSliceIds();
-                showToast(`Data loaded successfully (CT=${totalImagesIdsCT} slices, ROIs=${totalROIsRTSTRUCT})`, 3000, true);
+                updateGUIElementsHelper.unshowLoaderAnimation();
+                updateGUIElementsHelper.setSliceIdxHTMLForAllHTML();
+                updateGUIElementsHelper.showToast(`Data loaded successfully (CT=${totalImagesIdsCT} slices, ROIs=${totalROIsRTSTRUCT})`, 3000, true);
                 [windowLevelButton, contourSegmentationToolButton, sculptorToolButton, editBaseContourViaScribbleButton, showPETButton].forEach((buttonHTML) => {
                     if (buttonHTML === null) return;
                     buttonHTML.disabled = false;
@@ -2509,27 +1372,26 @@ async function fetchAndLoadData(patientIdx){
             }
 
         }else{
-            showToast('No CT data available')
-            await unshowLoaderAnimation()
+            updateGUIElementsHelper.showToast('No CT data available')
+            await updateGUIElementsHelper.unshowLoaderAnimation()
         }
     }else{
-        showToast('Default case not available. Select another case.')
-        await unshowLoaderAnimation()
+        updateGUIElementsHelper.showToast('Default case not available. Select another case.')
+        await updateGUIElementsHelper.unshowLoaderAnimation()
     }
 
-    await unshowLoaderAnimation()
+    await updateGUIElementsHelper.unshowLoaderAnimation()
 }
 
-/****************************************************************
-*                             MAIN  
-*****************************************************************/
+// ******************************** MAIN ********************************
+
 async function setup(patientIdx){
 
     // Step 0 - Load orthanc data
-    await getDataURLs();
-    await setupDropDownMenu(orthanDataURLS, patientIdx);
-    await showLoaderAnimation()
-    await unshowLoaderAnimation()
+    await apiEndpointHelpers.getDataURLs();
+    await setupDropDownMenu(config.orthanDataURLS, patientIdx);
+    await updateGUIElementsHelper.showLoaderAnimation()
+    await updateGUIElementsHelper.unshowLoaderAnimation()
     
     // -------------------------------------------------> Step 1 - Init
     await cornerstoneInit();
@@ -2548,12 +1410,12 @@ async function setup(patientIdx){
 }
 
 // Some debug params
-global.patientIdx = 13;
+config.setPatientIdx(16);
 MODALITY_CONTOURS = MODALITY_SEG
 
 if (process.env.NETLIFY === "true")
-    global.patientIdx = 0;
-setup(global.patientIdx)
+    config.setPatientIdx(0);
+setup(config.patientIdx)
 
 
 

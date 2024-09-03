@@ -549,7 +549,10 @@ def doInferenceNew(model, ortSession, preparedDataTorch):
 
     except:
         traceback.print_exc()
-        if MODE_DEBUG: pdb.set_trace()
+        if MODE_DEBUG: 
+            print (' - [doInferenceNew()] Error in inference')
+            getMemoryUsage()
+            pdb.set_trace()
 
     return segArrayRefinedTorch, segArrayRefinedNumpy
 
@@ -1876,7 +1879,7 @@ async def root():
     try:
         dateStr = datetime.datetime.now().strftime("%Y-%m-%d %H-%M-%S")
         return {"message": "Hello World. This is Mody's AI interactive server! Valid POST endpoints are /prepare and /process. Time={}".format(dateStr)}
-    except:
+    except Exception as e:
         traceback.print_exc()
         raise fastapi.HTTPException(status_code=500, detail=" Error in / => {}".format(str(e)))
 

@@ -2,12 +2,20 @@ import * as config from './config.js';
 
 async function createViewPortsHTML() {
 
-    let viewportGridDiv=config.getViewportGridDiv(), viewportPTGridDiv=config.getViewportPTGridDiv();
-    let axialDiv=config.getAxialDiv(), sagittalDiv=config.getSagittalDiv(), coronalDiv=config.getCoronalDiv();
-    let axialDivPT=config.getAxialDivPT(), sagittalDivPT=config.getSagittalDivPT(), coronalDivPT=config.getCoronalDivPT();
-    let serverStatusDiv=config.getServerStatusDiv(), serverStatusCircle=config.getServerStatusCircle(), serverStatusTextDiv=config.getServerStatusTextDiv();
-    let axialSliceDiv=config.getAxialSliceDiv(), sagittalSliceDiv=config.getSagittalSliceDiv(), coronalSliceDiv=config.getCoronalSliceDiv();
-    let axialSliceDivPT=config.getAxialSliceDivPT(), sagittalSliceDivPT=config.getSagittalSliceDivPT(), coronalSliceDivPT=config.getCoronalSliceDivPT();
+    // let viewportGridDiv=config.getViewportGridDiv(), viewportPTGridDiv=config.getViewportPTGridDiv();
+    // let axialDiv=config.getAxialDiv(), sagittalDiv=config.getSagittalDiv(), coronalDiv=config.getCoronalDiv();
+    // let axialDivPT=config.getAxialDivPT(), sagittalDivPT=config.getSagittalDivPT(), coronalDivPT=config.getCoronalDivPT();
+    // let serverStatusDiv=config.getServerStatusDiv(), serverStatusCircle=config.getServerStatusCircle(), serverStatusTextDiv=config.getServerStatusTextDiv();
+    // let axialSliceDiv=config.getAxialSliceDiv(), sagittalSliceDiv=config.getSagittalSliceDiv(), coronalSliceDiv=config.getCoronalSliceDiv();
+    // let axialSliceDivPT=config.getAxialSliceDivPT(), sagittalSliceDivPT=config.getSagittalSliceDivPT(), coronalSliceDivPT=config.getCoronalSliceDivPT();
+    let viewportGridDiv=config.viewportGridDiv, viewportPTGridDiv=config.viewportPTGridDiv;
+    let axialDiv=config.axialDiv, sagittalDiv=config.sagittalDiv, coronalDiv=config.coronalDiv;
+    let axialDivPT=config.axialDivPT, sagittalDivPT=config.sagittalDivPT, coronalDivPT=config.coronalDivPT;
+    let serverStatusDiv=config.serverStatusDiv, serverStatusCircle=config.serverStatusCircle, serverStatusTextDiv=config.serverStatusTextDiv;
+    let axialSliceDiv=config.axialSliceDiv, sagittalSliceDiv=config.sagittalSliceDiv, coronalSliceDiv=config.coronalSliceDiv;
+    let axialSliceDivPT=config.axialSliceDivPT, sagittalSliceDivPT=config.sagittalSliceDivPT, coronalSliceDivPT=config.coronalSliceDivPT;
+    let mouseHoverDiv=config.mouseHoverDiv, canvasPosHTML=config.canvasPosHTML, ctValueHTML=config.ctValueHTML, ptValueHTML=config.ptValueHTML;
+    
     
     ////////////////////////////////////////////////////////////////////// Step 0 - Create viewport grid
     if (1) {
@@ -218,9 +226,36 @@ async function createViewPortsHTML() {
 
     }
 
+    ////////////////////////////////////////////////////////////////////// Step 4 - Add a div to show mouse hover
+    if (1){
+        mouseHoverDiv = document.createElement('div');
+        mouseHoverDiv.style.position = 'absolute'; // Change to absolute
+        mouseHoverDiv.style.bottom = '3';
+        mouseHoverDiv.style.left = '3';
+        mouseHoverDiv.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
+        mouseHoverDiv.style.color = 'white';
+        mouseHoverDiv.style.padding = '5px';
+        mouseHoverDiv.style.zIndex = '1000'; // Ensure zIndex is a string
+        mouseHoverDiv.id = 'mouseHoverDiv';
+        mouseHoverDiv.style.fontSize = '10px'
+        axialDiv.appendChild(mouseHoverDiv);
+
+        canvasPosHTML = document.createElement('p');
+        ctValueHTML = document.createElement('p');
+        ptValueHTML = document.createElement('p');
+        canvasPosHTML.innerText = 'Canvas position:';
+        ctValueHTML.innerText = 'CT value:';
+        ptValueHTML.innerText = 'PT value:';
+        
+        mouseHoverDiv.appendChild(canvasPosHTML);
+        mouseHoverDiv.appendChild(ctValueHTML);
+        mouseHoverDiv.appendChild(ptValueHTML);
+    }
+
     ////////////////////////////////////////////////////////////////////// Step 4 - Return all the elements
     config.setViewportGridDiv(viewportGridDiv);
     config.setViewportPTGridDiv(viewportPTGridDiv);
+    
     config.setAxialDiv(axialDiv);
     config.setSagittalDiv(sagittalDiv);
     config.setCoronalDiv(coronalDiv);
@@ -228,14 +263,23 @@ async function createViewPortsHTML() {
     config.setSagittalDivPT(sagittalDivPT);
     config.setCoronalDivPT(coronalDivPT);
     config.setServerStatusDiv(serverStatusDiv);
+    
     config.setServerStatusCircle(serverStatusCircle);
     config.setServerStatusTextDiv(serverStatusTextDiv);
+    
     config.setAxialSliceDiv(axialSliceDiv);
     config.setSagittalSliceDiv(sagittalSliceDiv);
     config.setCoronalSliceDiv(coronalSliceDiv);
     config.setAxialSliceDivPT(axialSliceDivPT);
     config.setSagittalSliceDivPT(sagittalSliceDivPT);
     config.setCoronalSliceDivPT(coronalSliceDivPT);
+    
+    config.setMouseHoverDiv(mouseHoverDiv);
+    config.setCanvasPosHTML(canvasPosHTML);
+    config.setCTValueHTML(ctValueHTML);
+    config.setPTValueHTML(ptValueHTML);
+
+    config.setViewPortDivsAll([axialDiv, sagittalDiv, coronalDiv, axialDivPT, sagittalDivPT, coronalDivPT]);
 
     // return {
     //     contentDiv, config.viewportGridDiv, config.axialDiv, sagittalDiv, coronalDiv, axialSliceDiv, sagittalSliceDiv, coronalSliceDiv

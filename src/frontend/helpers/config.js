@@ -1,4 +1,11 @@
+// ************************************************** Init
+import * as dockerNames from 'docker-names'
+export const instanceName = dockerNames.getRandomName()
+console.log(' ------------ instanceName: ', instanceName)
+
+
 // ************************************************** HTML ids
+
 // Viewport ids
 export const contentDivId            = 'contentDiv';
 export const axialID                 = 'ViewPortId-Axial';
@@ -14,10 +21,11 @@ export const viewPortDivId           = 'viewportDiv';
 export const viewPortPTDivId         = 'viewportPTDiv';
 export const otherButtonsDivId       = 'otherButtonsDiv';
 
-export let viewportGridDiv=null, viewportPTGridDiv=null;
-export let axialDiv, sagittalDiv, coronalDiv, axialDivPT, sagittalDivPT, coronalDivPT;
+export let viewportGridDiv, viewportPTGridDiv;
+export let viewPortDivsAll, axialDiv, sagittalDiv, coronalDiv, axialDivPT, sagittalDivPT, coronalDivPT;
 export let serverStatusDiv, serverStatusCircle, serverStatusTextDiv;
 export let axialSliceDiv, sagittalSliceDiv, coronalSliceDiv, axialSliceDivPT, sagittalSliceDivPT, coronalSliceDivPT;
+export let mouseHoverDiv, canvasPosHTML, ctValueHTML, ptValueHTML;
 
 export function getViewportGridDiv() { return viewportGridDiv; }
 export function getViewportPTGridDiv() { return viewportPTGridDiv; }
@@ -35,6 +43,8 @@ export function setCoronalDiv(div) { coronalDiv = div; }
 export function setAxialDivPT(div) { axialDivPT = div; }
 export function setSagittalDivPT(div) { sagittalDivPT = div; }
 export function setCoronalDivPT(div) { coronalDivPT = div; }
+export function setViewPortDivsAll(divs) { viewPortDivsAll = divs; }
+
 export function getServerStatusDiv() { return serverStatusDiv; }
 export function getServerStatusCircle() { return serverStatusCircle; }
 export function getServerStatusTextDiv() { return serverStatusTextDiv; }
@@ -53,29 +63,47 @@ export function setCoronalSliceDiv(div) { coronalSliceDiv = div; }
 export function setAxialSliceDivPT(div) { axialSliceDivPT = div; }
 export function setSagittalSliceDivPT(div) { sagittalSliceDivPT = div; }
 export function setCoronalSliceDivPT(div) { coronalSliceDivPT = div; }
+export function setMouseHoverDiv(div) { mouseHoverDiv = div; }
+export function setCanvasPosHTML(html) { canvasPosHTML = html; }
+export function setCTValueHTML(html) { ctValueHTML = html; }
+export function setPTValueHTML(html) { ptValueHTML = html; }
 
 // Button ids
 export const interactionButtonsDivId = 'interactionButtonsDiv'
-
 export const contouringButtonDivId           = 'contouringButtonDiv';
 export const contourSegmentationToolButtonId = 'PlanarFreehandContourSegmentationTool-Button';
 export const sculptorToolButtonId            = 'SculptorTool-Button';
 export const windowLevelButtonId             = 'WindowLevelTool-Button';
+export const fgdCheckboxId = 'fgdCheckbox';
+export const bgdCheckboxId = 'bgdCheckbox';
+export const KEY_FGD = 'fgd'
+export const KEY_BGD = 'bgd'
+
+// Other HTML ids
+export const loaderDivId = 'loaderDiv';
+export const grayOutDivId = 'grayOutDiv';
+export const loadingIndicatorDivId = 'loadingIndicatorDiv';
+
+// ************************************************** Cornerstone3D ids
 
 // Tools
 export const strBrushCircle = 'circularBrush';
 export const strEraserCircle = 'circularEraser';
+export const INIT_BRUSH_SIZE = 5
 
-// Rendering + Volume + Segmentation ids
+// Tools
+export const MODE_ACTIVE  = 'Active';
+export const MODE_PASSIVE = 'Passive';
+export const MODE_ENABLED = 'Enabled';
+export const MODE_DISABLED = 'Disabled';
+
+// Rendering + ToolGroup Ids
 export const renderingEngineId        = 'myRenderingEngine';
 export const toolGroupIdContours      = 'MY_TOOL_GROUP_ID_CONTOURS';
 export const toolGroupIdScribble      = 'MY_TOOL_GROUP_ID_SCRIBBLE'; // not in use, failed experiment: Multiple tool groups found for renderingEngineId: myRenderingEngine and viewportId: ViewPortId-Axial. You should only have one tool group per viewport in a renderingEngine.
 export const toolGroupIdAll           = [toolGroupIdContours, toolGroupIdScribble];
-export const volumeLoaderScheme       = 'cornerstoneStreamingImageVolume';
-export const volumeIdPETBase      = `${volumeLoaderScheme}:myVolumePET`; //+ cornerstone3D.utilities.uuidv4()
-export const volumeIdCTBase       = `${volumeLoaderScheme}:myVolumeCT`;
-// let volumeIdCT;
-// let volumeIdPET;
+
+// ************************************************** Other constants
 
 // Colors
 export const COLOR_RGB_FGD = 'rgb(218, 165, 32)' // 'goldenrod'
@@ -84,35 +112,31 @@ export const COLOR_RGBA_ARRAY_GREEN = [0  , 255, 0, 128]   // 'green'
 export const COLOR_RGBA_ARRAY_RED   = [255, 0  , 0, 128]     // 'red'
 export const COLOR_RGBA_ARRAY_PINK  = [255, 192, 203, 128] // 'pink'
 
+// Masks
 export const MASK_TYPE_GT   = 'GT';
 export const MASK_TYPE_PRED = 'PRED';
 export const MASK_TYPE_REFINE = 'REFINE';
 
+// Modality
 export const MODALITY_CT = 'CT';
 export const MODALITY_MR = 'MR';
 export const MODALITY_PT = 'PT';
 export const MODALITY_SEG      = 'SEG';
 export const MODALITY_RTSTRUCT = 'RTSTRUCT';
 let MODALITY_CONTOURS;
-export const INIT_BRUSH_SIZE = 5
 
-export const scribbleSegmentationIdBase = `SCRIBBLE_SEGMENTATION_ID`; // this should not change for different scribbles
-
-export const gtSegmentationIdBase   = ["LOAD_SEGMENTATION_ID", MASK_TYPE_GT].join('::') 
-export const predSegmentationIdBase = ["LOAD_SEGMENTATION_ID", MASK_TYPE_PRED].join('::')
-// let scribbleSegmentationId;
-// let scribbleSegmentationUIDs;
-// let gtSegmentationId
-// let gtSegmentationUIDs;
-// let predSegmentationId;
-// let predSegmentationUIDs;
-
+// Segmentation types
 export const SEG_TYPE_LABELMAP = 'LABELMAP'
 export const SEG_TYPE_CONTOUR  = 'CONTOUR'
 
+// Shortcuts
+export const SHORTCUT_KEY_C = 'c';
+export const SHORTCUT_KEY_ARROW_LEFT = 'ArrowLeft';
+export const SHORTCUT_KEY_ARROW_RIGHT = 'ArrowRight';
+
+// ************************************************** Network constants
+
 // Python server
-// export const PYTHON_SERVER_CERT        = fs.readFileSync('../backend/hostCert.pem')
-// export const PYTHON_SERVER_HTTPSAGENT = new https.Agent({ ca: PYTHON_SERVER_CERT })
 export const URL_PYTHON_SERVER = `${window.location.origin}`.replace('50000', '55000') //[`${window.location.origin}`, 'https://localhost:55000']
 export const ENDPOINT_PREPARE  = '/prepare'
 export const ENDPOINT_PROCESS  = '/process'
@@ -124,18 +148,58 @@ export const KEY_CASE_NAME     = 'caseName'
 export const METHOD_POST       = 'POST'
 export const HEADERS_JSON      = {'Content-Type': 'application/json',}
 
-export const KEY_FGD = 'fgd'
-export const KEY_BGD = 'bgd'
+// Orthanc server
+export const URL_ROOT = `${window.location.origin}`;
+export const KEY_ORTHANC_ID          = 'OrthancId';
+export const KEY_STUDIES             = 'Studies';
+export const KEY_SERIES              = 'Series';
+export const KEY_STUDIES_ORTHANC_ID  = 'StudiesOrthancId';
+export const KEY_SERIES_ORTHANC_ID   = 'SeriesOrthancId';
+export const KEY_INSTANCE_ORTHANC_ID = 'InstanceOrthancId';
+export const KEY_STUDY_UID     = 'StudyUID';
+export const KEY_SERIES_UID    = 'SeriesUID';
+export const KEY_INSTANCE_UID  = 'InstanceUID';
+export const KEY_MODALITY      = 'Modality';
+export const KEY_SERIES_DESC   = 'SeriesDescription';
 
-// Tools
-export const MODE_ACTIVE  = 'Active';
-export const MODE_PASSIVE = 'Passive';
-export const MODE_ENABLED = 'Enabled';
-export const MODE_DISABLED = 'Disabled';
-export const SHORTCUT_KEY_C = 'c';
-export const SHORTCUT_KEY_ARROW_LEFT = 'ArrowLeft';
-export const SHORTCUT_KEY_ARROW_RIGHT = 'ArrowRight';
+// ************************************************** Data constants
 
+// Volume constants
+export const volumeLoaderScheme   = 'cornerstoneStreamingImageVolume';
+export const volumeIdPETBase      = `${volumeLoaderScheme}:myVolumePET`; //+ cornerstone3D.utilities.uuidv4()
+export const volumeIdCTBase       = `${volumeLoaderScheme}:myVolumeCT`;
+
+// Segmentation constants
+export const scribbleSegmentationIdBase = `SCRIBBLE_SEGMENTATION_ID`; // this should not change for different scribbles
+export const gtSegmentationIdBase   = ["LOAD_SEGMENTATION_ID", MASK_TYPE_GT].join('::') 
+export const predSegmentationIdBase = ["LOAD_SEGMENTATION_ID", MASK_TYPE_PRED].join('::')
+
+// ************************************************** Data vars
+
+// Volume vars
+export let volumeIdCT;
+export let volumeIdPET;
+export function setVolumeIdCT(id) { volumeIdCT = id; }
+export function setVolumeIdPET(id) { volumeIdPET = id; }
+
+export let imageIdsCT;
+export function setImageIdsCT(ids) { imageIdsCT = ids; }
+
+// Segmentation vars
+export let scribbleSegmentationId;
+export let scribbleSegmentationUIDs;
+export let gtSegmentationId
+export let gtSegmentationUIDs;
+export let predSegmentationId;
+export let predSegmentationUIDs;
+export function setScribbleSegmentationId(id) { scribbleSegmentationId = id; }
+export function setScribbleSegmentationUIDs(uids) { scribbleSegmentationUIDs = uids; }
+export function setGtSegmentationId(id) { gtSegmentationId = id; }
+export function setGtSegmentationUIDs(uids) { gtSegmentationUIDs = uids; }
+export function setPredSegmentationId(id) { predSegmentationId = id; }
+export function setPredSegmentationUIDs(uids) { predSegmentationUIDs = uids; }
+
+// Slice vars
 export let globalSliceIdxVars = {axialSliceIdxHTML:-1   , axialSliceIdxViewportReference:-1   , axialViewPortReference: {}, axialCamera: {}
                                 , sagittalSliceIdxHTML:-1, sagittalSliceIdxViewportReference:-1, sagittalViewportReference: {}, sagittalCamera: {}
                                 , coronalSliceIdxHTML:-1 , coronalSliceIdxViewportReference:-1 , coronalViewportReference:{}, coronalCamera: {}
@@ -144,3 +208,9 @@ export let globalSliceIdxVars = {axialSliceIdxHTML:-1   , axialSliceIdxViewportR
                                 , coronalSliceIdxHTMLPT:-1 , coronalSliceIdxViewportReferencePT:-1 , coronalViewportReferencePT:{}, coronalCameraPT: {}
                                 };
 
+// Patient vars 
+export let orthanDataURLS = [];
+export function setOrthanDataURLS(data) { orthanDataURLS = data; }
+
+export let patientIdx;
+export function setPatientIdx(idx) { patientIdx = idx; }

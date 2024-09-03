@@ -1,122 +1,74 @@
 import * as config from './config.js';
 import * as updateGUIElementsHelper from './updateGUIElementsHelper.js';
 import * as cornerstoneHelpers from './cornerstoneHelpers.js';
+import * as annotationHelpers from './annotationHelpers.js';
+import * as apiEndpointHelpers from './apiEndpointHelpers.js';
+
 import * as cornerstone3D from '@cornerstonejs/core';
+import * as cornerstone3DTools from '@cornerstonejs/tools';
 
 
-// ******************************* SliceIdx handling ********************************************
 
-function setGlobalSliceIdxViewPortReferenceVars(verbose=false){
+// ******************************* Contour handling ********************************************
+function showUnshowAllSegmentations() {
+    const toolGroupContours = cornerstone3DTools.ToolGroupManager.getToolGroup(config.toolGroupIdContours);
+    const segmentationDisplayTool = cornerstone3DTools.SegmentationDisplayTool;
 
-    // Step 0 - Init
-    // let axialDiv = config.getAxialDiv(), sagittalDiv = config.getSagittalDiv(), coronalDiv = config.getCoronalDiv()
-    let axialDivPT = config.getAxialDivPT(), sagittalDivPT = config.getSagittalDivPT(), coronalDivPT = config.getCoronalDivPT()
-
-    // Step 1 - Get relevant variables
-    const {viewport: axialViewport, viewportId: axialViewportId}       = cornerstone3D.getEnabledElement(config.axialDiv);
-    const {viewport: sagittalViewport, viewportId: sagittalViewportId} = cornerstone3D.getEnabledElement(config.sagittalDiv);
-    const {viewport: coronalViewport, viewportId: coronalViewportId}   = cornerstone3D.getEnabledElement(config.coronalDiv);
-    const {viewport: axialViewportPT, viewportId: axialViewportPTId}   = cornerstone3D.getEnabledElement(axialDivPT);
-    const {viewport: sagittalViewportPT, viewportId: sagittalViewportPTId} = cornerstone3D.getEnabledElement(sagittalDivPT);
-    const {viewport: coronalViewportPT, viewportId: coronalViewportPTId}   = cornerstone3D.getEnabledElement(coronalDivPT);
-
-    // Step 2 - Set global variables
-    config.globalSliceIdxVars.axialSliceIdxHTML              = axialViewport.getCurrentImageIdIndex()
-    config.globalSliceIdxVars.axialSliceIdxViewportReference = convertSliceIdxHTMLToSliceIdxViewportReference(config.globalSliceIdxVars.axialSliceIdxHTML, axialViewportId, axialViewport.getNumberOfSlices())
-    config.globalSliceIdxVars.axialViewPortReference         = axialViewport.getViewReference()
-    config.globalSliceIdxVars.axialCamera                    = axialViewport.getCamera()
-    
-    config.globalSliceIdxVars.sagittalSliceIdxHTML              = sagittalViewport.getCurrentImageIdIndex()
-    config.globalSliceIdxVars.sagittalSliceIdxViewportReference = convertSliceIdxHTMLToSliceIdxViewportReference(config.globalSliceIdxVars.sagittalSliceIdxHTML, sagittalViewportId, sagittalViewport.getNumberOfSlices())
-    config.globalSliceIdxVars.sagittalViewportReference         = sagittalViewport.getViewReference()
-    config.globalSliceIdxVars.sagittalCamera                    = sagittalViewport.getCamera()
-
-    config.globalSliceIdxVars.coronalSliceIdxHTML              = coronalViewport.getCurrentImageIdIndex()
-    config.globalSliceIdxVars.coronalSliceIdxViewportReference = convertSliceIdxHTMLToSliceIdxViewportReference(config.globalSliceIdxVars.coronalSliceIdxHTML, coronalViewportId, coronalViewport.getNumberOfSlices())
-    config.globalSliceIdxVars.coronalViewport                  = coronalViewport.getViewReference()
-    config.globalSliceIdxVars.coronalCamera                    = coronalViewport.getCamera()
-
-    config.globalSliceIdxVars.axialSliceIdxHTMLPT              = axialViewportPT.getCurrentImageIdIndex()
-    config.globalSliceIdxVars.axialSliceIdxViewportReferencePT = convertSliceIdxHTMLToSliceIdxViewportReference(config.globalSliceIdxVars.axialSliceIdxHTMLPT, axialViewportPTId, axialViewportPT.getNumberOfSlices())
-    config.globalSliceIdxVars.axialViewPortReferencePT         = axialViewportPT.getViewReference()
-    config.globalSliceIdxVars.axialCameraPT                    = axialViewportPT.getCamera()
-
-    config.globalSliceIdxVars.sagittalSliceIdxHTMLPT              = sagittalViewportPT.getCurrentImageIdIndex()
-    config.globalSliceIdxVars.sagittalSliceIdxViewportReferencePT = convertSliceIdxHTMLToSliceIdxViewportReference(config.globalSliceIdxVars.sagittalSliceIdxHTMLPT, sagittalViewportPTId, sagittalViewportPT.getNumberOfSlices())
-    config.globalSliceIdxVars.sagittalViewportReferencePT         = sagittalViewportPT.getViewReference()
-    config.globalSliceIdxVars.sagittalCameraPT                    = sagittalViewportPT.getCamera()
-
-    config.globalSliceIdxVars.coronalSliceIdxHTMLPT              = coronalViewportPT.getCurrentImageIdIndex()
-    config.globalSliceIdxVars.coronalSliceIdxViewportReferencePT = convertSliceIdxHTMLToSliceIdxViewportReference(config.globalSliceIdxVars.coronalSliceIdxHTMLPT, coronalViewportPTId, coronalViewportPT.getNumberOfSlices())
-    config.globalSliceIdxVars.coronalViewportReferencePT         = coronalViewportPT.getViewReference()
-    config.globalSliceIdxVars.coronalCameraPT                    = coronalViewportPT.getCamera()
-    
-    if (verbose)
-        console.log(' - [setGlobalSliceIdxVars()] Setting globalSliceIdxVars:', config.globalSliceIdxVars)
+    if (toolGroupContours.toolOptions[segmentationDisplayTool.toolName].mode === config.MODE_ENABLED){
+        toolGroupContours.setToolDisabled(segmentationDisplayTool.toolName);
+    } else {
+        toolGroupContours.setToolEnabled(segmentationDisplayTool.toolName);
+    }
 }
 
-function convertSliceIdxHTMLToSliceIdxViewportReference(sliceIdxHTML, viewportId, totalImagesForViewPort){
-    
-    let sliceIdxViewportReference;
-    
-    if (viewportId == config.sagittalID){
-        sliceIdxViewportReference = sliceIdxHTML
-    } else if (viewportId == config.coronalID || viewportId == config.axialID){
-       sliceIdxViewportReference = (totalImagesForViewPort-1) - (sliceIdxHTML);
+
+// ******************************* 3D World Position Handling ********************************************
+function getIndex(volume, worldPos) {
+
+    try{
+        const {imageData} = volume;
+        const index = imageData.worldToIndex(worldPos);
+        return index
+    } catch (error){
+        console.error('   -- [getIndex()] Error: ', error);
+        return undefined;
     }
-    return sliceIdxViewportReference
 }
 
-async function setSliceIdxForViewPortFromGlobalSliceIdxVars(verbose=false){
+function getValue(volume, worldPos) {
 
-    const {viewport: axialViewport, viewportId: axialViewportId}       = cornerstone3D.getEnabledElement(axialDiv);
-    const {viewport: sagittalViewport, viewportId: sagittalViewportId} = cornerstone3D.getEnabledElement(sagittalDiv);
-    const {viewport: coronalViewport, viewportId: coronalViewportId}   = cornerstone3D.getEnabledElement(coronalDiv);
+    try{
+        if (volume === undefined || volume === null || volume.scalarData === undefined || volume.scalarData === null || volume.dimensions === undefined || volume.dimensions === null || volume.dimensions.length !== 3 || volume.imageData === undefined || volume.imageData === null) {
+            return;
+        }
+        const { dimensions, scalarData } = volume;
 
-    if (verbose)
-        console.log(' - [setSliceIdxForViewPortFromGlobalSliceIdxVars()] Setting sliceIdx for viewport:', globalSliceIdxVars)   
+        const index = getIndex(volume, worldPos);
 
-    if (true){
-        let axialViewportViewReference  = globalSliceIdxVars.axialViewPortReference
-        await axialViewport.setViewReference(axialViewportViewReference)
-        await axialViewport.setCamera(globalSliceIdxVars.axialCamera)
+        index[0] = Math.floor(index[0]);
+        index[1] = Math.floor(index[1]);
+        index[2] = Math.floor(index[2]);
 
-        let sagittalViewportViewReference = globalSliceIdxVars.sagittalViewportReference
-        await sagittalViewport.setViewReference(sagittalViewportViewReference)
-        await sagittalViewport.setCamera(globalSliceIdxVars.sagittalCamera)
+        if (!cornerstone3D.utilities.indexWithinDimensions(index, dimensions)) {
+        return;
+        }
 
-        let coronalViewportViewReference = globalSliceIdxVars.coronalViewportReference
-        await coronalViewport.setViewReference(coronalViewportViewReference)
-        await coronalViewport.setCamera(globalSliceIdxVars.coronalCamera)
+        const yMultiple = dimensions[0];
+        const zMultiple = dimensions[0] * dimensions[1];
 
-    } else if (false) {
-        let axialViewportViewReference = axialViewport.getViewReference()
-        axialViewportViewReference.sliceIndex = globalSliceIdxVars.axialSliceIdxViewportReference
-        await axialViewport.setViewReference(axialViewportViewReference)
+        const value = scalarData[index[2] * zMultiple + index[1] * yMultiple + index[0]];
 
-        let sagittalViewportViewReference = sagittalViewport.getViewReference()
-        sagittalViewportViewReference.sliceIndex = globalSliceIdxVars.sagittalSliceIdxViewportReference
-        await sagittalViewport.setViewReference(sagittalViewportViewReference)
-
-        let coronalViewportViewReference  = coronalViewport.getViewReference()
-        coronalViewportViewReference.sliceIndex = globalSliceIdxVars.coronalSliceIdxViewportReference
-        await coronalViewport.setViewReference(coronalViewportViewReference)
-
+        return value;
+    }catch (error){
+        console.error('   -- [getValue()] Error: ', error);
+        return undefined;
     }
-
-    await renderNow()
-
-    if (verbose){
-        setGlobalSliceIdxViewPortReferenceVars()
-        console.log(' - [setSliceIdxForViewPortFromGlobalSliceIdxVars()] Actual setting for viewport:', globalSliceIdxVars)
-    }
-
 }
 
 // ******************************* MAIN FUNCTION ********************************************
 function setMouseAndKeyboardEvents(){
 
-    // handle scroll event
+    // Step 1 - handle scroll event
     document.addEventListener('wheel', function(evt) {
         if (evt.target.className == 'cornerstone-canvas') {
             // NOTE: Here we only change the slideIdxHTML, not the sliceIdxViewportReference
@@ -125,11 +77,11 @@ function setMouseAndKeyboardEvents(){
             const imageIdxHTMLForViewport = activeViewport.getCurrentImageIdIndex()
             const totalImagesForViewPort  = activeViewport.getNumberOfSlices()
             updateGUIElementsHelper.setSliceIdxHTMLForViewPort(activeViewportId, imageIdxHTMLForViewport, totalImagesForViewPort)
-            setGlobalSliceIdxViewPortReferenceVars()
+            updateGUIElementsHelper.setGlobalSliceIdxViewPortReferenceVars()
         }
     });
 
-    // handle left-arrow and right-arrow keydown event
+    // Step 2 - handle left-arrow and right-arrow keydown event
     document.addEventListener('keydown', async function(evt) {
         
         // For slice traversal
@@ -174,16 +126,81 @@ function setMouseAndKeyboardEvents(){
         }
 
         // Update sliceIdx vars
-        setGlobalSliceIdxViewPortReferenceVars()
+        updateGUIElementsHelper.setGlobalSliceIdxViewPortReferenceVars()
 
     });
 
+    // Step 3 - handle 'r' keydown event
     window.addEventListener('keydown', async function(event) {
         if (event.key === 'r'){
             cornerstoneHelpers.resetView();
             updateGUIElementsHelper.setSliceIdxHTMLForAllHTML()
         }
     });
+
+    // Step 4 - Add event listeners for mouseup event
+    const toolGroupContours         = cornerstone3DTools.ToolGroupManager.getToolGroup(config.toolGroupIdContours);
+    config.viewPortIdsAll.forEach((viewportId, index) => {
+        const viewportDiv = document.getElementById(viewportId);
+        
+        // Step 4.1 - Mouseup event
+        viewportDiv.addEventListener('mouseup', function() {
+            setTimeout(async () => {
+
+                // const freehandRoiToolMode = toolGroupContours.toolOptions[planarFreehandROITool.toolName].mode;
+                const freehandRoiToolMode = toolGroupContours.toolOptions[cornerstone3DTools.PlanarFreehandROITool.toolName].mode;
+                if (freehandRoiToolMode === config.MODE_ACTIVE){
+                    const scribbleAnnotations = annotationHelpers.getAllPlanFreeHandRoiAnnotations()
+                    if (scribbleAnnotations.length > 0){
+                        const scribbleAnnotationUID = scribbleAnnotations[scribbleAnnotations.length - 1].annotationUID;
+                        if (scribbleAnnotations.length > 0){
+                            const polyline           = scribbleAnnotations[0].data.contour.polyline;
+                            const points3D = polyline.map(function(point) {
+                                return getIndex(cornerstone3D.cache.getVolume(config.volumeIdCT), point);
+                            });
+                            // console.log(' - [setContouringButtonsLogic()] points3D: ', points3D);
+                            const points3DInt = points3D.map(x => x.map(y => Math.abs(Math.round(y))));
+                            await apiEndpointHelpers.makeRequestToProcess(points3DInt, scribbleAnnotationUID);
+                        }
+                    } else {
+                        console.log(' - [setContouringButtonsLogic()] scribbleAnnotations: ', scribbleAnnotations);
+                        cornerstoneHelpers.renderNow();
+                    }
+                } else {
+                    console.log('   -- [setContouringButtonsLogic()] freehandRoiToolMode: ', freehandRoiToolMode);
+                    updateGUIElementsHelper.showToast('Please enable the AI-scribble button to draw contours');
+                }
+            }, 100);
+        });
+        
+        // Step 4.2 - Mousemove event
+        viewportDiv.addEventListener('mousemove', function(evt) {
+            if (config.volumeIdCT != undefined){
+                const volumeCTThis = cornerstone3D.cache.getVolume(config.volumeIdCT);
+                if (volumeCTThis != undefined){
+                    const renderingEngine = cornerstone3D.getRenderingEngine(config.renderingEngineId);
+                    const rect            = viewportDiv.getBoundingClientRect();
+                    const canvasPos       = [Math.floor(evt.clientX - rect.left),Math.floor(evt.clientY - rect.top),];
+                    const viewPortTmp     = renderingEngine.getViewport(config.viewPortIdsAll[index]);
+                    const worldPos        = viewPortTmp.canvasToWorld(canvasPos);
+                    let index3D           = getIndex(volumeCTThis, worldPos) //.forEach((val) => Math.round(val));
+                    if (canvasPos != undefined && index3D != undefined && worldPos != undefined){
+                        index3D                        = index3D.map((val) => Math.round(val));
+                        config.canvasPosHTML.innerText = `Canvas position: (${config.viewPortIdsAll[index]}) \n ==> (${canvasPos[0]}, ${canvasPos[1]}) || (${index3D[0]}, ${index3D[1]}, ${index3D[2]})`;
+                        config.ctValueHTML.innerText   = `CT value: ${getValue(volumeCTThis, worldPos)}`;
+                        if (config.volumeIdPET != undefined){
+                            const volumePTThis            = cornerstone3D.cache.getVolume(config.volumeIdPET);
+                            config.ptValueHTML.innerText = `PT value: ${getValue(volumePTThis, worldPos)}`;
+                        }
+                    }else{
+                        updateGUIElementsHelper.showToast('Mousemove Event: Error in getting canvasPos, index3D, worldPos')
+                    }                    
+                    
+                }
+            }
+        });
+    })
+
 }
 
 export {setMouseAndKeyboardEvents};
