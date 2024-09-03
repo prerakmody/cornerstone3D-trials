@@ -21,7 +21,10 @@ Histogram(Highcharts)
 const instanceName = dockerNames.getRandomName()
 console.log(' ------------ instanceName: ', instanceName)
 
-
+import * as config from './helpers/config'
+import * as makeGUIElementsHelper from './helpers/makeGUIElementsHelper'
+import * as keyboardEventsHelper from './helpers/keyboardEventsHelper'
+import * as cornerstoneHelpers from './helpers/cornerstoneHelpers'
 /****************************************************************
 *                             VARIABLES  
 ******************************************************************/
@@ -143,140 +146,17 @@ let orthanDataURLS = []
 *                         HTML ELEMENTS  
 *****************************************************************/
 
-async function createViewPortsHTML() {
+await makeGUIElementsHelper.createViewPortsHTML();
+let axialDiv=config.getAxialDiv(), sagittalDiv=config.getSagittalDiv(), coronalDiv=config.getCoronalDiv();
+let axialDivPT=config.getAxialDivPT(), sagittalDivPT=config.getSagittalDivPT(), coronalDivPT=config.getCoronalDivPT();
+let serverStatusCircle=config.getServerStatusCircle(), serverStatusTextDiv=config.getServerStatusTextDiv();
+let axialSliceDiv=config.getAxialSliceDiv(), sagittalSliceDiv=config.getSagittalSliceDiv(), coronalSliceDiv=config.getCoronalSliceDiv();
+let axialSliceDivPT=config.getAxialSliceDivPT(), sagittalSliceDivPT=config.getSagittalSliceDivPT(), coronalSliceDivPT=config.getCoronalSliceDivPT();
 
-    ////////////////////////////////////////////////////////////////////// Step 0 - Create viewport grid
-    const contentDiv = document.getElementById(contentDivId);
-
-    const viewportGridDiv = document.createElement('div');
-    viewportGridDiv.id = viewPortDivId;
-    viewportGridDiv.style.display = 'flex';
-    viewportGridDiv.style.flexDirection = 'row';
-    viewportGridDiv.oncontextmenu = (e) => e.preventDefault(); // Disable right click
-
-    ////////////////////////////////////////////////////////////////////// Create viewport elements (Axial, Sagittal, Coronal)
-    // Step 1.1 - element for axial view
-    const axialDiv = document.createElement('div');
-    axialDiv.style.width = '500px';
-    axialDiv.style.height = '500px';
-    axialDiv.id = axialID;
-
-    // Step 1.2 - element for sagittal view
-    const sagittalDiv = document.createElement('div');
-    sagittalDiv.style.width = '500px';
-    sagittalDiv.style.height = '500px';
-    sagittalDiv.id = sagittalID;
-
-    // Step 1.2 - element for coronal view
-    const coronalDiv = document.createElement('div');
-    coronalDiv.style.width = '500px';
-    coronalDiv.style.height = '500px';
-    coronalDiv.id = coronalID;
-
-    ////////////////////////////////////////////////////////////////////// Step 2 - On the top-left of axialDiv add a div to indicate server status
-    axialDiv.style.position = 'relative';
-    const serverStatusDiv = document.createElement('div');
-    serverStatusDiv.style.position = 'absolute'; // Change to absolute
-    serverStatusDiv.style.top = '3';
-    serverStatusDiv.style.left = '3';
-    serverStatusDiv.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
-    serverStatusDiv.style.color = 'white';
-    serverStatusDiv.style.padding = '5px';
-    serverStatusDiv.style.zIndex = '1000'; // Ensure zIndex is a string
-    serverStatusDiv.id = 'serverStatusDiv';
-    axialDiv.appendChild(serverStatusDiv);
-
-    // Step 2.1.2 - add a blinking circle with red color to serverStatusDiv
-    const serverStatusCircle = document.createElement('div');
-    serverStatusCircle.style.width = '10px';
-    serverStatusCircle.style.height = '10px';
-    serverStatusCircle.style.backgroundColor = 'red';
-    serverStatusCircle.style.borderRadius = '50%';
-    serverStatusCircle.style.animation = 'blinker 1s linear infinite';
-    serverStatusDiv.appendChild(serverStatusCircle);
-    const style = document.createElement('style');
-    style.type = 'text/css';
-    const keyframes = `
-        @keyframes blinker {
-            50% {
-                opacity: 0;
-            }
-        }
-    `;
-    style.appendChild(document.createTextNode(keyframes));
-    document.head.appendChild(style);
-
-    // Add a div, in serverStatusDiv, where if I hover over it, shows me text related to server status
-    const serverStatusTextDiv = document.createElement('div');
-    serverStatusTextDiv.style.position = 'absolute'; // Change to absolute
-    serverStatusTextDiv.style.top = '0';
-    serverStatusTextDiv.style.left = '20';
-    serverStatusTextDiv.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
-    serverStatusTextDiv.style.color = 'white';
-    serverStatusTextDiv.style.padding = '5px';
-    serverStatusTextDiv.style.zIndex = '1000'; // Ensure zIndex is a string
-    serverStatusTextDiv.id = 'serverStatusTextDiv';
-    serverStatusTextDiv.style.display = 'none';
-    serverStatusTextDiv.innerHTML = 'Server Status: <br> - Red: Server is not running <br> - Green: Server is running';
-    serverStatusTextDiv.style.width = 0.5*parseInt(axialDiv.style.width);
-    serverStatusDiv.appendChild(serverStatusTextDiv);
-
-    // Add the hover text
-    serverStatusDiv.addEventListener('mouseover', function() {
-        serverStatusTextDiv.style.display = 'block';
-    });
-    serverStatusTextDiv.addEventListener('mouseout', function() {
-        serverStatusTextDiv.style.display = 'none';
-    });
-
-    ////////////////////////////////////////////////////////////////////// Step 3.1 - On the  top-right of axialDiv add a div for the slice number
-    axialDiv.style.position = 'relative';
-    const axialSliceDiv = document.createElement('div');
-    axialSliceDiv.style.position = 'absolute'; // Change to absolute
-    axialSliceDiv.style.top = '3';
-    axialSliceDiv.style.right = '3';
-    axialSliceDiv.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
-    axialSliceDiv.style.color = 'white';
-    axialSliceDiv.style.padding = '5px';
-    axialSliceDiv.style.zIndex = '1000'; // Ensure zIndex is a string
-    axialSliceDiv.id = 'axialSliceDiv';
-    axialDiv.appendChild(axialSliceDiv);
-
-    ////////////////////////////////////////////////////////////////////// Step 3.2 - On the  top-right of sagittalDiv add a div for the slice number
-    sagittalDiv.style.position = 'relative';
-    const sagittalSliceDiv = document.createElement('div');
-    sagittalSliceDiv.style.position = 'absolute'; // Change to absolute
-    sagittalSliceDiv.style.top = '0';
-    sagittalSliceDiv.style.right = '20';
-    sagittalSliceDiv.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
-    sagittalSliceDiv.style.color = 'white';
-    sagittalSliceDiv.style.padding = '5px';
-    sagittalSliceDiv.style.zIndex = '1000'; // Ensure zIndex is a string
-    sagittalSliceDiv.id = 'sagittalSliceDiv';
-    sagittalDiv.appendChild(sagittalSliceDiv);
-
-    ////////////////////////////////////////////////////////////////////// Step 3.3 - On the  top-right of coronalDiv add a div for the slice number
-    coronalDiv.style.position = 'relative';
-    const coronalSliceDiv = document.createElement('div');
-    coronalSliceDiv.style.position = 'absolute'; // Change to absolute
-    coronalSliceDiv.style.top = '0';
-    coronalSliceDiv.style.right = '20';
-    coronalSliceDiv.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
-    coronalSliceDiv.style.color = 'white';
-    coronalSliceDiv.style.padding = '5px';
-    coronalSliceDiv.style.zIndex = '1000'; // Ensure zIndex is a string
-    coronalSliceDiv.id = 'coronalSliceDiv';
-    coronalDiv.appendChild(coronalSliceDiv);
-
-    viewportGridDiv.appendChild(axialDiv);
-    viewportGridDiv.appendChild(sagittalDiv);
-    viewportGridDiv.appendChild(coronalDiv);
-
-    contentDiv.appendChild(viewportGridDiv);
-
-    return {contentDiv, viewportGridDiv, axialDiv, sagittalDiv, coronalDiv, axialSliceDiv, sagittalSliceDiv, coronalSliceDiv, serverStatusCircle, serverStatusTextDiv};
-}
-const {axialDiv, sagittalDiv, coronalDiv, axialSliceDiv, sagittalSliceDiv, coronalSliceDiv, serverStatusCircle, serverStatusTextDiv} = await createViewPortsHTML();
+// const {axialDiv, sagittalDiv, coronalDiv, axialSliceDiv, sagittalSliceDiv, coronalSliceDiv
+//     , serverStatusCircle, serverStatusTextDiv
+//     , viewportPTGridDiv, axialDivPT, sagittalDivPT, coronalDivPT, axialSliceDivPT, sagittalSliceDivPT, coronalSliceDivPT
+// } = await guiELements.createViewPortsHTML();
 
 async function createContouringHTML() {
 
@@ -730,16 +610,6 @@ async function otherHTMLElements(){
     return {caseSelectionHTML, resetViewButton, showPETButton};
 }
 const {caseSelectionHTML, showPETButton} = await otherHTMLElements(0);
-
-function resetView(){
-    const renderingEngine = cornerstone3D.getRenderingEngine(renderingEngineId);
-    [axialID, sagittalID, coronalID].forEach((viewportId) => {
-        const viewportTmp = renderingEngine.getViewport(viewportId);
-        viewportTmp.resetCamera();
-        viewportTmp.render();
-    });
-
-}
 
 async function getLoaderHTML(){
 
@@ -1927,7 +1797,7 @@ async function getToolsAndToolGroup() {
     toolGroupContours.setToolEnabled(probeTool.toolName);
     toolGroupContours.setToolEnabled(referenceLinesTool.toolName);
     toolGroupContours.setToolConfiguration(referenceLinesTool.toolName, {sourceViewportId: axialID,});
-    [axialDiv, sagittalDiv, coronalDiv].forEach((viewportDiv, index) => {
+    [axialDiv, sagittalDiv, coronalDiv, axialDivPT, sagittalDivPT, coronalDivPT].forEach((viewportDiv, index) => {
         viewportDiv.addEventListener('mouseenter', function() {
             toolGroupContours.setToolConfiguration(referenceLinesTool.toolName, {sourceViewportId: viewportIds[index]});
         });
@@ -1968,12 +1838,6 @@ async function getToolsAndToolGroup() {
             }
         }
 
-        // Shortcut 1 - Reset view
-        if (event.key === 'r'){
-            resetView();
-            setSliceIdxHTMLForAllHTML()
-        }
-
         else if (event.key == 'p'){
             await showPET();
             await setSliceIdxForViewPortFromGlobalSliceIdxVars(false);
@@ -1981,181 +1845,6 @@ async function getToolsAndToolGroup() {
 
     });
     
-}
-
-function setSliceIdxHTMLForViewPort(activeViewportId, sliceIdxHTMLForViewport, totalImagesForViewPort){
-    // NOTE: There is a difference betwen the numerical value of sliceIdxHTML and SliceIdxViewportReference
-    if (activeViewportId == axialID){
-        // console.log('Axial: ', imageIdxForViewport, totalImagesForViewPort)
-        axialSliceDiv.innerHTML = `Axial: ${sliceIdxHTMLForViewport+1}/${totalImagesForViewPort}`
-    } else if (activeViewportId == sagittalID){
-        // console.log('Sagittal: ', imageIdxForViewport, totalImagesForViewPort)
-        sagittalSliceDiv.innerHTML = `Sagittal: ${sliceIdxHTMLForViewport+1}/${totalImagesForViewPort}`
-    } else if (activeViewportId == coronalID){
-        // console.log('Coronal: ', imageIdxForViewport, totalImagesForViewPort)
-        coronalSliceDiv.innerHTML = `Coronal: ${sliceIdxHTMLForViewport+1}/${totalImagesForViewPort}`
-    }
-
-}
-
-function setSliceIdxHTMLForAllHTML(){
-    // NOTE: There is a difference betwen the numerical value of sliceIdxHTML and SliceIdxViewportReference
-    const {viewport: axialViewport, viewportId: axialViewportId}       = cornerstone3D.getEnabledElement(axialDiv);
-    const {viewport: sagittalViewport, viewportId: sagittalViewportId} = cornerstone3D.getEnabledElement(sagittalDiv);
-    const {viewport: coronalViewport, viewportId: coronalViewportId}   = cornerstone3D.getEnabledElement(coronalDiv);
-
-    // Update slice numbers
-    setSliceIdxHTMLForViewPort(axialViewportId, axialViewport.getCurrentImageIdIndex(), axialViewport.getNumberOfSlices())
-    setSliceIdxHTMLForViewPort(sagittalViewportId, sagittalViewport.getCurrentImageIdIndex(), sagittalViewport.getNumberOfSlices())
-    setSliceIdxHTMLForViewPort(coronalViewportId, coronalViewport.getCurrentImageIdIndex(), coronalViewport.getNumberOfSlices())
-}
-
-function setGlobalSliceIdxViewPortReferenceVars(verbose=false){
-
-    const {viewport: axialViewport, viewportId: axialViewportId}       = cornerstone3D.getEnabledElement(axialDiv);
-    const {viewport: sagittalViewport, viewportId: sagittalViewportId} = cornerstone3D.getEnabledElement(sagittalDiv);
-    const {viewport: coronalViewport, viewportId: coronalViewportId}   = cornerstone3D.getEnabledElement(coronalDiv);
-
-    globalSliceIdxVars.axialSliceIdxHTML              = axialViewport.getCurrentImageIdIndex()
-    globalSliceIdxVars.axialSliceIdxViewportReference = convertSliceIdxHTMLToSliceIdxViewportReference(globalSliceIdxVars.axialSliceIdxHTML, axialViewportId, axialViewport.getNumberOfSlices())
-    globalSliceIdxVars.axialViewPortReference         = axialViewport.getViewReference()
-    globalSliceIdxVars.axialCamera                    = axialViewport.getCamera()
-    
-    globalSliceIdxVars.sagittalSliceIdxHTML              = sagittalViewport.getCurrentImageIdIndex()
-    globalSliceIdxVars.sagittalSliceIdxViewportReference = convertSliceIdxHTMLToSliceIdxViewportReference(globalSliceIdxVars.sagittalSliceIdxHTML, sagittalViewportId, sagittalViewport.getNumberOfSlices())
-    globalSliceIdxVars.sagittalViewportReference         = sagittalViewport.getViewReference()
-    globalSliceIdxVars.sagittalCamera                    = sagittalViewport.getCamera()
-
-    globalSliceIdxVars.coronalSliceIdxHTML              = coronalViewport.getCurrentImageIdIndex()
-    globalSliceIdxVars.coronalSliceIdxViewportReference = convertSliceIdxHTMLToSliceIdxViewportReference(globalSliceIdxVars.coronalSliceIdxHTML, coronalViewportId, coronalViewport.getNumberOfSlices())
-    globalSliceIdxVars.coronalViewport                  = coronalViewport.getViewReference()
-    globalSliceIdxVars.coronalCamera                    = coronalViewport.getCamera()
-    
-    if (verbose)
-        console.log(' - [setGlobalSliceIdxVars()] Setting globalSliceIdxVars:', globalSliceIdxVars)
-}
-
-function convertSliceIdxHTMLToSliceIdxViewportReference(sliceIdxHTML, viewportId, totalImagesForViewPort){
-    
-    let sliceIdxViewportReference;
-    
-    if (viewportId == sagittalID){
-        sliceIdxViewportReference = sliceIdxHTML
-    } else if (viewportId == coronalID || viewportId == axialID){
-       sliceIdxViewportReference = (totalImagesForViewPort-1) - (sliceIdxHTML);
-    }
-    return sliceIdxViewportReference
-}
-
-async function setSliceIdxForViewPortFromGlobalSliceIdxVars(verbose=false){
-
-    const {viewport: axialViewport, viewportId: axialViewportId}       = cornerstone3D.getEnabledElement(axialDiv);
-    const {viewport: sagittalViewport, viewportId: sagittalViewportId} = cornerstone3D.getEnabledElement(sagittalDiv);
-    const {viewport: coronalViewport, viewportId: coronalViewportId}   = cornerstone3D.getEnabledElement(coronalDiv);
-
-    if (verbose)
-        console.log(' - [setSliceIdxForViewPortFromGlobalSliceIdxVars()] Setting sliceIdx for viewport:', globalSliceIdxVars)   
-
-    if (true){
-        let axialViewportViewReference  = globalSliceIdxVars.axialViewPortReference
-        await axialViewport.setViewReference(axialViewportViewReference)
-        await axialViewport.setCamera(globalSliceIdxVars.axialCamera)
-
-        let sagittalViewportViewReference = globalSliceIdxVars.sagittalViewportReference
-        await sagittalViewport.setViewReference(sagittalViewportViewReference)
-        await sagittalViewport.setCamera(globalSliceIdxVars.sagittalCamera)
-
-        let coronalViewportViewReference = globalSliceIdxVars.coronalViewportReference
-        await coronalViewport.setViewReference(coronalViewportViewReference)
-        await coronalViewport.setCamera(globalSliceIdxVars.coronalCamera)
-
-    } else if (false) {
-        let axialViewportViewReference = axialViewport.getViewReference()
-        axialViewportViewReference.sliceIndex = globalSliceIdxVars.axialSliceIdxViewportReference
-        await axialViewport.setViewReference(axialViewportViewReference)
-
-        let sagittalViewportViewReference = sagittalViewport.getViewReference()
-        sagittalViewportViewReference.sliceIndex = globalSliceIdxVars.sagittalSliceIdxViewportReference
-        await sagittalViewport.setViewReference(sagittalViewportViewReference)
-
-        let coronalViewportViewReference  = coronalViewport.getViewReference()
-        coronalViewportViewReference.sliceIndex = globalSliceIdxVars.coronalSliceIdxViewportReference
-        await coronalViewport.setViewReference(coronalViewportViewReference)
-
-    }
-
-    await renderNow()
-
-    if (verbose){
-        setGlobalSliceIdxViewPortReferenceVars()
-        console.log(' - [setSliceIdxForViewPortFromGlobalSliceIdxVars()] Actual setting for viewport:', globalSliceIdxVars)
-    }
-
-}
-
-function setMouseAndKeyboardEvents(){
-
-    // handle scroll event
-    document.addEventListener('wheel', function(evt) {
-        if (evt.target.className == 'cornerstone-canvas') {
-            // NOTE: Here we only change the slideIdxHTML, not the sliceIdxViewportReference
-            const divObj = evt.target.offsetParent.parentElement
-            const {viewport: activeViewport, viewportId: activeViewportId} = cornerstone3D.getEnabledElement(divObj);
-            const imageIdxHTMLForViewport = activeViewport.getCurrentImageIdIndex()
-            const totalImagesForViewPort  = activeViewport.getNumberOfSlices()
-            setSliceIdxHTMLForViewPort(activeViewportId, imageIdxHTMLForViewport, totalImagesForViewPort)
-            setGlobalSliceIdxViewPortReferenceVars()
-        }
-    });
-
-    // handle left-arrow and right-arrow keydown event
-    document.addEventListener('keydown', async function(evt) {
-        
-        // For slice traversal
-        if (viewportIds.includes(evt.target.id)){
-            if (evt.key == SHORTCUT_KEY_ARROW_LEFT || evt.key == SHORTCUT_KEY_ARROW_RIGHT){
-
-                try {
-
-                    // Step 1 - Init
-                    const {viewport: activeViewport, viewportId: activeViewportId} = cornerstone3D.getEnabledElement(evt.target);
-                    const sliceIdxHTMLForViewport = activeViewport.getCurrentImageIdIndex()
-                    const totalImagesForViewPort  = activeViewport.getNumberOfSlices()
-                    let viewportViewReference     = activeViewport.getViewReference()
-                    
-                    // Step 2 - Handle keydown event 
-                    // Step 2.1 - Update sliceIdxHTMLForViewport
-                    let newSliceIdxHTMLForViewport;
-                    if (evt.key == SHORTCUT_KEY_ARROW_LEFT){
-                        newSliceIdxHTMLForViewport = sliceIdxHTMLForViewport - 1;
-                    } else if (evt.key == SHORTCUT_KEY_ARROW_RIGHT){
-                        newSliceIdxHTMLForViewport = sliceIdxHTMLForViewport + 1;
-                    }
-                    if (newSliceIdxHTMLForViewport < 0) newSliceIdxHTMLForViewport = 0;
-                    if (newSliceIdxHTMLForViewport > totalImagesForViewPort-1) newSliceIdxHTMLForViewport = totalImagesForViewPort - 1;
-                    setSliceIdxHTMLForViewPort(activeViewportId, newSliceIdxHTMLForViewport, totalImagesForViewPort)
-
-                    // Step 2.2 - Update the viewport itself
-                    const newSliceIdxViewPortReference = convertSliceIdxHTMLToSliceIdxViewportReference(newSliceIdxHTMLForViewport, activeViewportId, totalImagesForViewPort)
-                    viewportViewReference.sliceIndex = newSliceIdxViewPortReference;
-                    await activeViewport.setViewReference(viewportViewReference);
-                    renderNow();
-
-                } catch (error){
-                    console.error('   -- [keydown] Error: ', error);
-                }
-            }
-        }
-
-        // For show/unshow contours
-        if (evt.key === SHORTCUT_KEY_C) {
-            showUnshowAllSegmentations()
-        }
-
-        // Update sliceIdx vars
-        setGlobalSliceIdxViewPortReferenceVars()
-
-    });
 }
 
 function setContouringButtonsLogic(verbose=true){
@@ -2341,17 +2030,18 @@ async function setRenderingEngineAndViewports(){
 
     // Step 2.5.1 - Add image planes to rendering engine
     const viewportInputs = [
-        {element: axialDiv   , viewportId: axialID   , type: cornerstone3D.Enums.ViewportType.ORTHOGRAPHIC, defaultOptions: { orientation: cornerstone3D.Enums.OrientationAxis.AXIAL},},
-        {element: sagittalDiv, viewportId: sagittalID, type: cornerstone3D.Enums.ViewportType.ORTHOGRAPHIC, defaultOptions: { orientation: cornerstone3D.Enums.OrientationAxis.SAGITTAL},},
-        // {element: sagittalDiv, viewportId: sagittalID, type: cornerstone3D.Enums.ViewportType.ORTHOGRAPHIC, defaultOptions: { orientation: cornerstone3D.Enums.OrientationAxis.AXIAL},},  // doing this screws up RTSTRUCT. Why is RTSTRUCT always displaying on the first viewportID
-        // {element: axialDiv   , viewportId: axialID   , type: cornerstone3D.Enums.ViewportType.ORTHOGRAPHIC, defaultOptions: { orientation: cornerstone3D.Enums.OrientationAxis.SAGITTAL},},
-        {element: coronalDiv , viewportId: coronalID , type: cornerstone3D.Enums.ViewportType.ORTHOGRAPHIC, defaultOptions: { orientation: cornerstone3D.Enums.OrientationAxis.CORONAL},},
+        {element: axialDiv     , viewportId: axialID            , type: cornerstone3D.Enums.ViewportType.ORTHOGRAPHIC, defaultOptions: { orientation: cornerstone3D.Enums.OrientationAxis.AXIAL},},
+        {element: sagittalDiv  , viewportId: sagittalID         , type: cornerstone3D.Enums.ViewportType.ORTHOGRAPHIC, defaultOptions: { orientation: cornerstone3D.Enums.OrientationAxis.SAGITTAL},},
+        {element: coronalDiv   , viewportId: coronalID          , type: cornerstone3D.Enums.ViewportType.ORTHOGRAPHIC, defaultOptions: { orientation: cornerstone3D.Enums.OrientationAxis.CORONAL},},
+        {element: axialDivPT   , viewportId: config.axialPTID   , type: cornerstone3D.Enums.ViewportType.ORTHOGRAPHIC, defaultOptions: { orientation: cornerstone3D.Enums.OrientationAxis.AXIAL},},
+        {element: sagittalDivPT, viewportId: config.sagittalPTID, type: cornerstone3D.Enums.ViewportType.ORTHOGRAPHIC, defaultOptions: { orientation: cornerstone3D.Enums.OrientationAxis.SAGITTAL},},
+        {element: coronalDivPT , viewportId: config.coronalPTID , type: cornerstone3D.Enums.ViewportType.ORTHOGRAPHIC, defaultOptions: { orientation: cornerstone3D.Enums.OrientationAxis.CORONAL},},
     ]
     renderingEngine.setViewports(viewportInputs);
     
     // Step 2.5.2 - Add toolGroupIdContours to rendering engine
     const toolGroup = cornerstone3DTools.ToolGroupManager.getToolGroup(toolGroupIdContours);
-    viewportIds.forEach((viewportId) =>
+    config.viewPortIdsAll.forEach((viewportId) =>
         toolGroup.addViewport(viewportId, renderingEngineId)
     );
 
@@ -2768,9 +2458,11 @@ async function fetchAndLoadData(patientIdx){
 
                 ////////////////////////////////////////////////////////////// Step 3 - Set volumes for viewports
                 await cornerstone3D.setVolumesForViewports(renderingEngine, [{ volumeId:volumeIdCT}, ], viewportIds, true);
+                await cornerstone3D.setVolumesForViewports(renderingEngine, [{ volumeId:volumeIdPET}, ], config.viewPortPTIds, true);
                 
                 ////////////////////////////////////////////////////////////// Step 4 - Render viewports
                 await renderingEngine.renderViewports(viewportIds);
+                await renderingEngine.renderViewports(config.viewPortPTIds);
 
                 ////////////////////////////////////////////////////////////// Step 5 - setup segmentation
                 printHeaderInConsole(`Step 3 - Segmentation stuff (${caseName} - CT slices:${totalImagesIdsCT})`)
@@ -2851,7 +2543,7 @@ async function setup(patientIdx){
     // // -------------------------------------------------> Step 4 - Get .dcm data
     await fetchAndLoadData(patientIdx);
     setContouringButtonsLogic();
-    setMouseAndKeyboardEvents();
+    keyboardEventsHelper.setMouseAndKeyboardEvents();
 
 }
 
@@ -2882,3 +2574,8 @@ TO-DO
 2. showSliceIds()
  - need to connect this to an event that might be released when the scroll is done
 */
+
+/**
+ * To compile (from webpack.config.js) npx webpack --mode development --watch
+ * To run: npm start
+ */

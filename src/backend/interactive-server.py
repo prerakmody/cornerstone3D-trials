@@ -1085,7 +1085,13 @@ def getViewTypeAndSliceId(points3D):
     return viewType, sliceId
 
 def getScribbleColorMap(cmap, opacityBoolForScribblePoints):
-
+    """
+    Creates a new colormap with modified opacity settings
+    Params
+    ------
+    cmap: matplotlib.colors.Colormap object; takes as input values in the range: [0,255] and gives an RGBA output tuple with vals in the range of [0,1]
+    opacityBoolForScribblePoints: bool
+    """
     cmapNew, normNew = None, None
     
     try:
@@ -1916,9 +1922,6 @@ To-Do
 
 3. Update Orthanc questions here
  - https://groups.google.com/g/orthanc-users/c/oUgOW8lctUw?pli=1
-
-4. Start logging interactions in a separate folders
-5. [D] Test out network access on LUMC servers.
 """
 
 """
@@ -1930,4 +1933,11 @@ Data-Transformation Pipeline
         --> np.moveaxis(maskArray, [0,1,2], [2,1,0])
 
 2. From .dcms (in python) TO numpy/torch arrays
+"""
+
+"""
+TO RUN
+0. conda activate interactive-refinement
+1. python src/backend/interactive-server.py
+2. Open your web browser and test for http://localhost:55000/
 """
