@@ -6,8 +6,13 @@ console.log(' ------------ instanceName: ', instanceName)
 
 // ************************************************** HTML ids
 
+export const viewWidthPerc = 0.28
+
 // Viewport ids
 export const contentDivId            = 'contentDiv';
+export const viewportDivId           = 'viewportDiv';
+export const viewPortCTDivId         = 'viewportCTDiv';
+export const viewPortPTDivId         = 'viewportPTDiv';
 export const axialID                 = 'ViewPortId-Axial';
 export const sagittalID              = 'ViewPortId-Sagittal';
 export const coronalID               = 'ViewPortId-Coronal';
@@ -17,26 +22,18 @@ export const coronalPTID             = 'ViewPortId-CoronalPT';
 export const viewportIds             = [axialID, sagittalID, coronalID];
 export const viewPortPTIds           = [axialPTID, sagittalPTID, coronalPTID];
 export const viewPortIdsAll          = viewportIds.concat(viewPortPTIds);
-export const viewPortDivId           = 'viewportDiv';
-export const viewPortPTDivId         = 'viewportPTDiv';
+
 export const otherButtonsDivId       = 'otherButtonsDiv';
 
-export let viewportGridDiv, viewportPTGridDiv;
+export let viewportGridDiv, viewportCTGridDiv, viewportPTGridDiv;
 export let viewPortDivsAll, axialDiv, sagittalDiv, coronalDiv, axialDivPT, sagittalDivPT, coronalDivPT;
 export let serverStatusDiv, serverStatusCircle, serverStatusTextDiv;
 export let axialSliceDiv, sagittalSliceDiv, coronalSliceDiv, axialSliceDivPT, sagittalSliceDivPT, coronalSliceDivPT;
 export let mouseHoverDiv, canvasPosHTML, ctValueHTML, ptValueHTML;
 
-export function getViewportGridDiv() { return viewportGridDiv; }
-export function getViewportPTGridDiv() { return viewportPTGridDiv; }
 export function setViewportGridDiv(div) { viewportGridDiv = div; }
+export function setViewportCTGridDiv(div) { viewportCTGridDiv = div; }
 export function setViewportPTGridDiv(div) { viewportPTGridDiv = div; }
-export function getAxialDiv() { return axialDiv; }
-export function getSagittalDiv() { return sagittalDiv; }
-export function getCoronalDiv() { return coronalDiv; }
-export function getAxialDivPT() { return axialDivPT; }
-export function getSagittalDivPT() { return sagittalDivPT; }
-export function getCoronalDivPT() { return coronalDivPT; }
 export function setAxialDiv(div) { axialDiv = div; }
 export function setSagittalDiv(div) { sagittalDiv = div; }
 export function setCoronalDiv(div) { coronalDiv = div; }
@@ -67,6 +64,11 @@ export function setMouseHoverDiv(div) { mouseHoverDiv = div; }
 export function setCanvasPosHTML(html) { canvasPosHTML = html; }
 export function setCTValueHTML(html) { ctValueHTML = html; }
 export function setPTValueHTML(html) { ptValueHTML = html; }
+
+// Thumbnail Container
+export const thumbnailContainerDivId = 'thumbnailContainerDiv';
+export let thumbnailContainerDiv;
+export function setThumbnailContainerDiv(div) { thumbnailContainerDiv = div; }
 
 // Button ids
 export const interactionButtonsDivId = 'interactionButtonsDiv'

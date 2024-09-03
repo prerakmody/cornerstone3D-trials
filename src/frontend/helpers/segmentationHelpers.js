@@ -13,6 +13,20 @@ function setSegmentationIndexColor(paramToolGroupId, paramSegUID, segmentationIn
     // cornerstone3DTools.segmentation.config.color.setColorForSegmentIndex(paramToolGroupId, paramSegUID, segmentationIndex, [0,255,0,255]);
 }
 
+function formatPoints(data){
+	let points = [];
+	if(data.length == 0){
+		return;
+	}
+	
+	for(var i=0; i<data.length / 3; i++){
+		let point = data.slice(i * 3, i * 3 + 3)
+		points.push([parseFloat(point[0]),parseFloat(point[1]),parseFloat(point[2])]);
+	}
+	
+	return points;
+}
+
 async function addSegmentationToState(segmentationIdParam, segType, geometryIds=[], verbose=false){
     // NOTE: segType = cornerstone3DTools.Enums.SegmentationRepresentations.{Labelmap, Contour}
 

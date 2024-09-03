@@ -160,6 +160,7 @@ function setMouseAndKeyboardEvents(){
                             });
                             // console.log(' - [setContouringButtonsLogic()] points3D: ', points3D);
                             const points3DInt = points3D.map(x => x.map(y => Math.abs(Math.round(y))));
+                            await updateGUIElementsHelper.takeSnapshots([config.viewportDivId]);
                             await apiEndpointHelpers.makeRequestToProcess(points3DInt, scribbleAnnotationUID);
                         }
                     } else {

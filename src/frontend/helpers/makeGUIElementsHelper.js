@@ -8,27 +8,45 @@ async function createViewPortsHTML() {
     // let serverStatusDiv=config.getServerStatusDiv(), serverStatusCircle=config.getServerStatusCircle(), serverStatusTextDiv=config.getServerStatusTextDiv();
     // let axialSliceDiv=config.getAxialSliceDiv(), sagittalSliceDiv=config.getSagittalSliceDiv(), coronalSliceDiv=config.getCoronalSliceDiv();
     // let axialSliceDivPT=config.getAxialSliceDivPT(), sagittalSliceDivPT=config.getSagittalSliceDivPT(), coronalSliceDivPT=config.getCoronalSliceDivPT();
-    let viewportGridDiv=config.viewportGridDiv, viewportPTGridDiv=config.viewportPTGridDiv;
+    let viewportGridDiv=config.viewportGridDiv, viewportCTGridDiv=config.viewportCTGridDiv, viewportPTGridDiv=config.viewportPTGridDiv;
     let axialDiv=config.axialDiv, sagittalDiv=config.sagittalDiv, coronalDiv=config.coronalDiv;
     let axialDivPT=config.axialDivPT, sagittalDivPT=config.sagittalDivPT, coronalDivPT=config.coronalDivPT;
     let serverStatusDiv=config.serverStatusDiv, serverStatusCircle=config.serverStatusCircle, serverStatusTextDiv=config.serverStatusTextDiv;
     let axialSliceDiv=config.axialSliceDiv, sagittalSliceDiv=config.sagittalSliceDiv, coronalSliceDiv=config.coronalSliceDiv;
     let axialSliceDivPT=config.axialSliceDivPT, sagittalSliceDivPT=config.sagittalSliceDivPT, coronalSliceDivPT=config.coronalSliceDivPT;
     let mouseHoverDiv=config.mouseHoverDiv, canvasPosHTML=config.canvasPosHTML, ctValueHTML=config.ctValueHTML, ptValueHTML=config.ptValueHTML;
-    
+    let thumbnailContainerDiv=config.thumbnailContainerDiv;
     
     ////////////////////////////////////////////////////////////////////// Step 0 - Create viewport grid
     if (1) {
         // Step 0.1 - Create content div
         const contentDiv = document.getElementById(config.contentDivId);
+        contentDiv.style.display = 'flex';
+        contentDiv.style.flexDirection = 'row';
+
+        // Step 0.1.1 - Create viewPortGridDiv container div
+        viewportGridDiv = document.createElement('div');
+        viewportGridDiv.id = config.viewportDivId;
+        viewportGridDiv.style.display = 'flex';
+        viewportGridDiv.style.flexDirection = 'column';
+        contentDiv.appendChild(viewportGridDiv);
+
+        // Step 0.1.2 - Create thumbnail container div
+        thumbnailContainerDiv = document.createElement('div');
+        thumbnailContainerDiv.id = config.thumbnailContainerDivId;
+        thumbnailContainerDiv.style.display = 'flex';
+        thumbnailContainerDiv.style.flexDirection = 'column';
+        thumbnailContainerDiv.style.overflowY = 'scroll';
+        contentDiv.appendChild(thumbnailContainerDiv);
 
         // Step 0.2 - Create viewport grid div (for CT)
-        viewportGridDiv = document.createElement('div');
-        viewportGridDiv.id = config.viewPortDivId;
-        viewportGridDiv.style.display = 'flex';
-        viewportGridDiv.style.flexDirection = 'row';
-        viewportGridDiv.oncontextmenu = (e) => e.preventDefault(); // Disable right click
-        contentDiv.appendChild(viewportGridDiv);
+        viewportCTGridDiv = document.createElement('div');
+        viewportCTGridDiv.id = config.viewPortCTDivId;
+        viewportCTGridDiv.style.display = 'flex';
+        viewportCTGridDiv.style.flexDirection = 'row';
+        viewportCTGridDiv.oncontextmenu = (e) => e.preventDefault(); // Disable right click
+        // contentDiv.appendChild(viewportCTGridDiv);
+        viewportGridDiv.appendChild(viewportCTGridDiv);
         
         // Step 0.3 - Create viewport grid div (for PET)
         viewportPTGridDiv = document.createElement('div');
@@ -36,50 +54,67 @@ async function createViewPortsHTML() {
         viewportPTGridDiv.style.display = 'flex';
         viewportPTGridDiv.style.flexDirection = 'row';
         viewportPTGridDiv.oncontextmenu = (e) => e.preventDefault(); // Disable right click
-        contentDiv.appendChild(viewportPTGridDiv);
+        // contentDiv.appendChild(viewportPTGridDiv);
+        viewportGridDiv.appendChild(viewportPTGridDiv);
     }
 
     ////////////////////////////////////////////////////////////////////// Step 1 - Create viewport elements (Axial, Sagittal, Coronal)
     if (1){
+
+        // Step 1.1.0 - Select width as percentage of window width
+        const widthOfDivInPx = window.innerWidth * config.viewWidthPerc + 'px';
+
         // Step 1.1.1 - element for axial view (CT)
         axialDiv = document.createElement('div');
-        axialDiv.style.width = '500px';
-        axialDiv.style.height = '500px';
+        // axialDiv.style.width = '500px'; 
+        // axialDiv.style.height = '500px';
+        axialDiv.style.width = widthOfDivInPx;
+        axialDiv.style.height = widthOfDivInPx;
         axialDiv.id = config.axialID;
-        viewportGridDiv.appendChild(axialDiv);
+        viewportCTGridDiv.appendChild(axialDiv);
 
         // Step 1.1.2 - element for sagittal view (CT)
         sagittalDiv = document.createElement('div');
-        sagittalDiv.style.width = '500px';
-        sagittalDiv.style.height = '500px';
+        // sagittalDiv.style.width = '500px';
+        // sagittalDiv.style.height = '500px';
+        sagittalDiv.style.width = widthOfDivInPx;
+        sagittalDiv.style.height = widthOfDivInPx;
         sagittalDiv.id = config.sagittalID;
-        viewportGridDiv.appendChild(sagittalDiv);
+        viewportCTGridDiv.appendChild(sagittalDiv);
 
         // Step 1.1.2 - element for coronal view (CT)
         coronalDiv = document.createElement('div');
-        coronalDiv.style.width = '500px';
-        coronalDiv.style.height = '500px';
+        // coronalDiv.style.width = '500px';
+        // coronalDiv.style.height = '500px';
+        coronalDiv.style.width = widthOfDivInPx;
+        coronalDiv.style.height = widthOfDivInPx;
         coronalDiv.id = config.coronalID;
-        viewportGridDiv.appendChild(coronalDiv);
+        viewportCTGridDiv.appendChild(coronalDiv);
 
         // Step 1.2.1 - element for axial view (PT)
         axialDivPT = document.createElement('div');
-        axialDivPT.style.width = '500px';
-        axialDivPT.style.height = '500px';
+        // axialDivPT.style.width = '500px';
+        // axialDivPT.style.height = '500px';
+        axialDivPT.style.width = widthOfDivInPx;
+        axialDivPT.style.height = widthOfDivInPx;
         axialDivPT.id = config.axialPTID;
         viewportPTGridDiv.appendChild(axialDivPT);
 
         // Step 1.2.2 - element for sagittal view (PT)
         sagittalDivPT = document.createElement('div');
-        sagittalDivPT.style.width = '500px';
-        sagittalDivPT.style.height = '500px';
+        // sagittalDivPT.style.width = '500px';
+        // sagittalDivPT.style.height = '500px';
+        sagittalDivPT.style.width = widthOfDivInPx;
+        sagittalDivPT.style.height = widthOfDivInPx;
         sagittalDivPT.id = config.sagittalPTID;
         viewportPTGridDiv.appendChild(sagittalDivPT);
 
         // Step 1.2.3 - element for coronal view (PT)
         coronalDivPT = document.createElement('div');
-        coronalDivPT.style.width = '500px';
-        coronalDivPT.style.height = '500px';
+        // coronalDivPT.style.width = '500px';
+        // coronalDivPT.style.height = '500px';
+        coronalDivPT.style.width = widthOfDivInPx;
+        coronalDivPT.style.height = widthOfDivInPx;
         coronalDivPT.id = config.coronalPTID;
         viewportPTGridDiv.appendChild(coronalDivPT);
     }
@@ -254,6 +289,8 @@ async function createViewPortsHTML() {
 
     ////////////////////////////////////////////////////////////////////// Step 4 - Return all the elements
     config.setViewportGridDiv(viewportGridDiv);
+    config.setThumbnailContainerDiv(thumbnailContainerDiv);
+    config.setViewportCTGridDiv(viewportCTGridDiv);
     config.setViewportPTGridDiv(viewportPTGridDiv);
     
     config.setAxialDiv(axialDiv);
@@ -280,12 +317,22 @@ async function createViewPortsHTML() {
     config.setPTValueHTML(ptValueHTML);
 
     config.setViewPortDivsAll([axialDiv, sagittalDiv, coronalDiv, axialDivPT, sagittalDivPT, coronalDivPT]);
+    setThumbnailContainerHeightAndWidth();
 
     // return {
     //     contentDiv, config.viewportGridDiv, config.axialDiv, sagittalDiv, coronalDiv, axialSliceDiv, sagittalSliceDiv, coronalSliceDiv
     //     , serverStatusCircle, serverStatusTextDiv
     //     , config.viewportPTGridDiv, axialDivPT, sagittalDivPT, coronalDivPT, axialSliceDivPT, sagittalSliceDivPT, coronalSliceDivPT
     // };
+}
+
+async function setThumbnailContainerHeightAndWidth(){
+    let thumbnailContainerDiv=config.thumbnailContainerDiv;
+    let thumbnailContainerHeight=0.9*window.innerHeight;
+    thumbnailContainerDiv.style.height=thumbnailContainerHeight+'px';
+
+    config.thumbnailContainerDiv.style.height = `${config.viewportGridDiv.style.height}px`;
+    config.thumbnailContainerDiv.style.width = window.innerWidth * (1-3*config.viewWidthPerc) + 'px';
 }
 
 export { createViewPortsHTML };

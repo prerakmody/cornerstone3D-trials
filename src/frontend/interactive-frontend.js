@@ -112,9 +112,12 @@ let totalROIsRTSTRUCT = undefined;
 *****************************************************************/
 
 await makeGUIElementsHelper.createViewPortsHTML();
-let axialDiv=config.getAxialDiv(), sagittalDiv=config.getSagittalDiv(), coronalDiv=config.getCoronalDiv();
-let axialDivPT=config.getAxialDivPT(), sagittalDivPT=config.getSagittalDivPT(), coronalDivPT=config.getCoronalDivPT();
-let serverStatusCircle=config.getServerStatusCircle(), serverStatusTextDiv=config.getServerStatusTextDiv();
+let axialDiv=config.axialDiv, sagittalDiv=config.sagittalDiv, coronalDiv=config.coronalDiv;
+let axialDivPT=config.axialDivPT, sagittalDivPT=config.sagittalDivPT, coronalDivPT=config.coronalDivPT;
+let serverStatusCircle=config.serverStatusCircle, serverStatusTextDiv=config.serverStatusTextDiv;
+// let axialDiv=config.getAxialDiv(), sagittalDiv=config.getSagittalDiv(), coronalDiv=config.getCoronalDiv();
+// let axialDivPT=config.getAxialDivPT(), sagittalDivPT=config.getSagittalDivPT(), coronalDivPT=config.getCoronalDivPT();
+// let serverStatusCircle=config.getServerStatusCircle(), serverStatusTextDiv=config.getServerStatusTextDiv();
 // let axialSliceDiv=config.getAxialSliceDiv(), sagittalSliceDiv=config.getSagittalSliceDiv(), coronalSliceDiv=config.getCoronalSliceDiv();
 // let axialSliceDivPT=config.getAxialSliceDivPT(), sagittalSliceDivPT=config.getSagittalSliceDivPT(), coronalSliceDivPT=config.getCoronalSliceDivPT();
 
@@ -807,20 +810,6 @@ function sortImageIds(imageIds) {
     return sortedImageIds;
 }
 
-function formatPoints(data){
-	let points = [];
-	if(data.length == 0){
-		return;
-	}
-	
-	for(var i=0; i<data.length / 3; i++){
-		let point = data.slice(i * 3, i * 3 + 3)
-		points.push([parseFloat(point[0]),parseFloat(point[1]),parseFloat(point[2])]);
-	}
-	
-	return points;
-}
-
 function getActiveSegmentationObj(){
 
     // use map to apply the function getActiveSegmentation to each key of allSegIdsAndUIDs
@@ -1368,6 +1357,8 @@ async function fetchAndLoadData(patientIdx){
                     if (buttonHTML === null) return;
                     buttonHTML.disabled = false;
                 });
+                // await updateGUIElementsHelper.takeSnapshots(config.viewPortIdsAll)
+                await updateGUIElementsHelper.takeSnapshots([config.viewportDivId])
 
             }
 

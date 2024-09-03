@@ -1,6 +1,8 @@
 import * as config from './config.js';
 import * as cornerstone3D from '@cornerstonejs/core';
 
+import html2canvas from 'html2canvas';
+
 // ******************************* SliceIdx handling ********************************************
 
 // ******************************* SliceIdx handling ********************************************
@@ -326,8 +328,79 @@ async function unshowLoaderAnimation() {
     }
 }
 
+// ******************************* Snapshots ********************************************
+async function takeSnapshot(divId) {
+    const div = document.getElementById(divId);
+    if (!div) {
+        console.error(`Div with id ${divId} not found`);
+        return null;
+    }
+
+    try {
+        const canvas = await html2canvas(div);
+        return canvas.toDataURL('image/png');
+    } catch (error) {
+        console.error('Error taking snapshot:', error);
+        return null;
+    }
+}
+
+async function takeSnapshots(divIds) {
+
+    setTimeout(async () => {
+        for (const divId of divIds) {
+            const dataUrl = await takeSnapshot(divId);
+            if (dataUrl) {
+                const img = document.createElement('img');
+                img.src = dataUrl;
+                img.style.width = config.thumbnailContainerDiv.style.width - 10 + 'px';
+                img.style.cursor = 'pointer';
+                img.onclick = () => expandImage(dataUrl);
+                // config.thumbnailContainerDiv.appendChild(img);
+                const firstChild = config.thumbnailContainerDiv.firstChild;
+                if (firstChild) {
+                    config.thumbnailContainerDiv.insertBefore(img, firstChild);
+                } else {
+                    config.thumbnailContainerDiv.appendChild(img);
+                }
+            }
+        }
+    }, 100);
+}
+
+function expandImage(dataUrl) {
+    let expandedImageContainer = document.getElementById('expandedImageContainer');
+    if (expandedImageContainer === null) {
+        const container = document.createElement('div');
+        container.id = 'expandedImageContainer';
+        container.style.position = 'fixed';
+        container.style.top = '0';
+        container.style.left = '0';
+        container.style.width = '100%';
+        container.style.height = '100%';
+        container.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
+        container.style.display = 'flex';
+        container.style.justifyContent = 'center';
+        container.style.alignItems = 'center';
+        container.style.zIndex = '10000';
+        container.onclick = () => container.style.display = 'none';
+
+        const img = document.createElement('img');
+        img.id = 'expandedImage';
+        img.style.maxWidth = '90%';
+        img.style.maxHeight = '90%';
+
+        container.appendChild(img);
+        document.body.appendChild(container);
+        expandedImageContainer = container;
+    }
+    const expandedImage = document.getElementById('expandedImage');
+    expandedImage.src = dataUrl;
+    expandedImageContainer.style.display = 'block';
+}
 
 export {setGlobalSliceIdxViewPortReferenceVars, convertSliceIdxHTMLToSliceIdxViewportReference, setSliceIdxForViewPortFromGlobalSliceIdxVars}
 export {setSliceIdxHTMLForViewPort, setSliceIdxHTMLForAllHTML}
 export {showToast}
 export {showLoaderAnimation, unshowLoaderAnimation}
+export {takeSnapshots}
