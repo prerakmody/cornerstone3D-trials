@@ -141,7 +141,8 @@ if 1:
     # Settings - Model Input
     SHAPE_TENSOR  = (1, 5, 144, 144, 144)
     HU_MIN, HU_MAX   = -250, 250
-    SUV_MIN, SUV_MAX = 0   ,25000
+    SUV_MIN_v1, SUV_MAX_v1 = 0   ,25000
+    SUV_MIN_v2, SUV_MAX_v2 = 0   ,25
 
     # Settings - Model Type
     KEY_UNET_V1          = 'unet_v1'
@@ -650,7 +651,7 @@ def getCTArray(client, patientData):
             ctArray[:, :, int(instance.InstanceNumber)-1] = instance.pixel_array
         
         # Step 3.1 - Perform min-max crop and then z-normalization
-        ctArrayProcessed = np.clip(copy.deepcopy(ctArray), HU_MIN, HU_MAX)
+        ctArrayProcessed = np.clip(copy.deepcopy(ctArray), HU_MIN, HU_MAX) # NOTE: make sure these numbers match with the ones used during training (in def getPatientData() -->  Step 1.8)
         ctArrayProcessed = (ctArrayProcessed - np.mean(ctArrayProcessed)) / np.std(ctArrayProcessed)
 
         # Step 4 - Update sessionsGlobal
@@ -702,7 +703,11 @@ def getPTArray(client, patientData):
             ptArray[:, :, int(instance.InstanceNumber)-1] = instance.pixel_array
         
         # Step 3.1 - Perform min-max crop and then z-normalization
-        ptArrayProcessed = np.clip(copy.deepcopy(ptArray), SUV_MIN, SUV_MAX)
+        if ptArray.max() > 1000:
+            print (' - [getPTArray()] Using SUV_MIN_v1, SUV_MAX_v1 as ptArray.max() > 1000: ', ptArray.max())
+            ptArrayProcessed = np.clip(copy.deepcopy(ptArray), SUV_MIN_v1, SUV_MAX_v1) # NOTE: make sure these numbers match with the ones used during training (in def getPatientData() -->  Step 1.8)
+        else:
+            ptArrayProcessed = np.clip(copy.deepcopy(ptArray), SUV_MIN_v2, SUV_MAX_v2)
         ptArrayProcessed = (ptArrayProcessed - np.mean(ptArrayProcessed)) / np.std(ptArray)
 
         # Step 4 - Update sessionsGlobal
@@ -1590,12 +1595,19 @@ async def lifespan(app: fastapi.FastAPI):
         # DEVICE    = torch.device('cpu')
         loadOnnx  = True
     
-    elif 1:
+    elif 0:
         expName   = 'UNetv1__DICE-LR1e3-B12__Cls1-Pt-Scr__Trial2'
         epoch     = 150
         modelType = KEY_UNET_V1 # type == <class 'monai.networks.nets.unet.UNet'>
         # DEVICE    = torch.device('cpu')
         loadOnnx  = False # True, False
+    
+    elif 1:
+        expName   = 'UNetv1__DICE-LR1e3__W5-B32__Cls1-Pt-Scr__Trial5'
+        epoch     = 500
+        modelType = KEY_UNET_V1 # type == <class 'monai.networks.nets.unet.UNet'>
+        # DEVICE    = torch.device('cpu')
+        loadOnnx  = True # True, False
 
     MODEL, ORT_SESSION = loadModelUsingUserPath(DEVICE, expName, epoch, modelType, loadOnnx)
     LOAD_ONNX = loadOnnx

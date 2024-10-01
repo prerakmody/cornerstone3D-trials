@@ -436,7 +436,10 @@ async function makeRequestToProcess(points3D, scribbleAnnotationUID, verbose=fal
         //------------------------------------------------------- Step 1 - Make a request to /process
         const scribbleType = await annotationHelpers.getScribbleType();
         const processPayload = {
-            [config.KEY_DATA]: {[config.KEY_POINTS_3D]: points3D, [config.KEY_SCRIB_TYPE]:scribbleType, [config.KEY_CASE_NAME]: config.orthanDataURLS[config.patientIdx]['caseName'],}
+            [config.KEY_DATA]: {
+                [config.KEY_POINTS_3D]: points3D
+                , [config.KEY_SCRIB_TYPE]:scribbleType
+                , [config.KEY_CASE_NAME]: config.orthanDataURLS[config.patientIdx]['caseName'],}
             , [config.KEY_IDENTIFIER]: config.instanceName,
         }
         await updateGUIElementsHelper.showLoaderAnimation();
@@ -487,7 +490,7 @@ async function makeRequestToProcess(points3D, scribbleAnnotationUID, verbose=fal
                     const totalDcmSEGFetchSeconds = (new Date() - nowDcmSEGFetch) / 1000;
                     console.log('   -- [makeRequestToProcess()] Round-trip DcmSEG fetch completed in ', totalDcmSEGFetchSeconds, ' s');
                 } catch (error){
-                    console.error(' - [loadData()] Error in makeRequestToProcess(responseData, config.imageIdsCT, MASK_TYPE_PRED): ', error);
+                    console.error(' - [loadData()] Error in makeRequestToProcess(points3D, scribbleAnnotationUID): ', error);
                     updateGUIElementsHelper.showToast('Error in loading refined segmentation data', 3000);
                 }
                 

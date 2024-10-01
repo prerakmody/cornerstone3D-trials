@@ -68,7 +68,15 @@ async function addSegmentationToState(segmentationIdParam, segType, geometryIds=
 }
 
 async function fetchAndLoadDCMSeg(searchObj, imageIds, maskType){
-
+    /**
+     * Fetches and loads a segmentation (SEG/RTSTRUCT) from the DICOMweb server (usually localhost:8042)
+     *  - Currently RTSTRUCT is not relevant to the project, only SEG
+     * Parameters:
+     * - searchObj: Object containing the search parameters
+     * - imageIds: Array of imageIds
+     *  - e.g. [wadors:https://10.161.139.208:50000/dicom-web/studies/1.2.826.0.1.3680043.8.498.10172588745061765730458383563988183172/series/1.2.826.0.1.3680043.8.498.30041466412873709825126264925379453754/instances/1.2.826.0.1.3680043.8.498.64076707223165973969523030097758451449/frames/1, ...]
+     * - maskType: Type of mask (MASK_TYPE_PRED, MASK_TYPE_GT, MASK_TYPE_REFINE)
+     */
     // ---------------------------------------------- Step 1.1 - Create client Obj
     const client = new dicomWebClient.api.DICOMwebClient({
         url: searchObj.wadoRsRoot
@@ -220,53 +228,59 @@ async function fetchAndLoadDCMSeg(searchObj, imageIds, maskType){
     else if (dataset.Modality === config.MODALITY_SEG){
         // Step 2 - Read dicom tags and generate a "toolState".
         // Important keys here are toolState.segmentsOnFrame (for debugging) and toolState.labelmapBufferArray
-        const generateToolState = await cornerstoneAdapters.adaptersSEG.Cornerstone3D.Segmentation.generateToolState(
-            imageIds,
-            arrayBuffer,
-            cornerstone3D.metaData
-        );
-        // console.log('\n - [fetchAndLoadDCMSeg()] generateToolState: ', generateToolState)
-
-        // Step 3 - Add a new segmentation to cornerstone3D
-        let segmentationId;
-        if (maskType == config.MASK_TYPE_GT){
-            segmentationId = [config.gtSegmentationIdBase, config.MODALITY_SEG, cornerstone3D.utilities.uuidv4()].join('::');
-        } else if (maskType == config.MASK_TYPE_PRED){
-            segmentationId = [config.predSegmentationIdBase, config.MODALITY_SEG, cornerstone3D.utilities.uuidv4()].join('::');
-        } else if (maskType == config.MASK_TYPE_REFINE){
-            segmentationId = [config.predSegmentationIdBase, config.MODALITY_SEG, cornerstone3D.utilities.uuidv4()].join('::');
-        }
-        const {derivedVolume, segReprUIDs} = await addSegmentationToState(segmentationId, cornerstone3DTools.Enums.SegmentationRepresentations.Labelmap);
-        
-        // Step 4 - Add the dicom buffer to cornerstone3D segmentation 
-        const derivedVolumeScalarData     = await derivedVolume.getScalarData();
-        await derivedVolumeScalarData.set(new Uint8Array(generateToolState.labelmapBufferArray[0]));
-        
-        // Step 5 - Set variables and colors
+        console.log('   -- [fetchAndLoadDCMSeg()] maskType: ', maskType, ' || imageIds[0]', imageIds[0])
         try{
-            // console.log(' - [fetchAndLoadDCMSeg(',maskType,')]: segReprUIDs: ', segReprUIDs)
+            const generateToolState = await cornerstoneAdapters.adaptersSEG.Cornerstone3D.Segmentation.generateToolState(
+                imageIds,
+                arrayBuffer,
+                cornerstone3D.metaData
+            );
+            // console.log('\n - [fetchAndLoadDCMSeg()] generateToolState: ', generateToolState)
+
+            // Step 3 - Add a new segmentation to cornerstone3D
+            let segmentationId;
             if (maskType == config.MASK_TYPE_GT){
-                config.setGtSegmentationId(segmentationId);
-                config.setGtSegmentationUIDs(segReprUIDs);
-                // global.gtSegmentationId   = segmentationId;
-                // global.gtSegmentationUIDs = segReprUIDs;
-                setSegmentationIndexColor(config.toolGroupIdContours, segReprUIDs[0], 1, config.COLOR_RGBA_ARRAY_GREEN);
+                segmentationId = [config.gtSegmentationIdBase, config.MODALITY_SEG, cornerstone3D.utilities.uuidv4()].join('::');
             } else if (maskType == config.MASK_TYPE_PRED){
-                config.setPredSegmentationId(segmentationId);
-                config.setPredSegmentationUIDs(segReprUIDs);
-                // global.predSegmentationId   = segmentationId;
-                // global.predSegmentationUIDs = segReprUIDs;
-                setSegmentationIndexColor(config.toolGroupIdContours, segReprUIDs[0], 1, config.COLOR_RGBA_ARRAY_RED);
+                segmentationId = [config.predSegmentationIdBase, config.MODALITY_SEG, cornerstone3D.utilities.uuidv4()].join('::');
             } else if (maskType == config.MASK_TYPE_REFINE){
-                config.setPredSegmentationId(segmentationId);
-                config.setPredSegmentationUIDs(segReprUIDs);
-                // global.predSegmentationId   = segmentationId;
-                // global.predSegmentationUIDs = segReprUIDs;
-                setSegmentationIndexColor(config.toolGroupIdContours, segReprUIDs[0], 1, config.COLOR_RGBA_ARRAY_PINK);
+                segmentationId = [config.predSegmentationIdBase, config.MODALITY_SEG, cornerstone3D.utilities.uuidv4()].join('::');
+            }
+            const {derivedVolume, segReprUIDs} = await addSegmentationToState(segmentationId, cornerstone3DTools.Enums.SegmentationRepresentations.Labelmap);
+            
+            // Step 4 - Add the dicom buffer to cornerstone3D segmentation 
+            const derivedVolumeScalarData     = await derivedVolume.getScalarData();
+            await derivedVolumeScalarData.set(new Uint8Array(generateToolState.labelmapBufferArray[0]));
+            
+            // Step 5 - Set variables and colors
+            try{
+                // console.log(' - [fetchAndLoadDCMSeg(',maskType,')]: segReprUIDs: ', segReprUIDs)
+                if (maskType == config.MASK_TYPE_GT){
+                    config.setGtSegmentationId(segmentationId);
+                    config.setGtSegmentationUIDs(segReprUIDs);
+                    // global.gtSegmentationId   = segmentationId;
+                    // global.gtSegmentationUIDs = segReprUIDs;
+                    setSegmentationIndexColor(config.toolGroupIdContours, segReprUIDs[0], 1, config.COLOR_RGBA_ARRAY_GREEN);
+                } else if (maskType == config.MASK_TYPE_PRED){
+                    config.setPredSegmentationId(segmentationId);
+                    config.setPredSegmentationUIDs(segReprUIDs);
+                    // global.predSegmentationId   = segmentationId;
+                    // global.predSegmentationUIDs = segReprUIDs;
+                    setSegmentationIndexColor(config.toolGroupIdContours, segReprUIDs[0], 1, config.COLOR_RGBA_ARRAY_RED);
+                } else if (maskType == config.MASK_TYPE_REFINE){
+                    config.setPredSegmentationId(segmentationId);
+                    config.setPredSegmentationUIDs(segReprUIDs);
+                    // global.predSegmentationId   = segmentationId;
+                    // global.predSegmentationUIDs = segReprUIDs;
+                    setSegmentationIndexColor(config.toolGroupIdContours, segReprUIDs[0], 1, config.COLOR_RGBA_ARRAY_PINK);
+                }
+            } catch (error){
+                console.log('   -- [fetchAndLoadDCMSeg()] For maskType:', maskType, ' || Error: ', error);
             }
         } catch (error){
-            console.log('   -- [fetchAndLoadDCMSeg()] Error: ', error);
+            console.log('   -- [fetchAndLoadDCMSeg()] For maskType:', maskType, ' || Error: ', error);
         }
+        
         
     }
 

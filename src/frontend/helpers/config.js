@@ -185,7 +185,10 @@ export function setVolumeIdCT(id) { volumeIdCT = id; }
 export function setVolumeIdPET(id) { volumeIdPET = id; }
 
 export let imageIdsCT;
-export function setImageIdsCT(ids) { imageIdsCT = ids; }
+export function setImageIdsCT(ids) { 
+    // console.log(' - [setImageIdsCT()]: ids[0]', ids[0])
+    imageIdsCT = ids; 
+}
 
 // Segmentation vars
 export let scribbleSegmentationId;

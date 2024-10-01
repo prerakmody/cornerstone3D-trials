@@ -563,8 +563,8 @@ async function otherHTMLElements(){
     caseSelectionHTML.id        = 'caseSelection';
     caseSelectionHTML.innerHTML = 'Case Selection';
     caseSelectionHTML.addEventListener('change', async function() {
-        global.patientIdx = parseInt(this.value);
-        await fetchAndLoadData(global.patientIdx);
+        config.setPatientIdx(parseInt(this.value));
+        await fetchAndLoadData(config.patientIdx);
     });
 
     ///////////////////////////////////////////////////////////////////////////////////// Step 99 - Add to contentDiv
@@ -1401,7 +1401,9 @@ async function setup(patientIdx){
 }
 
 // Some debug params
-config.setPatientIdx(16);
+config.setPatientIdx(13); // CHMR016
+// config.setPatientIdx(16);
+// config.setPatientIdx(22); // CHMR034
 MODALITY_CONTOURS = MODALITY_SEG
 
 if (process.env.NETLIFY === "true")
