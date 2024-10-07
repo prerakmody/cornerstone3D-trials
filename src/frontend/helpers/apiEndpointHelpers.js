@@ -420,6 +420,8 @@ async function getDataURLs(verbose = false){
     config.setOrthanDataURLS(orthanDataURLS)
 }
 
+// ************************************************** /process
+
 async function makeRequestToProcess(points3D, scribbleAnnotationUID, verbose=false){
 
     let requestStatus = false;
@@ -440,7 +442,8 @@ async function makeRequestToProcess(points3D, scribbleAnnotationUID, verbose=fal
                 [config.KEY_POINTS_3D]: points3D
                 , [config.KEY_SCRIB_TYPE]:scribbleType
                 , [config.KEY_CASE_NAME]: config.orthanDataURLS[config.patientIdx]['caseName'],}
-            , [config.KEY_IDENTIFIER]: config.instanceName,
+            , [config.KEY_IDENTIFIER]: config.instanceName
+            , [config.KEY_USER]: config.userCredFirstName + '-' + config.userCredLastName
         }
         await updateGUIElementsHelper.showLoaderAnimation();
         
@@ -528,5 +531,81 @@ async function makeRequestToProcess(points3D, scribbleAnnotationUID, verbose=fal
     return {requestStatus, responseData};
 }
 
+// ************************************************** /prepare
+
+function setServerStatus(serverMessageId, serverMessageStr){
+    // 0 - loading, 1 - successful, 2 - error
+
+    // Step 1 - Init
+    let serverStatusCircle=config.serverStatusCircle
+    let serverStatusTextDiv=config.serverStatusTextDiv;
+
+    // Step 2 - Set server status
+    if (serverMessageId == 0){
+        serverStatusCircle.style.backgroundColor = 'red';
+        serverStatusCircle.style.animation = 'blinker 1s linear infinite';
+        serverStatusTextDiv.innerHTML = 'Server Status: <br> - Red: Server is not running <br> - Green: Server is running';
+    } else if (serverMessageId == 1){
+        serverStatusCircle.style.backgroundColor = 'red';
+        serverStatusCircle.style.animation = 'none';
+        serverStatusTextDiv.innerHTML = serverMessageStr;
+    }else if (serverMessageId == 2){
+        serverStatusCircle.style.backgroundColor = 'green';
+        serverStatusCircle.style.animation = 'none';
+        serverStatusTextDiv.innerHTML = serverMessageStr;
+    } else if (serverMessageId == 3){
+        serverStatusCircle.style.backgroundColor = 'red';
+        serverStatusCircle.style.animation = 'blinker 1s linear infinite';
+        serverStatusTextDiv.innerHTML = serverMessageStr;
+    }
+
+}
+
+async function makeRequestToPrepare(patientIdx){
+
+    let requestStatus = false;
+    try{
+        
+        // Step 1 - Init
+        const preparePayload = {
+            [config.KEY_DATA]: config.orthanDataURLS[patientIdx]
+            ,[config.KEY_IDENTIFIER]: config.instanceName
+            ,[config.KEY_USER]: config.userCredFirstName + '-' + config.userCredLastName
+        }
+        console.log(' \n ----------------- Python server (/prepare) ----------------- \n')
+        console.log('   -- [makeRequestToPrepare()] preparePayload: ', preparePayload);
+
+        // Step 2 - Make a request to /prepare
+        const response = await fetch(config.URL_PYTHON_SERVER + config.ENDPOINT_PREPARE
+            , {
+                method: config.METHOD_POST, headers: config.HEADERS_JSON, body: JSON.stringify(preparePayload),
+                credentials: 'include',
+                // agent: PYTHON_SERVER_HTTPSAGENT
+            }
+        ); // credentials: 'include' is important for cross-origin requests
+        const responseJSON = await response.json();
+        console.log('   -- [makeRequestToPrepare()] response: ', response);
+        console.log('   -- [makeRequestToPrepare()] response.json(): ', responseJSON);
+        
+        // Step 3 - Process output
+        if (parseInt(response.status) == 200){
+            requestStatus = true;
+            config.serverStatusCircle.style.backgroundColor = 'green';
+            config.serverStatusCircle.style.animation = 'none';
+            setServerStatus(2, responseJSON.status);
+        } else {
+            setServerStatus(1, response.status + ': ' + responseJSON.detail);
+        }
+
+    } catch (error){
+        requestStatus = false;
+        setServerStatus(1, 'Error in /prepare: ' + error);
+        console.log('   -- [makeRequestToPrepare()] Error: ', error);
+        updateGUIElementsHelper.showToast('Python server - /prepare failed', 3000)
+    }
+
+    return requestStatus;
+}
+
 export {getDataURLs}
-export {makeRequestToProcess}
+export {makeRequestToProcess, makeRequestToPrepare, setServerStatus}

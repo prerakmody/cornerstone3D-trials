@@ -96,6 +96,7 @@ if 1:
 
     # Keys - For DICOM server
     KEY_CASE_NAME          = 'caseName'
+    KEY_USERNAME           = 'userName'
     KEY_SEARCH_OBJ_CT      = 'searchObjCT'
     KEY_SEARCH_OBJ_PET     = 'searchObjPET'
     KEY_SEARCH_OBJ_RTSGT   = 'searchObjRTSGT'
@@ -158,6 +159,8 @@ if 1:
     DIR_MAIN        = DIR_SRC.parent.absolute() # <root>/
     DIR_MODELS      = DIR_MAIN / '_models/'
     DIR_EXPERIMENTS = DIR_MAIN / '_experiments/'
+    DIR_LOGS        = DIR_MAIN / '_logs/'
+    Path(DIR_LOGS).mkdir(parents=True, exist_ok=True)
 
     FILENAME_PATIENTS_UUIDS_JSON = 'patients-uuids.json'
     FILENAME_METAINFO_SEG_JSON   = 'metainfo-segmentation.json'
@@ -262,7 +265,7 @@ def getTorchDevice():
     else:
         print (' - Unknown platform: {}'.format(platform.system()))
 
-    # print ('\n - Device: {}\n'.format(device))
+    print ('\n - Device: {}\n'.format(device))
 
     return device
 
@@ -329,18 +332,22 @@ class PreparedData(pydantic.BaseModel):
     searchObjRTSPred: SearchObj = pydantic.Field(...)
     caseName: str = pydantic.Field(...)
 
+# Incoming packet
 class PayloadPrepare(pydantic.BaseModel):
     data: PreparedData = pydantic.Field(...)
     identifier: str = pydantic.Field(...)
+    user: str = pydantic.Field(...)
 
 class ProcessData(pydantic.BaseModel):
     points3D: typing.List[typing.Tuple[int, int, int]] = pydantic.Field(...)
     scribbleType: str = pydantic.Field(...)
     caseName: str = pydantic.Field(...)
 
+# Incoming packet
 class PayloadProcess(pydantic.BaseModel):
     data: ProcessData = pydantic.Field(...)
     identifier: str = pydantic.Field(...)
+    user: str = pydantic.Field(...)
 
 #################################################################
 #                        NNET MODELS
@@ -1602,9 +1609,17 @@ async def lifespan(app: fastapi.FastAPI):
         # DEVICE    = torch.device('cpu')
         loadOnnx  = False # True, False
     
-    elif 1:
+    elif 0:
         expName   = 'UNetv1__DICE-LR1e3__W5-B32__Cls1-Pt-Scr__Trial5'
         epoch     = 500
+        modelType = KEY_UNET_V1 # type == <class 'monai.networks.nets.unet.UNet'>
+        # DEVICE    = torch.device('cpu')
+        loadOnnx  = True # True, False
+    
+    # 2024-10-02
+    elif 1:
+        expName   = 'UNetv1__DICE-LR1e3__W5-B32-MoreData__Cls1-Pt-Scr__Trial1'
+        epoch     = 80
         modelType = KEY_UNET_V1 # type == <class 'monai.networks.nets.unet.UNet'>
         # DEVICE    = torch.device('cpu')
         loadOnnx  = True # True, False
@@ -1623,6 +1638,7 @@ app     = fastapi.FastAPI(lifespan=lifespan, title="FastAPI: Interactive Server 
 configureFastAPIApp(app)
 setproctitle.setproctitle("interactive-server.py") # set process name
 logger = logging.getLogger(__name__)
+loggerFileHandler = logging.FileHandler(DIR_LOGS / '/interactive-server-{:%Y-%m-%d-%H-%M-%S}.log'.format(datetime.datetime.now()))
 
 def checkAssetPaths(verbose=False):
 
@@ -1683,7 +1699,8 @@ async def prepare(payload: PayloadPrepare, request: starlette.requests.Request):
         # Step 0 - Init
         tStart             = time.time()
         userAgent, referer = getRequestInfo(request)
-        clientIdentifier   = payload.identifier
+        clientUserName     = payload.user
+        clientIdentifier   = payload.identifier + '__' + clientUserName
         preparePayloadData = payload.data.dict()
         patientName        = preparePayloadData[KEY_CASE_NAME]
         # user         = request.user # AuthenticationMiddleware must be installed to access request.user
@@ -1780,7 +1797,9 @@ async def process(payload: PayloadProcess, request: starlette.requests.Request):
         # Step 0 - Init
         tStart = time.time()
         userAgent, referer = getRequestInfo(request)
-        clientIdentifier   = payload.identifier
+        clientUserName     = payload.username
+        clientIdentifier   = payload.identifier + '__' + clientUserName
+        # clientIdentifier   = payload.identifier # NOTE: Old method
         processPayloadData = payload.data.dict()
         patientName        = processPayloadData[KEY_CASE_NAME]
         returnMessagePrefix = "[clientIdentifier={}, patientName={}, loadOnnx={}]".format(clientIdentifier, patientName, LOAD_ONNX)
@@ -1954,5 +1973,6 @@ Data-Transformation Pipeline
 TO RUN
 0. conda activate interactive-refinement
 1. python src/backend/interactive-server.py
+  - nohup python -u src/backend/interactive-server.py > _logs/interactive-server.log 2>&1 &
 2. Open your web browser and test for http://localhost:55000/
 """

@@ -63,17 +63,11 @@ const volumeIdCTBase       = `${volumeLoaderScheme}:myVolumeCT`;
 // Colors
 const COLOR_RGB_FGD = 'rgb(218, 165, 32)' // 'goldenrod'
 const COLOR_RGB_BGD = 'rgb(0, 0, 255)'    // 'blue'
-const COLOR_RGBA_ARRAY_GREEN = [0  , 255, 0, 128]   // 'green'
-const COLOR_RGBA_ARRAY_RED   = [255, 0  , 0, 128]     // 'red'
-const COLOR_RGBA_ARRAY_PINK  = [255, 192, 203, 128] // 'pink'
 
 const MASK_TYPE_GT   = 'GT';
 const MASK_TYPE_PRED = 'PRED';
 const MASK_TYPE_REFINE = 'REFINE';
 
-const MODALITY_CT = 'CT';
-const MODALITY_MR = 'MR';
-const MODALITY_PT = 'PT';
 const MODALITY_SEG      = 'SEG';
 const MODALITY_RTSTRUCT = 'RTSTRUCT';
 let MODALITY_CONTOURS;
@@ -88,12 +82,12 @@ const SEG_TYPE_LABELMAP = 'LABELMAP'
 // Python server
 // const PYTHON_SERVER_CERT        = fs.readFileSync('../backend/hostCert.pem')
 // const PYTHON_SERVER_HTTPSAGENT = new https.Agent({ ca: PYTHON_SERVER_CERT })
-const URL_PYTHON_SERVER = `${window.location.origin}`.replace('50000', '55000') //[`${window.location.origin}`, 'https://localhost:55000']
-const ENDPOINT_PREPARE  = '/prepare'
-const KEY_DATA          = 'data'
-const KEY_IDENTIFIER    = 'identifier'
-const METHOD_POST       = 'POST'
-const HEADERS_JSON      = {'Content-Type': 'application/json',}
+// const URL_PYTHON_SERVER = `${window.location.origin}`.replace('50000', '55000') //[`${window.location.origin}`, 'https://localhost:55000']
+// const ENDPOINT_PREPARE  = '/prepare'
+// const KEY_DATA          = 'data'
+// const KEY_IDENTIFIER    = 'identifier'
+// const METHOD_POST       = 'POST'
+// const HEADERS_JSON      = {'Content-Type': 'application/json',}
 
 
 // Tools
@@ -114,7 +108,7 @@ let totalROIsRTSTRUCT = undefined;
 await makeGUIElementsHelper.createViewPortsHTML();
 let axialDiv=config.axialDiv, sagittalDiv=config.sagittalDiv, coronalDiv=config.coronalDiv;
 let axialDivPT=config.axialDivPT, sagittalDivPT=config.sagittalDivPT, coronalDivPT=config.coronalDivPT;
-let serverStatusCircle=config.serverStatusCircle, serverStatusTextDiv=config.serverStatusTextDiv;
+
 // let axialDiv=config.getAxialDiv(), sagittalDiv=config.getSagittalDiv(), coronalDiv=config.getCoronalDiv();
 // let axialDivPT=config.getAxialDivPT(), sagittalDivPT=config.getSagittalDivPT(), coronalDivPT=config.getCoronalDivPT();
 // let serverStatusCircle=config.getServerStatusCircle(), serverStatusTextDiv=config.getServerStatusTextDiv();
@@ -584,28 +578,6 @@ function printHeaderInConsole(strToPrint){
     console.log(`\n\n | ================================================================ ${strToPrint} ================================================================ | \n\n`)
 }
 
-function setServerStatus(serverMessageId, serverMessageStr){
-    // 0 - loading, 1 - successful, 2 - error
-    if (serverMessageId == 0){
-        serverStatusCircle.style.backgroundColor = 'red';
-        serverStatusCircle.style.animation = 'blinker 1s linear infinite';
-        serverStatusTextDiv.innerHTML = 'Server Status: <br> - Red: Server is not running <br> - Green: Server is running';
-    } else if (serverMessageId == 1){
-        serverStatusCircle.style.backgroundColor = 'red';
-        serverStatusCircle.style.animation = 'none';
-        serverStatusTextDiv.innerHTML = serverMessageStr;
-    }else if (serverMessageId == 2){
-        serverStatusCircle.style.backgroundColor = 'green';
-        serverStatusCircle.style.animation = 'none';
-        serverStatusTextDiv.innerHTML = serverMessageStr;
-    } else if (serverMessageId == 3){
-        serverStatusCircle.style.backgroundColor = 'red';
-        serverStatusCircle.style.animation = 'blinker 1s linear infinite';
-        serverStatusTextDiv.innerHTML = serverMessageStr;
-    }
-
-}
-
 /****************************************************************
 *                             UTILS  
 *****************************************************************/
@@ -696,47 +668,7 @@ async function showPET(thisButton){
     }
 }
 
-async function makeRequestToPrepare(patientIdx){
 
-    let requestStatus = false;
-    try{
-        
-        // Step 1 - Init
-        const preparePayload = {[KEY_DATA]: config.orthanDataURLS[patientIdx],[KEY_IDENTIFIER]: config.instanceName,}
-        console.log(' \n ----------------- Python server (/prepare) ----------------- \n')
-        console.log('   -- [makeRequestToPrepare()] preparePayload: ', preparePayload);
-
-        // Step 2 - Make a request to /prepare
-        const response = await fetch(URL_PYTHON_SERVER + ENDPOINT_PREPARE
-            , {
-                method: METHOD_POST, headers: HEADERS_JSON, body: JSON.stringify(preparePayload),
-                credentials: 'include',
-                // agent: PYTHON_SERVER_HTTPSAGENT
-            }
-        ); // credentials: 'include' is important for cross-origin requests
-        const responseJSON = await response.json();
-        console.log('   -- [makeRequestToPrepare()] response: ', response);
-        console.log('   -- [makeRequestToPrepare()] response.json(): ', responseJSON);
-        
-        // Step 3 - Process output
-        if (parseInt(response.status) == 200){
-            requestStatus = true;
-            serverStatusCircle.style.backgroundColor = 'green';
-            serverStatusCircle.style.animation = 'none';
-            setServerStatus(2, responseJSON.status);
-        } else {
-            setServerStatus(1, response.status + ': ' + responseJSON.detail);
-        }
-
-    } catch (error){
-        requestStatus = false;
-        setServerStatus(1, 'Error in /prepare: ' + error);
-        console.log('   -- [makeRequestToPrepare()] Error: ', error);
-        updateGUIElementsHelper.showToast('Python server - /prepare failed', 3000)
-    }
-
-    return requestStatus;
-}
 
 function removeAllPlanFreeHandRoiAnnotations() {
     const allAnnotations = cornerstone3DTools.annotation.state.getAllAnnotations();
@@ -1167,7 +1099,7 @@ async function restart() {
         });
 
         // Other GUI
-        setServerStatus(0);
+        apiEndpointHelpers.setServerStatus(0);
         
         // Step 2 - Remove all segmentationIds
         try{
@@ -1243,7 +1175,7 @@ async function fetchAndLoadData(patientIdx){
             const renderingEngine = cornerstone3D.getRenderingEngine(renderingEngineId);
 
             // Step 2.1.1 - Load CT data (in python server)
-            makeRequestToPrepare(patientIdx)
+            apiEndpointHelpers.makeRequestToPrepare(patientIdx)
 
             // Step 2.1.2 - Fetch CT data
             config.setVolumeIdCT([volumeIdCTBase, cornerstone3D.utilities.uuidv4()].join(':'));
@@ -1384,7 +1316,7 @@ async function setup(patientIdx){
     await updateGUIElementsHelper.showLoaderAnimation()
     await updateGUIElementsHelper.unshowLoaderAnimation()
     
-    // -------------------------------------------------> Step 1 - Init
+    // -------------------------------------------------> Step 1 - Cornestone3D Init
     await cornerstoneInit();
     
     // // -------------------------------------------------> Step 2 - Do tooling stuff
@@ -1394,6 +1326,7 @@ async function setup(patientIdx){
     setRenderingEngineAndViewports();
     
     // // -------------------------------------------------> Step 4 - Get .dcm data
+    await makeGUIElementsHelper.waitForCredentials(); // For the first time
     await fetchAndLoadData(patientIdx);
     setContouringButtonsLogic();
     keyboardEventsHelper.setMouseAndKeyboardEvents();
@@ -1401,9 +1334,10 @@ async function setup(patientIdx){
 }
 
 // Some debug params
+config.setPatientIdx(13); // CHMR005 (wont follow instruction)
 config.setPatientIdx(13); // CHMR016
-// config.setPatientIdx(16);
-// config.setPatientIdx(22); // CHMR034
+// config.setPatientIdx(16);  // CHMR023 (problematic. No more)
+// config.setPatientIdx(22); // CHMR034 (no major issues)
 MODALITY_CONTOURS = MODALITY_SEG
 
 if (process.env.NETLIFY === "true")

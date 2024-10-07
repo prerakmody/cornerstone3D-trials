@@ -65,6 +65,10 @@ export function setCanvasPosHTML(html) { canvasPosHTML = html; }
 export function setCTValueHTML(html) { ctValueHTML = html; }
 export function setPTValueHTML(html) { ptValueHTML = html; }
 
+export let userCredFirstName, userCredLastName;
+export function setUserCredFirstName(name) { userCredFirstName = name; }
+export function setUserCredLastName(name) { userCredLastName = name; }
+
 // Thumbnail Container
 export const thumbnailContainerDivId = 'thumbnailContainerDiv';
 export let thumbnailContainerDiv;
@@ -144,6 +148,7 @@ export const ENDPOINT_PREPARE  = '/prepare'
 export const ENDPOINT_PROCESS  = '/process'
 export const KEY_DATA          = 'data'
 export const KEY_IDENTIFIER    = 'identifier'
+export const KEY_USER          = 'user'
 export const KEY_POINTS_3D     = 'points3D'
 export const KEY_SCRIB_TYPE    = 'scribbleType'
 export const KEY_CASE_NAME     = 'caseName'

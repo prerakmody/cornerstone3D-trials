@@ -169,6 +169,9 @@ async function createViewPortsHTML() {
         serverStatusTextDiv.style.width = 0.5*parseInt(axialDiv.style.width);
         serverStatusDiv.appendChild(serverStatusTextDiv);
 
+        config.setServerStatusCircle(serverStatusCircle);
+        config.setServerStatusTextDiv(serverStatusTextDiv);
+
         // Add the hover text
         serverStatusDiv.addEventListener('mouseover', function() {
             serverStatusTextDiv.style.display = 'block';
@@ -287,7 +290,102 @@ async function createViewPortsHTML() {
         mouseHoverDiv.appendChild(ptValueHTML);
     }
 
-    ////////////////////////////////////////////////////////////////////// Step 4 - Return all the elements
+    ////////////////////////////////////////////////////////////////////// Step 5 - Add a popup button for user input on page reload
+    if (1){
+
+        // Function to show a custom alert dialog with input elements
+        function showCustomAlert() {
+            // Create the parent container
+            const dialogSuper = document.createElement('div');
+            dialogSuper.style.position = 'fixed';
+            dialogSuper.style.left = '0';
+            dialogSuper.style.top = '0';
+            dialogSuper.style.width = '100%';
+            dialogSuper.style.height = '100%';
+            dialogSuper.style.zIndex = '1000';
+            dialogSuper.style.display = 'flex';
+            dialogSuper.style.justifyContent = 'center';
+            dialogSuper.style.alignItems = 'center';
+
+            // Create the background overlay
+            const overlay = document.createElement('div');
+            overlay.style.position = 'absolute';
+            overlay.style.left = '0';
+            overlay.style.top = '0';
+            overlay.style.width = '100%';
+            overlay.style.height = '100%';
+            overlay.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
+
+            // Create the dialog container
+            const dialog = document.createElement('div');
+            dialog.style.position = 'relative';
+            dialog.style.zIndex = '1001';
+            dialog.style.backgroundColor = 'white';
+            dialog.style.padding = '20px';
+            dialog.style.boxShadow = '0 0 10px rgba(0, 0, 0, 0.5)';
+            dialog.style.borderRadius = '5px'
+
+            // Create the dialog content
+            const title = document.createElement('h2');
+            title.textContent = 'Enter Name';
+            dialog.appendChild(title);
+
+            const input1 = document.createElement('input');
+            input1.type = 'text';
+            input1.placeholder = 'Enter first name';
+            dialog.appendChild(input1);
+
+            const input2 = document.createElement('input');
+            input2.type = 'text';
+            input2.placeholder = 'Enter second name';
+            dialog.appendChild(input2);
+
+            const submitButton = document.createElement('button');
+            submitButton.textContent = 'Submit';
+            dialog.appendChild(submitButton);
+
+            // const closeButton = document.createElement('button');
+            // closeButton.textContent = 'Close';
+            // dialog.appendChild(closeButton);
+
+            // Append the dialog and overlay to the parent container
+            dialogSuper.appendChild(overlay);
+            dialogSuper.appendChild(dialog);
+
+            // Append the parent container to the body
+            document.body.appendChild(dialogSuper);
+
+            // Handle the submit button click
+            submitButton.onclick = function() {
+                const userCredFirstName = input1.value;
+                const userCredLastName = input2.value;
+                console.log('\n - [dialog] First name:', userCredFirstName);
+                console.log(' - [dialog] Second name:', userCredLastName);
+                if (userCredFirstName === '' || userCredLastName === '' || userCredFirstName === null || userCredLastName === null) {
+                    alert('Please enter a valid name');
+                    return;
+                }else{
+                    config.setUserCredFirstName(userCredFirstName);
+                    config.setUserCredLastName(userCredLastName);
+                    document.body.removeChild(dialogSuper);
+                }
+                
+            };
+
+            // Handle the close button click
+            // closeButton.onclick = function() {
+            //     document.body.removeChild(dialogSuper);
+            // };
+        }
+
+        // Show the custom alert dialog on page load
+        document.addEventListener('DOMContentLoaded', (event) => {
+            showCustomAlert();
+        });
+
+    }
+
+    ////////////////////////////////////////////////////////////////////// Step 99 - Return all the elements
     config.setViewportGridDiv(viewportGridDiv);
     config.setThumbnailContainerDiv(thumbnailContainerDiv);
     config.setViewportCTGridDiv(viewportCTGridDiv);
@@ -335,4 +433,15 @@ async function setThumbnailContainerHeightAndWidth(){
     config.thumbnailContainerDiv.style.width = window.innerWidth * (1-3*config.viewWidthPerc) + 'px';
 }
 
-export { createViewPortsHTML };
+function waitForCredentials() {
+    return new Promise((resolve) => {
+        const interval = setInterval(() => {
+            if (config.userCredFirstName && config.userCredLastName) {
+                clearInterval(interval);
+                resolve();
+            }
+        }, 100); // Check every 100ms
+    });
+}
+
+export { createViewPortsHTML, waitForCredentials };

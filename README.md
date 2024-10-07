@@ -153,7 +153,7 @@
     ```
     - To find a file use: `find / -iname '*orthanc.json*'` 
 3. Once orthanc has been setup, stop the container and restart it
-    - `docker stop <container_id>` and `docker start <container_id>`
+    - `docker stop <container_id>` and `docker start <container_id>` and `docker logs -f <container_id>`
         - Then perform steps [1](#step-1---to-setup) and [2](#step-2---to-configure) and [3](#step-3---to-use) above for the node application.
     - Check if orthanc dicom-web is running
         - within the container: `lsof -i -P -n`
@@ -163,6 +163,10 @@
             - You can also change orthanc's log verbosity by visiting [http://localhost:8042/ui/app/#/settings](http://localhost:8042/ui/app/#/settings)
         - Plugins enabled
             - http://localhost:8042/app/explorer.html#plugins
+
+4. To "restart" a docker container
+ - `docker start <container_name>`
+ - `docker logs -f <container_name>`
 
 4. If your docker containeris running as expected, then you can make an image of it
     - `docker commit <container_id> orthanc-node` (will give you a commit id, disregard)
