@@ -3,6 +3,7 @@ import * as updateGUIElementsHelper from './updateGUIElementsHelper.js';
 import * as cornerstoneHelpers from './cornerstoneHelpers.js';
 import * as annotationHelpers from './annotationHelpers.js';
 import * as apiEndpointHelpers from './apiEndpointHelpers.js';
+import * as segmentationHelpers from './segmentationHelpers.js';
 
 import * as cornerstone3D from '@cornerstonejs/core';
 import * as cornerstone3DTools from '@cornerstonejs/tools';
@@ -18,6 +19,9 @@ function showUnshowAllSegmentations() {
         toolGroupContours.setToolDisabled(segmentationDisplayTool.toolName);
     } else {
         toolGroupContours.setToolEnabled(segmentationDisplayTool.toolName);
+        if (config.userCredRole === config.USERROLE_EXPERT){
+            segmentationHelpers.setSegmentationIndexOpacity(config.toolGroupIdContours, config.gtSegmentationUIDs[0], 1, 0);
+        }
     }
 }
 
@@ -63,6 +67,40 @@ function getValue(volume, worldPos) {
         console.error('   -- [getValue()] Error: ', error);
         return undefined;
     }
+}
+
+// ******************************* CONTOURING TOOLS ********************************************
+function getAllContouringToolsPassiveStatus(){
+    
+    // Step 0 - Init
+    const toolGroupContours = cornerstone3DTools.ToolGroupManager.getToolGroup(config.toolGroupIdContours);
+    let allToolsStatus = false;
+
+    // Step 1 - Brush tool
+    let brushToolMode = false;
+    if (config.MODALITY_CONTOURS == config.MODALITY_SEG){
+        brushToolMode = toolGroupContours.toolOptions[config.strBrushCircle].mode
+    } else if (config.MODALITY_CONTOURS == config.MODALITY_RTSTRUCT){
+        const planarFreeHandContourToolMode = toolGroupContours.toolOptions[cornerstone3DTools.PlanarFreehandROITool.toolName].mode;
+        brushToolMode = planarFreeHandContourToolMode;
+    }
+
+    // Step 2 - Eraser tool
+    let eraserToolMode = false;
+    if (config.MODALITY_CONTOURS == config.MODALITY_SEG){
+        eraserToolMode = toolGroupContours.toolOptions[config.strEraserCircle].mode
+    } else if (config.MODALITY_CONTOURS == config.MODALITY_RTSTRUCT){
+        eraserToolMode = toolGroupContours.toolOptions[cornerstone3DTools.SculptorTool.toolName].mode;
+    }
+
+    // Step 3 - Window level tool
+    let windowLevelToolMode = toolGroupContours.toolOptions[cornerstone3DTools.WindowLevelTool.toolName].mode;
+
+    // Step 4 - AI Interactive tool
+    let aiInteractiveToolMode = toolGroupContours.toolOptions[cornerstone3DTools.PlanarFreehandROITool.toolName].mode;
+
+    allToolsStatus = brushToolMode === config.MODE_PASSIVE && eraserToolMode === config.MODE_PASSIVE && windowLevelToolMode === config.MODE_PASSIVE && aiInteractiveToolMode === config.MODE_PASSIVE;
+    return allToolsStatus;
 }
 
 // ******************************* MAIN FUNCTION ********************************************
@@ -122,6 +160,7 @@ function setMouseAndKeyboardEvents(){
 
         // For show/unshow contours
         if (evt.key === config.SHORTCUT_KEY_C) {
+            console.log('   -- [keydown] showUnshowAllSegmentations()');
             showUnshowAllSegmentations()
         }
 
@@ -167,7 +206,7 @@ function setMouseAndKeyboardEvents(){
                         console.log(' - [setContouringButtonsLogic()] scribbleAnnotations: ', scribbleAnnotations);
                         cornerstoneHelpers.renderNow();
                     }
-                } else {
+                } else if (getAllContouringToolsPassiveStatus()) {
                     console.log('   -- [setContouringButtonsLogic()] freehandRoiToolMode: ', freehandRoiToolMode);
                     updateGUIElementsHelper.showToast('Please enable the AI-scribble button to draw contours');
                 }

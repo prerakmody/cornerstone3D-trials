@@ -443,7 +443,7 @@ async function makeRequestToProcess(points3D, scribbleAnnotationUID, verbose=fal
                 , [config.KEY_SCRIB_TYPE]:scribbleType
                 , [config.KEY_CASE_NAME]: config.orthanDataURLS[config.patientIdx]['caseName'],}
             , [config.KEY_IDENTIFIER]: config.instanceName
-            , [config.KEY_USER]: config.userCredFirstName + '-' + config.userCredLastName
+            , [config.KEY_USER]: config.userCredFirstName + '-' + config.userCredLastName + '-' + config.userCredRole
         }
         await updateGUIElementsHelper.showLoaderAnimation();
         
@@ -570,7 +570,7 @@ async function makeRequestToPrepare(patientIdx){
         const preparePayload = {
             [config.KEY_DATA]: config.orthanDataURLS[patientIdx]
             ,[config.KEY_IDENTIFIER]: config.instanceName
-            ,[config.KEY_USER]: config.userCredFirstName + '-' + config.userCredLastName
+            ,[config.KEY_USER]: config.userCredFirstName + '-' + config.userCredLastName + '-' + config.userCredRole
         }
         console.log(' \n ----------------- Python server (/prepare) ----------------- \n')
         console.log('   -- [makeRequestToPrepare()] preparePayload: ', preparePayload);
@@ -606,6 +606,49 @@ async function makeRequestToPrepare(patientIdx){
 
     return requestStatus;
 }
+
+// ************************************************** /serverHealth
+
+function setServerHealthInHTML(serverHealthMessage){
+
+    // Step 1 - Make str
+
+    const strPlatform = serverHealthMessage.platform !== undefined ? serverHealthMessage.platform : 'Unknown';
+    const strDeviceModel = serverHealthMessage.deviceModel !== undefined ? serverHealthMessage.deviceModel : 'Unknown';
+    const strUsedRAMInGB = serverHealthMessage.usedRAMInGB !== undefined ? serverHealthMessage.usedRAMInGB : -1;
+    const strTotalRAMInGB = serverHealthMessage.totalRAMInGB !== undefined ? serverHealthMessage.totalRAMInGB : -1;
+    const strUsedGPUInGB = serverHealthMessage.usedGPUInGB !== undefined ? serverHealthMessage.usedGPUInGB : -1;
+    const strTotalGPUInGB = serverHealthMessage.totalGPUInGB !== undefined ? serverHealthMessage.totalGPUInGB : -1;
+    let serverHealthDivStr = 'Platform: ' + strPlatform + '<br> Model: ' + strDeviceModel;
+    serverHealthDivStr += '<br> RAM: ' + strUsedRAMInGB + ' / ' + strTotalRAMInGB + ' GB';
+    serverHealthDivStr += '<br> GPU: ' + strUsedGPUInGB + ' / ' + strTotalGPUInGB + ' GB'; 
+
+    // Step 2 - Set in HTML
+    config.serverHealthDiv.innerHTML = serverHealthDivStr;
+}
+
+async function getServerHealthObject(){
+    try{
+        const response = await fetch(config.URL_PYTHON_SERVER + config.ENDPOINT_SERVER_HEALTH, {method: config.METHOD_GET, headers: config.HEADERS_JSON, credentials: 'include',}); // credentials: 'include' is important for cross-origin requests
+        const responseJSON = await response.json();
+        // console.log('   -- [makeRequestToServerHealth()] response: ', response);
+        // console.log('   -- [makeRequestToServerHealth()] response.json(): ', responseJSON);
+        if (parseInt(response.status) == 200){
+            setServerHealthInHTML(responseJSON.message);
+        } else {
+            setServerHealthInHTML(response.status + ': ' + responseJSON.detail);
+        }
+    } catch (error){
+        setServerHealthInHTML('Server is not running');
+    }
+}
+
+document.addEventListener('DOMContentLoaded', (event) => {
+    // make a function that runs every 1 sec
+    setInterval(async () => {
+        getServerHealthObject();
+    }, 1000);
+});
 
 export {getDataURLs}
 export {makeRequestToProcess, makeRequestToPrepare, setServerStatus}

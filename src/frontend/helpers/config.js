@@ -65,9 +65,18 @@ export function setCanvasPosHTML(html) { canvasPosHTML = html; }
 export function setCTValueHTML(html) { ctValueHTML = html; }
 export function setPTValueHTML(html) { ptValueHTML = html; }
 
-export let userCredFirstName, userCredLastName;
+// User credentials
+export const USERROLE_EXPERT = 'Expert';
+export const USERROLE_NONEXPERT = 'NonExpert';
+export let userCredFirstName, userCredLastName, userCredRole;
 export function setUserCredFirstName(name) { userCredFirstName = name; }
 export function setUserCredLastName(name) { userCredLastName = name; }
+export function setUserCredRole(role) { userCredRole = role; }
+
+// Server status
+export const serverHealthDivId = 'serverHealthDivId';
+export let serverHealthDiv;
+export function setServerHealthDiv(div) { serverHealthDiv = div; }
 
 // Thumbnail Container
 export const thumbnailContainerDivId = 'thumbnailContainerDiv';
@@ -129,7 +138,8 @@ export const MODALITY_MR = 'MR';
 export const MODALITY_PT = 'PT';
 export const MODALITY_SEG      = 'SEG';
 export const MODALITY_RTSTRUCT = 'RTSTRUCT';
-let MODALITY_CONTOURS;
+export let MODALITY_CONTOURS;
+export function setModalityContours(modality) { MODALITY_CONTOURS = modality; }
 
 // Segmentation types
 export const SEG_TYPE_LABELMAP = 'LABELMAP'
@@ -153,7 +163,10 @@ export const KEY_POINTS_3D     = 'points3D'
 export const KEY_SCRIB_TYPE    = 'scribbleType'
 export const KEY_CASE_NAME     = 'caseName'
 export const METHOD_POST       = 'POST'
+export const METHOD_GET        = 'GET'
 export const HEADERS_JSON      = {'Content-Type': 'application/json',}
+
+export const ENDPOINT_SERVER_HEALTH = '/serverHealth'
 
 // Orthanc server
 export const URL_ROOT = `${window.location.origin}`;

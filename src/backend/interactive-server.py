@@ -7,6 +7,7 @@ import timeit
 import psutil
 import logging
 import imageio
+import platform
 import warnings
 import platform
 import datetime
@@ -132,6 +133,14 @@ if 1:
     # Vars - For logger
     LOG_CONFIG = None
 
+    # Keys - for ram and gpu usage
+    KEY_RAM_USAGE_IN_GB  = 'usedRAMInGB'
+    KEY_TOTAL_RAM_IN_GB  = 'totalRAMInGB'
+    KEY_GPU_USAGE_IN_GB  = 'usedGPUInGB'
+    KEY_TOTAL_GPU_IN_GB  = 'totalGPUInGB'
+    KEY_PLATFORM         = 'platform'
+    KEY_DEVICE_MODEL     = 'deviceModel'
+
 ######################## User-defined settings ########################
 if 1:
     # Settings - Python server
@@ -254,8 +263,12 @@ def configureFastAPIApp(app):
 
     return app
 
-def getTorchDevice():
+def getTorchDevice(verbose=False):
+
+    # Step 0 - Init
     device = torch.device('cpu')
+
+    # Step 1 - Get device
     if platform.system() == KEY_PLATFORM_DARWIN:
         if torch.backends.mps.is_available(): 
             device = torch.device('mps')
@@ -265,49 +278,95 @@ def getTorchDevice():
     else:
         print (' - Unknown platform: {}'.format(platform.system()))
 
-    print ('\n - Device: {}\n'.format(device))
+    # Step 2 - Debug
+    device = torch.device('cpu')
 
+    # Step 99 - Final
+    if verbose:
+        print ('\n - Device: {}\n'.format(device))
     return device
 
-def getMemoryUsage():
+def getMemoryUsage(printFlag=True, returnFlag=False):
+
+    ramUsageInMB = None
+    totalRAMInMB = None
+    gpuUsageInMB = None
+    totalGPUInMB = None
+
+    ramUsageInGB = None
+    totalRAMInGB = None
+    gpuUsageInGB = None
+    totalGPUInGB = None
+
+    platformStr = None
+    deviceModel = getTorchDevice(verbose=False)
 
     try:
 
         # Step 0 - Init
         pid  = os.getpid()
         proc = psutil.Process(pid)
+        platformStr = platform.system()
 
         # Step 1 - Get RAM usage
-        ramUsageInMB  = proc.memory_info().rss / 1024 / 1024 # in MB
-        ramUsageInGB  = ramUsageInMB / 1024 # in GB
+        try:
+            ramUsageInMB  = proc.memory_info().rss / 1024 / 1024 # in MB
+            totalRAMInMB  = psutil.virtual_memory().total / 1024 / 1024
+        except:
+            traceback.print_exc()
 
         # Step 2 - Get GPU usage
-        if platform.system() == KEY_PLATFORM_DARWIN: # need to redo this for MacOS
-            gpuUsageInMB = proc.memory_info().vms / 1024 / 1024
-        elif platform.system() in [KEY_PLATFORM_LINUX, KEY_PLATFORM_WINDOWS]:
-            if torch.cuda.is_available():
-                import nvitop
-                nvDevices = nvitop.Device.all()
-                myNVProcess = None
-                for nvDevice in nvDevices:
-                    nvProcesses = nvDevice.processes()
-                    if pid in nvProcesses:
-                        myNVProcess = nvProcesses[pid]
-                        break
-                if myNVProcess is not None:
-                    gpuUsageInMB = float(myNVProcess.host_memory_human().split('MiB')[0])
-                else:
-                    gpuUsageInMB = 0
-            else:
-                gpuUsageInMB = torch.cuda.memory_allocated() / 1024 / 1024
+        try:
+            if platformStr == KEY_PLATFORM_DARWIN: # [TODO: need to redo this for MacOS]
+                # gpuUsageInMB = proc.memory_info().vms / 1024 / 1024
+                pass
+            elif platformStr in [KEY_PLATFORM_LINUX, KEY_PLATFORM_WINDOWS]:
+                if torch.cuda.is_available():
+                    totalGPUInMB = torch.cuda.get_device_properties(0).total_memory / 1024 / 1024
+                    import nvitop
+                    nvDevices = nvitop.Device.all()
+                    myNVProcess = None
+                    for nvDevice in nvDevices:
+                        nvProcesses = nvDevice.processes()
+                        if pid in nvProcesses:
+                            myNVProcess = nvProcesses[pid]
+                            break
+                    if myNVProcess is not None:
+                        # print (dir(myNVProcess))
+                        # print (myNVProcess.gpu_memory()) # shows N/A
+                        # print (myNVProcess.gpu_memory_human()) # shows N/A
+                        # print (myNVProcess.gpu_memory_percent()) # shows N/A
+                        # print (myNVProcess.gpu_sm_utilization()) # shows N/A
+                        gpuUsageInMB = float(myNVProcess.host_memory_human().split('MiB')[0]) # this seems to be the same as proc.memory_info().rss / 1024 / 1024
+                           
+        except:
+            traceback.print_exc()
 
-        gpuUsageInGB = gpuUsageInMB / 1024.0   
-        
-        print (' ** [{}] Memory usage: RAM ({:.2f} GB), GPU ({:.2f} GB)'.format(pid, ramUsageInGB, gpuUsageInGB))
+        # Step 3 - Final
+        if ramUsageInMB is not None:
+            ramUsageInGB  = '{:.2f}'.format(ramUsageInMB / 1024.0) # in GB
+        if totalRAMInMB is not None:
+            totalRAMInGB = '{:.2f}'.format(totalRAMInMB / 1024.0)
+        if gpuUsageInMB is not None:
+            gpuUsageInGB = '{:.2f}'.format(gpuUsageInMB / 1024.0)   
+        if totalGPUInMB is not None:
+            totalGPUInGB = '{:.2f}'.format(totalGPUInMB / 1024.0)
     
     except:
         traceback.print_exc()
         if MODE_DEBUG: pdb.set_trace()
+    
+    strToReturn = ' ** [{}][{}][{}] Memory usage: RAM ({}/{} GB), GPU ({}/{} GB)'.format(platformStr, deviceModel, pid, ramUsageInGB, totalRAMInGB, gpuUsageInGB, totalGPUInGB)
+    if printFlag:
+        print (strToReturn)
+    
+    if returnFlag:
+        resMemory = {
+            KEY_RAM_USAGE_IN_GB: ramUsageInGB, KEY_TOTAL_RAM_IN_GB: totalRAMInGB,
+            KEY_GPU_USAGE_IN_GB: gpuUsageInGB, KEY_TOTAL_GPU_IN_GB: totalGPUInGB,
+            KEY_PLATFORM: platformStr, KEY_DEVICE_MODEL: deviceModel.type
+        }
+        return resMemory
 
 def getRequestInfo(request):
     userAgent = request.headers.get('user-agent', 'userAgentIsNone')
@@ -1639,6 +1698,7 @@ configureFastAPIApp(app)
 setproctitle.setproctitle("interactive-server.py") # set process name
 logger = logging.getLogger(__name__)
 loggerFileHandler = logging.FileHandler(DIR_LOGS / '/interactive-server-{:%Y-%m-%d-%H-%M-%S}.log'.format(datetime.datetime.now()))
+logger.addHandler(loggerFileHandler)
 
 def checkAssetPaths(verbose=False):
 
@@ -1675,16 +1735,20 @@ def checkAssetPaths(verbose=False):
 async def logging_middleware(request: fastapi.Request, call_next: typing.Callable[[fastapi.Request], typing.Awaitable[fastapi.Response]]) -> fastapi.Response:
     
     # print (' - [logging_middleware()] request:', request) # type==starlette.middleware.base._CachedRequest
+
     start    = time.time()
     response = await call_next(request)
     duration = (time.time() - start)
-    source   = termcolor.colored(f"{request.client.host}:{request.client.port}", "blue")
-    # source   = (request.headers.get('origin', None))
-    resource = termcolor.colored(f"{request.method} {request.url.path}", "green")
-    result   = termcolor.colored(f"{response.status_code}", "yellow")
-    duration = termcolor.colored(f"[{duration:.1f}s]", "magenta")
-    message  = f"{source} => {resource} => {result} {duration}"
-    logger.info(message)
+    
+    if request.url.path != '/serverHealth':
+        source   = termcolor.colored(f"{request.client.host}:{request.client.port}", "blue")
+        # source   = (request.headers.get('origin', None))
+        resource = termcolor.colored(f"{request.method} {request.url.path}", "green")
+        result   = termcolor.colored(f"{response.status_code}", "yellow")
+        duration = termcolor.colored(f"[{duration:.1f}s]", "magenta")
+        message  = f"{source} => {resource} => {result} {duration}"
+        logger.info(message)
+    
     return response
 
 # Step 3 - API Endpoints
@@ -1797,9 +1861,9 @@ async def process(payload: PayloadProcess, request: starlette.requests.Request):
         # Step 0 - Init
         tStart = time.time()
         userAgent, referer = getRequestInfo(request)
-        clientUserName     = payload.username
+        clientUserName     = payload.user
         clientIdentifier   = payload.identifier + '__' + clientUserName
-        # clientIdentifier   = payload.identifier # NOTE: Old method
+        # clientIdentifier   = payload.identifier # NOTE: Old method ()
         processPayloadData = payload.data.dict()
         patientName        = processPayloadData[KEY_CASE_NAME]
         returnMessagePrefix = "[clientIdentifier={}, patientName={}, loadOnnx={}]".format(clientIdentifier, patientName, LOAD_ONNX)
@@ -1914,6 +1978,16 @@ async def root():
         traceback.print_exc()
         raise fastapi.HTTPException(status_code=500, detail=" Error in / => {}".format(str(e)))
 
+@app.get('/serverHealth')
+async def serverHealth():
+    
+        try:
+            dateStr = datetime.datetime.now().strftime("%Y-%m-%d %H-%M-%S")
+            return {"message": getMemoryUsage(printFlag=False, returnFlag=True), "time": dateStr}
+        except Exception as e:
+            traceback.print_exc()
+            raise fastapi.HTTPException(status_code=500, detail=" Error in /serverHealth => {}".format(str(e)))
+
 #################################################################
 #                           MAIN
 #################################################################
@@ -1923,7 +1997,7 @@ if __name__ == "__main__":
     try:
 
         if checkAssetPaths(verbose=False):
-            # [for all OS]
+            # [for all OS's]
             pass
 
             # [Windows]
@@ -1973,6 +2047,6 @@ Data-Transformation Pipeline
 TO RUN
 0. conda activate interactive-refinement
 1. python src/backend/interactive-server.py
-  - nohup python -u src/backend/interactive-server.py > _logs/interactive-server.log 2>&1 &
+  - nohup python -u src/backend/interactive-server.py > _logs/interactive-server-$(date +"%Y-%m-%d-%H-%M-%S").log 2>&1 &
 2. Open your web browser and test for http://localhost:55000/
 """

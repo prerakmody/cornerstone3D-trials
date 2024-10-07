@@ -9,6 +9,7 @@ dist/
 package-lock.json
 _models
 _experiments/
+_logs
 
 # Others
 .vscode

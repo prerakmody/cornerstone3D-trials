@@ -45,9 +45,6 @@ const contourSegmentationToolButtonId = 'PlanarFreehandContourSegmentationTool-B
 const sculptorToolButtonId            = 'SculptorTool-Button';
 const windowLevelButtonId             = 'WindowLevelTool-Button';
 
-// Tools
-const strBrushCircle = 'circularBrush';
-const strEraserCircle = 'circularEraser';
 
 // Rendering + Volume + Segmentation ids
 const renderingEngineId        = 'myRenderingEngine';
@@ -68,9 +65,6 @@ const MASK_TYPE_GT   = 'GT';
 const MASK_TYPE_PRED = 'PRED';
 const MASK_TYPE_REFINE = 'REFINE';
 
-const MODALITY_SEG      = 'SEG';
-const MODALITY_RTSTRUCT = 'RTSTRUCT';
-let MODALITY_CONTOURS;
 const INIT_BRUSH_SIZE = 5
 
 const scribbleSegmentationIdBase = `SCRIBBLE_SEGMENTATION_ID`; // this should not change for different scribbles
@@ -78,17 +72,6 @@ const scribbleSegmentationIdBase = `SCRIBBLE_SEGMENTATION_ID`; // this should no
 let scribbleSegmentationId;
 
 const SEG_TYPE_LABELMAP = 'LABELMAP'
-
-// Python server
-// const PYTHON_SERVER_CERT        = fs.readFileSync('../backend/hostCert.pem')
-// const PYTHON_SERVER_HTTPSAGENT = new https.Agent({ ca: PYTHON_SERVER_CERT })
-// const URL_PYTHON_SERVER = `${window.location.origin}`.replace('50000', '55000') //[`${window.location.origin}`, 'https://localhost:55000']
-// const ENDPOINT_PREPARE  = '/prepare'
-// const KEY_DATA          = 'data'
-// const KEY_IDENTIFIER    = 'identifier'
-// const METHOD_POST       = 'POST'
-// const HEADERS_JSON      = {'Content-Type': 'application/json',}
-
 
 // Tools
 const MODE_ACTIVE  = 'Active';
@@ -597,41 +580,6 @@ function setButtonBoundaryColor(button, shouldSet, color = 'red') {
     }
 }
 
-async function getSegmentationIdsAndUIDs() {
-
-    // cornerstone3DTools.segmentation.state.getAllSegmentationRepresentations()
-    
-    // Step 1 - Get all segmentationRepresentations
-    const allSegReps = cornerstone3DTools.segmentation.state.getAllSegmentationRepresentations() // alternatively .state.getSegmentations()
-    const allSegRepsList = allSegReps['STACK_TOOL_GROUP_ID'] 
-    
-    // Step 2 - Get all segmentationIds and segmentationUIDs
-    let allSegIds=[], allSegUIDs=[];
-    if (allSegRepsList != undefined){
-        allSegIds  = allSegRepsList.map(x => x.segmentationId)
-        allSegUIDs = allSegRepsList.map(x => x.segmentationRepresentationUID)
-    }
-    
-    return {allSegIds, allSegUIDs}
-}
-
-async function getSegmentationUIDforScribbleSegmentationId() {
-    const {allSegIds, allSegUIDs} = await getSegmentationIdsAndUIDs();
-    const idx = allSegIds.indexOf(scribbleSegmentationId);
-    if (idx == -1){
-        console.log('   -- [getSegmentationUIDforSegmentationId()] SegmentationId not found. Returning undefined.')
-        return undefined;
-    }
-    return allSegUIDs[idx];
-}
-
-function setScribbleColor() {
-    const fgdCheckbox = document.getElementById('fgdCheckbox');
-    const bgdCheckbox = document.getElementById('bgdCheckbox');
-    if (fgdCheckbox.checked) setAnnotationColor(COLOR_RGB_FGD);
-    if (bgdCheckbox.checked) setAnnotationColor(COLOR_RGB_BGD);
-}
-
 async function showPET(thisButton){
     // NOTE: petBool=if pet data is available and loaded, fusedPETCT=if true, then PET shown, otherwise not
 
@@ -666,19 +614,6 @@ async function showPET(thisButton){
     }else{
         updateGUIElementsHelper.showToast('No PET data available')
     }
-}
-
-
-
-function removeAllPlanFreeHandRoiAnnotations() {
-    const allAnnotations = cornerstone3DTools.annotation.state.getAllAnnotations();
-    allAnnotations.forEach(annotation => {
-        console.log('   -- [removeAllPlanFreeHandRoiAnnotations()] annotation: ', annotation);
-        if (annotation.metadata.toolName === cornerstone3DTools.PlanarFreehandROITool.toolName) {
-            cornerstone3DTools.annotation.state.removeAnnotation(annotation.annotationUID);
-        }
-    });
-
 }
 
 function setAnnotationColor(rgbColorString){
@@ -742,26 +677,6 @@ function sortImageIds(imageIds) {
     return sortedImageIds;
 }
 
-function getActiveSegmentationObj(){
-
-    // use map to apply the function getActiveSegmentation to each key of allSegIdsAndUIDs
-    // const allSegIdsAndUIDs = cornerstone3DTools.segmentation.state.getAllSegmentationRepresentations();
-    // let res = Object.keys(allSegIdsAndUIDs).map(key => cornerstone3DTools.segmentation.activeSegmentation.getActiveSegmentation(allSegIdsAndUIDs[key]));
-    // return res
-    let res=  {}
-    const allSegIdsAndUIDs = cornerstone3DTools.segmentation.state.getAllSegmentationRepresentations();
-    Object.keys(allSegIdsAndUIDs).forEach((key) => {
-        res[key] = [];
-        allSegIdsAndUIDs[key].forEach((segObj) => {
-            if (segObj.active == true){
-                res[key].push(segObj);
-            }
-        });
-    });
-
-    return res;
-}
-
 function setAllContouringToolsPassive() {
 
     const toolGroupContours         = cornerstone3DTools.ToolGroupManager.getToolGroup(toolGroupIdContours);
@@ -770,10 +685,10 @@ function setAllContouringToolsPassive() {
     // const planarFreehandROITool2     = cornerstone3DTools.PlanarFreehandROITool; // some issue -- Cannot access '__WEBPACK_DEFAULT_EXPORT__' before initialization
 
     toolGroupContours.setToolPassive(windowLevelTool.toolName);
-    if (MODALITY_CONTOURS === MODALITY_SEG){
-        toolGroupContours.setToolPassive(strBrushCircle);
-        toolGroupContours.setToolPassive(strEraserCircle);
-    } else if (MODALITY_CONTOURS === MODALITY_RTSTRUCT){
+    if (config.MODALITY_CONTOURS === config.MODALITY_SEG){
+        toolGroupContours.setToolPassive(config.strBrushCircle);
+        toolGroupContours.setToolPassive(config.strEraserCircle);
+    } else if (config.MODALITY_CONTOURS === config.MODALITY_RTSTRUCT){
         // const planarFreeHandContourTool = cornerstone3DTools.PlanarFreehandContourSegmentationTool; // some issue -- Cannot access '__WEBPACK_DEFAULT_EXPORT__' before initialization
         const sculptorTool              = cornerstone3DTools.SculptorTool;
         // toolGroupContours.setToolPassive(planarFreeHandContourTool.toolName);
@@ -824,9 +739,9 @@ async function getToolsAndToolGroup() {
     cornerstone3DTools.addTool(referenceLinesTool);
     cornerstone3DTools.addTool(segmentationDisplayTool);
     cornerstone3DTools.addTool(planarFreeHandRoiTool);
-    if (MODALITY_CONTOURS == MODALITY_SEG)
+    if (config.MODALITY_CONTOURS == config.MODALITY_SEG)
         cornerstone3DTools.addTool(brushTool);
-    else if (MODALITY_CONTOURS == MODALITY_RTSTRUCT){
+    else if (config.MODALITY_CONTOURS == MODALITY_RTSTRUCT){
         cornerstone3DTools.addTool(planarFreeHandContourTool);
         cornerstone3DTools.addTool(sculptorTool);
     }
@@ -841,12 +756,12 @@ async function getToolsAndToolGroup() {
     toolGroupContours.addTool(referenceLinesTool.toolName);
     toolGroupContours.addTool(segmentationDisplayTool.toolName);
 
-    if (MODALITY_CONTOURS == MODALITY_SEG){
+    if (config.MODALITY_CONTOURS == config.MODALITY_SEG){
         toolGroupContours.addTool(brushTool.toolName);
-        toolGroupContours.addToolInstance(strBrushCircle, brushTool.toolName, { activeStrategy: 'FILL_INSIDE_CIRCLE', brushSize:INIT_BRUSH_SIZE}) ;
-        toolGroupContours.addToolInstance(strEraserCircle, brushTool.toolName, { activeStrategy: 'ERASE_INSIDE_CIRCLE', brushSize:INIT_BRUSH_SIZE});
+        toolGroupContours.addToolInstance(config.strBrushCircle, brushTool.toolName, { activeStrategy: 'FILL_INSIDE_CIRCLE', brushSize:INIT_BRUSH_SIZE}) ;
+        toolGroupContours.addToolInstance(config.strEraserCircle, brushTool.toolName, { activeStrategy: 'ERASE_INSIDE_CIRCLE', brushSize:INIT_BRUSH_SIZE});
     }
-    else if (MODALITY_CONTOURS == MODALITY_RTSTRUCT){
+    else if (config.MODALITY_CONTOURS == config.MODALITY_RTSTRUCT){
         toolGroupContours.addTool(planarFreeHandContourTool.toolName);
         toolGroupContours.addTool(sculptorTool.toolName);
     }
@@ -871,11 +786,11 @@ async function getToolsAndToolGroup() {
 
     // Step 5.2 - Set all contouring tools as passive
     toolGroupContours.setToolEnabled(segmentationDisplayTool.toolName);
-    if (MODALITY_CONTOURS == MODALITY_SEG){
+    if (config.MODALITY_CONTOURS == config.MODALITY_SEG){
         // toolGroupContours.setToolPassive(brushTool.toolName);
-        toolGroupContours.setToolPassive(strBrushCircle); // , { bindings: [ { mouseButton: cornerstone3DTools.Enums.MouseBindings.Primary, }, ], });
-        toolGroupContours.setToolPassive(strEraserCircle); // , { bindings: [ { mouseButton: cornerstone3DTools.Enums.MouseBindings.Primary, }, ], });
-    } else if (MODALITY_CONTOURS == MODALITY_RTSTRUCT){
+        toolGroupContours.setToolPassive(config.strBrushCircle); // , { bindings: [ { mouseButton: cornerstone3DTools.Enums.MouseBindings.Primary, }, ], });
+        toolGroupContours.setToolPassive(config.strEraserCircle); // , { bindings: [ { mouseButton: cornerstone3DTools.Enums.MouseBindings.Primary, }, ], });
+    } else if (config.MODALITY_CONTOURS == config.MODALITY_RTSTRUCT){
         toolGroupContours.setToolPassive(planarFreeHandContourTool.toolName);
         toolGroupContours.setToolPassive(sculptorTool.toolName);
     }
@@ -888,9 +803,9 @@ async function getToolsAndToolGroup() {
     // Listen for keydown event
     window.addEventListener('keydown', async function(event) {
         // For brush tool radius        
-        if (MODALITY_CONTOURS == MODALITY_SEG){
+        if (config.MODALITY_CONTOURS == config.MODALITY_SEG){
             const toolGroupContours = cornerstone3DTools.ToolGroupManager.getToolGroup(toolGroupIdContours);
-            if (toolGroupContours.toolOptions[strBrushCircle].mode === MODE_ACTIVE || toolGroupContours.toolOptions[strEraserCircle].mode === MODE_ACTIVE){
+            if (toolGroupContours.toolOptions[config.strBrushCircle].mode === MODE_ACTIVE || toolGroupContours.toolOptions[config.strEraserCircle].mode === MODE_ACTIVE){
                 const segUtils       = cornerstone3DTools.utilities.segmentation;
                 let initialBrushSize = segUtils.getBrushSizeForToolGroup(toolGroupIdContours);
                 if (event.key === '+')
@@ -900,7 +815,7 @@ async function getToolsAndToolGroup() {
                         segUtils.setBrushSizeForToolGroup(toolGroupIdContours, initialBrushSize - 1);
                 }
                 let newBrushSize = segUtils.getBrushSizeForToolGroup(toolGroupIdContours);
-                showToast(`Brush size: ${newBrushSize}`);
+                updateGUIElementsHelper.showToast(`Brush size: ${newBrushSize}`);
             }
         }
 
@@ -931,10 +846,10 @@ function setContouringButtonsLogic(verbose=true){
             buttonHTML.addEventListener('click', async function() {
                 if (buttonId === 0) { // windowLevelButton
                     toolGroupContours.setToolActive(windowLevelTool.toolName, { bindings: [ { mouseButton: cornerstone3DTools.Enums.MouseBindings.Primary, }, ], });              
-                    if (MODALITY_CONTOURS == MODALITY_SEG){
-                        toolGroupContours.setToolPassive(strBrushCircle);
-                        toolGroupContours.setToolPassive(strEraserCircle);
-                    } else if (MODALITY_CONTOURS == MODALITY_RTSTRUCT){
+                    if (config.MODALITY_CONTOURS == config.MODALITY_SEG){
+                        toolGroupContours.setToolPassive(config.strBrushCircle);
+                        toolGroupContours.setToolPassive(config.strEraserCircle);
+                    } else if (config.MODALITY_CONTOURS == config.MODALITY_RTSTRUCT){
                         toolGroupContours.setToolPassive(planarFreeHandContourTool.toolName);
                         toolGroupContours.setToolPassive(sculptorTool.toolName);
                     }
@@ -950,10 +865,10 @@ function setContouringButtonsLogic(verbose=true){
                     
                     // Step 1 - Set tools as active/passive
                     toolGroupContours.setToolPassive(windowLevelTool.toolName); 
-                    if (MODALITY_CONTOURS == MODALITY_SEG){
-                        toolGroupContours.setToolActive(strBrushCircle, { bindings: [ { mouseButton: cornerstone3DTools.Enums.MouseBindings.Primary, }, ], });  
-                        toolGroupContours.setToolPassive(strEraserCircle);
-                    } else if (MODALITY_CONTOURS == MODALITY_RTSTRUCT){
+                    if (config.MODALITY_CONTOURS == config.MODALITY_SEG){
+                        toolGroupContours.setToolActive(config.strBrushCircle, { bindings: [ { mouseButton: cornerstone3DTools.Enums.MouseBindings.Primary, }, ], });  
+                        toolGroupContours.setToolPassive(config.strEraserCircle);
+                    } else if (config.MODALITY_CONTOURS == config.MODALITY_RTSTRUCT){
                         toolGroupContours.setToolActive(planarFreeHandContourTool.toolName, { bindings: [ { mouseButton: cornerstone3DTools.Enums.MouseBindings.Primary, }, ], });
                         toolGroupContours.setToolPassive(sculptorTool.toolName);
                     }
@@ -961,11 +876,11 @@ function setContouringButtonsLogic(verbose=true){
                     
                     // Step 2 - Set active segId and segRepId
                     const allSegIdsAndUIDs =  cornerstone3DTools.segmentation.state.getAllSegmentationRepresentations();
-                    if (verbose) console.log(' - [setContouringButtonsLogic()] allSegIdsAndUIDs: ', allSegIdsAndUIDs, ' || predSegmentationUIDs: ', global.predSegmentationUIDs);
-                    if (global.predSegmentationUIDs != undefined){
-                        if (global.predSegmentationUIDs.length != 0){
-                            cornerstone3DTools.segmentation.segmentIndex.setActiveSegmentIndex(global.predSegmentationId, 1);
-                            cornerstone3DTools.segmentation.activeSegmentation.setActiveSegmentationRepresentation(toolGroupIdContours, global.predSegmentationUIDs[0]);
+                    if (verbose) console.log(' - [setContouringButtonsLogic()] allSegIdsAndUIDs: ', allSegIdsAndUIDs, ' || predSegmentationUIDs: ', config.predSegmentationUIDs);
+                    if (config.predSegmentationUIDs != undefined){
+                        if (config.predSegmentationUIDs.length != 0){
+                            cornerstone3DTools.segmentation.segmentIndex.setActiveSegmentIndex(config.predSegmentationId, 1);
+                            cornerstone3DTools.segmentation.activeSegmentation.setActiveSegmentationRepresentation(toolGroupIdContours, config.predSegmentationUIDs[0]);
 
                             // Step 3 - Set boundary colors 
                             setButtonBoundaryColor(windowLevelButton, false);
@@ -974,11 +889,12 @@ function setContouringButtonsLogic(verbose=true){
                             setButtonBoundaryColor(editBaseContourViaScribbleButton, false);
 
                         } else {
-                            showToast('Issue with accessing predSegmentationUIDs: ', global.predSegmentationUIDs)
+                            const toastStr = ''
+                            updateGUIElementsHelper.showToast('You cannot edit the base prediction (len=0). Make some AI-refinements first! ')
                             setAllContouringToolsPassive();
                         }
                     } else {
-                        showToast('Issue with accessing predSegmentationUIDs: ', global.predSegmentationUIDs)
+                        updateGUIElementsHelper.showToast('You cannot edit the base prediction(=undefined). Make some AI-refinements first!')
                         setAllContouringToolsPassive();
                     }
                 }
@@ -986,10 +902,10 @@ function setContouringButtonsLogic(verbose=true){
 
                     // Step 1 - Set tools as active/passive
                     toolGroupContours.setToolPassive(windowLevelTool.toolName);
-                    if (MODALITY_CONTOURS == MODALITY_SEG){
-                        toolGroupContours.setToolPassive(strBrushCircle);
-                        toolGroupContours.setToolActive(strEraserCircle, { bindings: [ { mouseButton: cornerstone3DTools.Enums.MouseBindings.Primary, }, ], });
-                    } else if (MODALITY_CONTOURS == MODALITY_RTSTRUCT){
+                    if (config.MODALITY_CONTOURS == config.MODALITY_SEG){
+                        toolGroupContours.setToolPassive(config.strBrushCircle);
+                        toolGroupContours.setToolActive(config.strEraserCircle, { bindings: [ { mouseButton: cornerstone3DTools.Enums.MouseBindings.Primary, }, ], });
+                    } else if (config.MODALITY_CONTOURS == config.MODALITY_RTSTRUCT){
                         toolGroupContours.setToolPassive(planarFreeHandContourTool.toolName);
                         toolGroupContours.setToolActive(sculptorTool.toolName, { bindings: [ { mouseButton: cornerstone3DTools.Enums.MouseBindings.Primary, }, ], });
                     }
@@ -997,11 +913,11 @@ function setContouringButtonsLogic(verbose=true){
                     
                     // Step 2 - Set active segId and segRepId
                     const allSegIdsAndUIDs =  cornerstone3DTools.segmentation.state.getAllSegmentationRepresentations();
-                    if (verbose) console.log(' - [setContouringButtonsLogic()] allSegIdsAndUIDs: ', allSegIdsAndUIDs, ' || predSegmentationUIDs: ', global.predSegmentationUIDs);
-                    if (global.predSegmentationUIDs != undefined){
-                        if (global.predSegmentationUIDs.length != 0){
-                            cornerstone3DTools.segmentation.segmentIndex.setActiveSegmentIndex(global.predSegmentationId, 1);
-                            cornerstone3DTools.segmentation.activeSegmentation.setActiveSegmentationRepresentation(toolGroupIdContours, global.predSegmentationUIDs[0]);
+                    if (verbose) console.log(' - [setContouringButtonsLogic()] allSegIdsAndUIDs: ', allSegIdsAndUIDs, ' || predSegmentationUIDs: ', config.predSegmentationUIDs);
+                    if (config.predSegmentationUIDs != undefined){
+                        if (config.predSegmentationUIDs.length != 0){
+                            cornerstone3DTools.segmentation.segmentIndex.setActiveSegmentIndex(config.predSegmentationId, 1);
+                            cornerstone3DTools.segmentation.activeSegmentation.setActiveSegmentationRepresentation(toolGroupIdContours, config.predSegmentationUIDs[0]);
 
                             // Step 3 - Set boundary colors
                             setButtonBoundaryColor(windowLevelButton, false);
@@ -1011,30 +927,30 @@ function setContouringButtonsLogic(verbose=true){
                         }
                         else{
                             setAllContouringToolsPassive();
-                            showToast('Issue with accessing predSegmentationUIDs: ', global.predSegmentationUIDs)
+                            updateGUIElementsHelper.showToast('You cannot edit the base prediction (len=0). Make some AI-refinements first! ')
                         }
                     }else{
                         setAllContouringToolsPassive();
-                        showToast('Issue with accessing predSegmentationUIDs: ', global.predSegmentationUIDs)
+                        updateGUIElementsHelper.showToast('You cannot edit the base prediction(=undefined). Make some AI-refinements first!')
                     }
                 }
                 else if (buttonId === 3) { // editBaseContourViaScribbleButton
                     
                     toolGroupContours.setToolPassive(windowLevelTool.toolName);
-                    if (MODALITY_CONTOURS == MODALITY_SEG){
-                        toolGroupContours.setToolPassive(strBrushCircle);
-                        toolGroupContours.setToolPassive(strEraserCircle);
-                    } else if (MODALITY_CONTOURS == MODALITY_RTSTRUCT){
+                    if (config.MODALITY_CONTOURS == config.MODALITY_SEG){
+                        toolGroupContours.setToolPassive(config.strBrushCircle);
+                        toolGroupContours.setToolPassive(config.strEraserCircle);
+                    } else if (config.MODALITY_CONTOURS == config.MODALITY_RTSTRUCT){
                         toolGroupContours.setToolPassive(planarFreeHandContourTool.toolName);
                         toolGroupContours.setToolPassive(sculptorTool.toolName);
                     }
                     toolGroupContours.setToolActive(planarFreehandROITool.toolName, { bindings: [ { mouseButton: cornerstone3DTools.Enums.MouseBindings.Primary, }, ], });
                     
                     const allSegIdsAndUIDs =  cornerstone3DTools.segmentation.state.getAllSegmentationRepresentations();
-                    console.log(' - [setContouringButtonsLogic()] allSegIdsAndUIDs: ', allSegIdsAndUIDs, ' || scribbleSegmentationUIDs: ', global.scribbleSegmentationUIDs);
-                    if (global.scribbleSegmentationUIDs != undefined){
-                        if (global.scribbleSegmentationUIDs.length != 0){
-                            cornerstone3DTools.segmentation.activeSegmentation.setActiveSegmentationRepresentation(toolGroupIdContours, global.scribbleSegmentationUIDs[0]);
+                    console.log(' - [setContouringButtonsLogic()] allSegIdsAndUIDs: ', allSegIdsAndUIDs, ' || scribbleSegmentationUIDs: ', config.scribbleSegmentationUIDs);
+                    if (config.scribbleSegmentationUIDs != undefined){
+                        if (config.scribbleSegmentationUIDs.length != 0){
+                            cornerstone3DTools.segmentation.activeSegmentation.setActiveSegmentationRepresentation(toolGroupIdContours, config.scribbleSegmentationUIDs[0]);
                             if (fgdCheckbox.checked) setAnnotationColor(COLOR_RGB_FGD);
                             if (bgdCheckbox.checked) setAnnotationColor(COLOR_RGB_BGD);
 
@@ -1044,11 +960,11 @@ function setContouringButtonsLogic(verbose=true){
                             setButtonBoundaryColor(sculptorToolButton, false);
                             setButtonBoundaryColor(editBaseContourViaScribbleButton, true);
                         } else{
-                            showToast('Issue with accessing scribbleSegmentationUIDs: ', global.scribbleSegmentationUIDs)
+                            updateGUIElementsHelper.showToast('Issue with accessing scribbleSegmentationUIDs: ', config.scribbleSegmentationUIDs)
                             setAllContouringToolsPassive();
                         }
                     }else{
-                        showToast('Issue with accessing scribbleSegmentationUIDs: ', global.scribbleSegmentationUIDs)
+                        updateGUIElementsHelper.showToast('Issue with accessing scribbleSegmentationUIDs: ', config.scribbleSegmentationUIDs)
                         setAllContouringToolsPassive();
                     }
                 }
@@ -1134,13 +1050,6 @@ async function restart() {
     // Step 4 - Reset global variables
     fusedPETCT   = false;
     petBool      = false;
-    global.gtSegmentationId          = undefined;
-    global.gtSegmentationUIDs        = undefined;
-    global.predSegmentationId        = undefined;
-    global.predSegmentationUIDs      = undefined;
-    global.scribbleSegmentationUIDs = undefined;
-    // config.volumeIdCT  = undefined;
-    // config.volumeIdPET = undefined;
     config.setVolumeIdCT(undefined);
     config.setVolumeIdPET(undefined);
     totalImagesIdsCT  = undefined;
@@ -1270,7 +1179,7 @@ async function fetchAndLoadData(patientIdx){
                 try{
                     scribbleSegmentationId = scribbleSegmentationIdBase + '::' + cornerstone3D.utilities.uuidv4();
                     let { segReprUIDs} = await segmentationHelpers.addSegmentationToState(scribbleSegmentationId, cornerstone3DTools.Enums.SegmentationRepresentations.Contour);
-                    global.scribbleSegmentationUIDs = segReprUIDs;
+                    config.setScribbleSegmentationUIDs(segReprUIDs);
                 } catch (error){
                     console.error(' - [loadData()] Error in addSegmentationToState(scribbleSegmentationId, cornerstone3DTools.Enums.SegmentationRepresentations.Contour): ', error);
                 }
@@ -1334,11 +1243,16 @@ async function setup(patientIdx){
 }
 
 // Some debug params
-config.setPatientIdx(13); // CHMR005 (wont follow instruction)
-config.setPatientIdx(13); // CHMR016
-// config.setPatientIdx(16);  // CHMR023 (problematic. No more)
-// config.setPatientIdx(22); // CHMR034 (no major issues)
-MODALITY_CONTOURS = MODALITY_SEG
+if (1){
+    // config.setPatientIdx(13); // CHMR005 (wont follow instruction)
+    // config.setPatientIdx(13); // CHMR016
+    // config.setPatientIdx(16);  // CHMR023 (problematic. No more)
+    // config.setPatientIdx(22); // CHMR034 (no major issues)
+    config.setPatientIdx(21); // CHMR030 (many edits to make!)
+    // config.setPatientIdx(23); // CHMR040 (1 edit to make in coronal)
+    config.setModalityContours(config.MODALITY_SEG);
+}
+
 
 if (process.env.NETLIFY === "true")
     config.setPatientIdx(0);

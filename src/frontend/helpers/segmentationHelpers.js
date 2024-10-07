@@ -8,9 +8,18 @@ import * as cornerstone3DTools from "@cornerstonejs/tools";
 import * as cornerstoneAdapters from "@cornerstonejs/adapters";
 
 function setSegmentationIndexColor(paramToolGroupId, paramSegUID, segmentationIndex, colorRGBAArray) {
-    
+    /**
+     * cornerstone3DTools.segmentation.{state, config, segmentIndex}
+     */
     cornerstone3DTools.segmentation.config.color.setColorForSegmentIndex(paramToolGroupId, paramSegUID, segmentationIndex, colorRGBAArray);
     // cornerstone3DTools.segmentation.config.color.setColorForSegmentIndex(paramToolGroupId, paramSegUID, segmentationIndex, [0,255,0,255]);
+}
+
+function setSegmentationIndexOpacity(paramToolGroupId, paramSegUID, segmentationIndex, colorRGBAArray) {
+    /**
+     * cornerstone3DTools.segmentation.{state, config, segmentIndex}
+     */
+    cornerstone3DTools.segmentation.config.visibility.setSegmentVisibility(paramToolGroupId, paramSegUID, segmentationIndex, colorRGBAArray);
 }
 
 function formatPoints(data){
@@ -261,6 +270,8 @@ async function fetchAndLoadDCMSeg(searchObj, imageIds, maskType){
                     // global.gtSegmentationId   = segmentationId;
                     // global.gtSegmentationUIDs = segReprUIDs;
                     setSegmentationIndexColor(config.toolGroupIdContours, segReprUIDs[0], 1, config.COLOR_RGBA_ARRAY_GREEN);
+                    if (config.userCredRole == config.USERROLE_EXPERT)
+                        setSegmentationIndexOpacity(config.toolGroupIdContours, segReprUIDs[0], 1, 0);
                 } else if (maskType == config.MASK_TYPE_PRED){
                     config.setPredSegmentationId(segmentationId);
                     config.setPredSegmentationUIDs(segReprUIDs);
@@ -287,3 +298,4 @@ async function fetchAndLoadDCMSeg(searchObj, imageIds, maskType){
 }
 
 export {addSegmentationToState, fetchAndLoadDCMSeg}
+export {setSegmentationIndexOpacity}

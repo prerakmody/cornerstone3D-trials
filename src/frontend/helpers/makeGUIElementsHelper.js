@@ -5,13 +5,13 @@ async function createViewPortsHTML() {
     // let viewportGridDiv=config.getViewportGridDiv(), viewportPTGridDiv=config.getViewportPTGridDiv();
     // let axialDiv=config.getAxialDiv(), sagittalDiv=config.getSagittalDiv(), coronalDiv=config.getCoronalDiv();
     // let axialDivPT=config.getAxialDivPT(), sagittalDivPT=config.getSagittalDivPT(), coronalDivPT=config.getCoronalDivPT();
-    // let serverStatusDiv=config.getServerStatusDiv(), serverStatusCircle=config.getServerStatusCircle(), serverStatusTextDiv=config.getServerStatusTextDiv();
+    // let serverHealthDiv=config.getserverHealthDiv(), serverStatusCircle=config.getServerStatusCircle(), serverStatusTextDiv=config.getServerStatusTextDiv();
     // let axialSliceDiv=config.getAxialSliceDiv(), sagittalSliceDiv=config.getSagittalSliceDiv(), coronalSliceDiv=config.getCoronalSliceDiv();
     // let axialSliceDivPT=config.getAxialSliceDivPT(), sagittalSliceDivPT=config.getSagittalSliceDivPT(), coronalSliceDivPT=config.getCoronalSliceDivPT();
     let viewportGridDiv=config.viewportGridDiv, viewportCTGridDiv=config.viewportCTGridDiv, viewportPTGridDiv=config.viewportPTGridDiv;
     let axialDiv=config.axialDiv, sagittalDiv=config.sagittalDiv, coronalDiv=config.coronalDiv;
     let axialDivPT=config.axialDivPT, sagittalDivPT=config.sagittalDivPT, coronalDivPT=config.coronalDivPT;
-    let serverStatusDiv=config.serverStatusDiv, serverStatusCircle=config.serverStatusCircle, serverStatusTextDiv=config.serverStatusTextDiv;
+    let serverHealthDiv=config.serverHealthDiv, serverStatusCircle=config.serverStatusCircle, serverStatusTextDiv=config.serverStatusTextDiv;
     let axialSliceDiv=config.axialSliceDiv, sagittalSliceDiv=config.sagittalSliceDiv, coronalSliceDiv=config.coronalSliceDiv;
     let axialSliceDivPT=config.axialSliceDivPT, sagittalSliceDivPT=config.sagittalSliceDivPT, coronalSliceDivPT=config.coronalSliceDivPT;
     let mouseHoverDiv=config.mouseHoverDiv, canvasPosHTML=config.canvasPosHTML, ctValueHTML=config.ctValueHTML, ptValueHTML=config.ptValueHTML;
@@ -123,25 +123,25 @@ async function createViewPortsHTML() {
     if (1){
 
         axialDiv.style.position = 'relative';
-        serverStatusDiv = document.createElement('div');
-        serverStatusDiv.style.position = 'absolute'; // Change to absolute
-        serverStatusDiv.style.top = '3';
-        serverStatusDiv.style.left = '3';
-        serverStatusDiv.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
-        serverStatusDiv.style.color = 'white';
-        serverStatusDiv.style.padding = '5px';
-        serverStatusDiv.style.zIndex = '1000'; // Ensure zIndex is a string
-        serverStatusDiv.id = 'serverStatusDiv';
-        axialDiv.appendChild(serverStatusDiv);
+        serverHealthDiv = document.createElement('div');
+        serverHealthDiv.style.position = 'absolute'; // Change to absolute
+        serverHealthDiv.style.top = '3';
+        serverHealthDiv.style.left = '3';
+        serverHealthDiv.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
+        serverHealthDiv.style.color = 'white';
+        serverHealthDiv.style.padding = '5px';
+        serverHealthDiv.style.zIndex = '1000'; // Ensure zIndex is a string
+        serverHealthDiv.id = 'serverHealthDiv';
+        axialDiv.appendChild(serverHealthDiv);
 
-        // Step 2.1.2 - add a blinking circle with red color to serverStatusDiv
+        // Step 2.1.2 - add a blinking circle with red color to serverHealthDiv
         serverStatusCircle = document.createElement('div');
         serverStatusCircle.style.width = '10px';
         serverStatusCircle.style.height = '10px';
         serverStatusCircle.style.backgroundColor = 'red';
         serverStatusCircle.style.borderRadius = '50%';
         serverStatusCircle.style.animation = 'blinker 1s linear infinite';
-        serverStatusDiv.appendChild(serverStatusCircle);
+        serverHealthDiv.appendChild(serverStatusCircle);
         const style = document.createElement('style');
         style.type = 'text/css';
         const keyframes = `
@@ -154,7 +154,7 @@ async function createViewPortsHTML() {
         style.appendChild(document.createTextNode(keyframes));
         document.head.appendChild(style);
 
-        // Add a div, in serverStatusDiv, where if I hover over it, shows me text related to server status
+        // Add a div, in serverHealthDiv, where if I hover over it, shows me text related to server status
         serverStatusTextDiv = document.createElement('div');
         serverStatusTextDiv.style.position = 'absolute'; // Change to absolute
         serverStatusTextDiv.style.top = '0';
@@ -167,13 +167,13 @@ async function createViewPortsHTML() {
         serverStatusTextDiv.style.display = 'none';
         serverStatusTextDiv.innerHTML = 'Server Status: <br> - Red: Server is not running <br> - Green: Server is running';
         serverStatusTextDiv.style.width = 0.5*parseInt(axialDiv.style.width);
-        serverStatusDiv.appendChild(serverStatusTextDiv);
+        serverHealthDiv.appendChild(serverStatusTextDiv);
 
         config.setServerStatusCircle(serverStatusCircle);
         config.setServerStatusTextDiv(serverStatusTextDiv);
 
         // Add the hover text
-        serverStatusDiv.addEventListener('mouseover', function() {
+        serverHealthDiv.addEventListener('mouseover', function() {
             serverStatusTextDiv.style.display = 'block';
         });
         serverStatusTextDiv.addEventListener('mouseout', function() {
@@ -295,7 +295,7 @@ async function createViewPortsHTML() {
 
         // Function to show a custom alert dialog with input elements
         function showCustomAlert() {
-            // Create the parent container
+            // Step 1 - Create the parent container
             const dialogSuper = document.createElement('div');
             dialogSuper.style.position = 'fixed';
             dialogSuper.style.left = '0';
@@ -307,7 +307,7 @@ async function createViewPortsHTML() {
             dialogSuper.style.justifyContent = 'center';
             dialogSuper.style.alignItems = 'center';
 
-            // Create the background overlay
+            // Step 2.1 - Create the background overlay
             const overlay = document.createElement('div');
             overlay.style.position = 'absolute';
             overlay.style.left = '0';
@@ -316,7 +316,7 @@ async function createViewPortsHTML() {
             overlay.style.height = '100%';
             overlay.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
 
-            // Create the dialog container
+            // Step 2.2 - Create the dialog container
             const dialog = document.createElement('div');
             dialog.style.position = 'relative';
             dialog.style.zIndex = '1001';
@@ -325,57 +325,69 @@ async function createViewPortsHTML() {
             dialog.style.boxShadow = '0 0 10px rgba(0, 0, 0, 0.5)';
             dialog.style.borderRadius = '5px'
 
-            // Create the dialog content
+            // Step 2.2.1 - Create the dialog content
             const title = document.createElement('h2');
             title.textContent = 'Enter Name';
             dialog.appendChild(title);
-
+            
+            // Step 2.2.2 - Create the input elements (First name)
             const input1 = document.createElement('input');
             input1.type = 'text';
             input1.placeholder = 'Enter first name';
             dialog.appendChild(input1);
-
+            
+            // Step 2.2.3 - Create the input elements (Second name)
             const input2 = document.createElement('input');
             input2.type = 'text';
             input2.placeholder = 'Enter second name';
             dialog.appendChild(input2);
 
+            // Step 2.2.4 - Add a dropdown with two options - Expert and Non-Expert
+            const dropdown = document.createElement('select');
+            const option1 = document.createElement('option');
+            option1.value = config.USERROLE_EXPERT;
+            option1.text = config.USERROLE_EXPERT;
+            const option2 = document.createElement('option');
+            option2.value = config.USERROLE_NONEXPERT;
+            option2.text = config.USERROLE_NONEXPERT;
+
+            dropdown.appendChild(option1);
+            dropdown.appendChild(option2);
+            dialog.appendChild(dropdown);
+            
+            // Step 2.2.5 - Create the submit button
             const submitButton = document.createElement('button');
             submitButton.textContent = 'Submit';
             dialog.appendChild(submitButton);
 
-            // const closeButton = document.createElement('button');
-            // closeButton.textContent = 'Close';
-            // dialog.appendChild(closeButton);
-
-            // Append the dialog and overlay to the parent container
+            // Step 3 - Append the dialog and overlay to the parent container
             dialogSuper.appendChild(overlay);
             dialogSuper.appendChild(dialog);
-
-            // Append the parent container to the body
             document.body.appendChild(dialogSuper);
+            
+            // Step 4 - Some defaults
+            input1.value = 'John';
+            input2.value = 'Doe';
+            option2.selected = true;
 
-            // Handle the submit button click
+            // Step 5 - Handle the submit button click
             submitButton.onclick = function() {
                 const userCredFirstName = input1.value;
-                const userCredLastName = input2.value;
-                console.log('\n - [dialog] First name:', userCredFirstName);
-                console.log(' - [dialog] Second name:', userCredLastName);
+                const userCredLastName  = input2.value;
+                const userCredRole      = dropdown.value;
+                console.log('\n - [dialog] Name:', userCredFirstName, userCredLastName, userCredRole);
                 if (userCredFirstName === '' || userCredLastName === '' || userCredFirstName === null || userCredLastName === null) {
                     alert('Please enter a valid name');
                     return;
                 }else{
                     config.setUserCredFirstName(userCredFirstName);
                     config.setUserCredLastName(userCredLastName);
+                    config.setUserCredRole(userCredRole);
                     document.body.removeChild(dialogSuper);
                 }
                 
             };
 
-            // Handle the close button click
-            // closeButton.onclick = function() {
-            //     document.body.removeChild(dialogSuper);
-            // };
         }
 
         // Show the custom alert dialog on page load
@@ -383,6 +395,22 @@ async function createViewPortsHTML() {
             showCustomAlert();
         });
 
+    }
+
+    ////////////////////////////////////////////////////////////////////// Step 6 - Add a div on top right to show the server status
+    if (1){
+        // Step 6.1 - Create a div to show the server status
+        const serverHealthDiv = document.createElement('div');
+        serverHealthDiv.id = config.serverHealthDivId;
+        serverHealthDiv.style.position = 'absolute'; // Change to absolute
+        serverHealthDiv.style.top = '3';
+        serverHealthDiv.style.right = '3';
+        serverHealthDiv.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
+        serverHealthDiv.style.color = 'white';
+        serverHealthDiv.style.padding = '5px';
+        serverHealthDiv.style.zIndex = '1000'; // Ensure zIndex is a string
+        document.body.appendChild(serverHealthDiv);
+        config.setServerHealthDiv(serverHealthDiv);
     }
 
     ////////////////////////////////////////////////////////////////////// Step 99 - Return all the elements
@@ -397,7 +425,7 @@ async function createViewPortsHTML() {
     config.setAxialDivPT(axialDivPT);
     config.setSagittalDivPT(sagittalDivPT);
     config.setCoronalDivPT(coronalDivPT);
-    config.setServerStatusDiv(serverStatusDiv);
+    
     
     config.setServerStatusCircle(serverStatusCircle);
     config.setServerStatusTextDiv(serverStatusTextDiv);
