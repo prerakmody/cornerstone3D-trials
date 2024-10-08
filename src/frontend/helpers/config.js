@@ -29,6 +29,7 @@ export let viewportGridDiv, viewportCTGridDiv, viewportPTGridDiv;
 export let viewPortDivsAll, axialDiv, sagittalDiv, coronalDiv, axialDivPT, sagittalDivPT, coronalDivPT;
 export let serverStatusDiv, serverStatusCircle, serverStatusTextDiv;
 export let axialSliceDiv, sagittalSliceDiv, coronalSliceDiv, axialSliceDivPT, sagittalSliceDivPT, coronalSliceDivPT;
+
 export let mouseHoverDiv, canvasPosHTML, ctValueHTML, ptValueHTML;
 
 export function setViewportGridDiv(div) { viewportGridDiv = div; }

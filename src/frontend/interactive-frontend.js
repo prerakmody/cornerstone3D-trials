@@ -531,10 +531,11 @@ async function getToolsAndToolGroup() {
     toolGroupContours.setToolActive(stackScrollMouseWheelTool.toolName);
     toolGroupContours.setToolEnabled(probeTool.toolName);
     toolGroupContours.setToolEnabled(referenceLinesTool.toolName);
-    toolGroupContours.setToolConfiguration(referenceLinesTool.toolName, {sourceViewportId: axialID,});
-    [axialDiv, sagittalDiv, coronalDiv, axialDivPT, sagittalDivPT, coronalDivPT].forEach((viewportDiv, index) => {
+    // toolGroupContours.setToolConfiguration(referenceLinesTool.toolName, {sourceViewportId: axialID,});
+    config.viewPortDivsAll.forEach((viewportDiv, index) => {
         viewportDiv.addEventListener('mouseenter', function() {
-            toolGroupContours.setToolConfiguration(referenceLinesTool.toolName, {sourceViewportId: viewportIds[index]});
+            console.log(' - [cornerstoneInit()] Mouse entered viewportIds[index]: ', config.viewPortIdsAll[index]);
+            toolGroupContours.setToolConfiguration(referenceLinesTool.toolName, {sourceViewportId: config.viewPortIdsAll[index]});
         });
     });
 
@@ -581,8 +582,6 @@ async function getToolsAndToolGroup() {
     });
     
 }
-
-
 
 async function setRenderingEngineAndViewports(){
 
