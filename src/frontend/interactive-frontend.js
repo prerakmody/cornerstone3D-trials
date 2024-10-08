@@ -26,36 +26,24 @@ Histogram(Highcharts)
 
 
 
-/****************************************************************
-*                             VARIABLES  
-******************************************************************/
+// **************************** VARIABLES ************************************
 
 // HTML ids
-const contentDivId            = 'contentDiv';
 const interactionButtonsDivId = 'interactionButtonsDiv'
 const axialID                 = 'ViewPortId-Axial';
 const sagittalID              = 'ViewPortId-Sagittal';
 const coronalID               = 'ViewPortId-Coronal';
 const viewportIds             = [axialID, sagittalID, coronalID];
-const viewPortDivId           = 'viewportDiv';
 const otherButtonsDivId       = 'otherButtonsDiv';
-
-const contouringButtonDivId           = 'contouringButtonDiv';
-const contourSegmentationToolButtonId = 'PlanarFreehandContourSegmentationTool-Button';
-const sculptorToolButtonId            = 'SculptorTool-Button';
-const windowLevelButtonId             = 'WindowLevelTool-Button';
 
 
 // Rendering + Volume + Segmentation ids
 const renderingEngineId        = 'myRenderingEngine';
 const toolGroupIdContours      = 'MY_TOOL_GROUP_ID_CONTOURS';
 const toolGroupIdScribble      = 'MY_TOOL_GROUP_ID_SCRIBBLE'; // not in use, failed experiment: Multiple tool groups found for renderingEngineId: myRenderingEngine and viewportId: ViewPortId-Axial. You should only have one tool group per viewport in a renderingEngine.
-const toolGroupIdAll           = [toolGroupIdContours, toolGroupIdScribble];
 const volumeLoaderScheme       = 'cornerstoneStreamingImageVolume';
 const volumeIdPETBase      = `${volumeLoaderScheme}:myVolumePET`; //+ cornerstone3D.utilities.uuidv4()
 const volumeIdCTBase       = `${volumeLoaderScheme}:myVolumeCT`;
-// let volumeIdCT;
-// let volumeIdPET;
 
 // Colors
 const COLOR_RGB_FGD = 'rgb(218, 165, 32)' // 'goldenrod'
@@ -63,7 +51,6 @@ const COLOR_RGB_BGD = 'rgb(0, 0, 255)'    // 'blue'
 
 const MASK_TYPE_GT   = 'GT';
 const MASK_TYPE_PRED = 'PRED';
-const MASK_TYPE_REFINE = 'REFINE';
 
 const INIT_BRUSH_SIZE = 5
 
@@ -77,7 +64,6 @@ const SEG_TYPE_LABELMAP = 'LABELMAP'
 const MODE_ACTIVE  = 'Active';
 
 // General
-let ctFetchBool  = false;
 let fusedPETCT   = false;
 let petBool      = false;
 let totalImagesIdsCT = undefined;
@@ -92,212 +78,7 @@ await makeGUIElementsHelper.createViewPortsHTML();
 let axialDiv=config.axialDiv, sagittalDiv=config.sagittalDiv, coronalDiv=config.coronalDiv;
 let axialDivPT=config.axialDivPT, sagittalDivPT=config.sagittalDivPT, coronalDivPT=config.coronalDivPT;
 
-// let axialDiv=config.getAxialDiv(), sagittalDiv=config.getSagittalDiv(), coronalDiv=config.getCoronalDiv();
-// let axialDivPT=config.getAxialDivPT(), sagittalDivPT=config.getSagittalDivPT(), coronalDivPT=config.getCoronalDivPT();
-// let serverStatusCircle=config.getServerStatusCircle(), serverStatusTextDiv=config.getServerStatusTextDiv();
-// let axialSliceDiv=config.getAxialSliceDiv(), sagittalSliceDiv=config.getSagittalSliceDiv(), coronalSliceDiv=config.getCoronalSliceDiv();
-// let axialSliceDivPT=config.getAxialSliceDivPT(), sagittalSliceDivPT=config.getSagittalSliceDivPT(), coronalSliceDivPT=config.getCoronalSliceDivPT();
-
-// const {axialDiv, sagittalDiv, coronalDiv, axialSliceDiv, sagittalSliceDiv, coronalSliceDiv
-//     , serverStatusCircle, serverStatusTextDiv
-//     , viewportPTGridDiv, axialDivPT, sagittalDivPT, coronalDivPT, axialSliceDivPT, sagittalSliceDivPT, coronalSliceDivPT
-// } = await guiELements.createViewPortsHTML();
-
-async function createContouringHTML() {
-
-    //////////////////////////////////////////////////////////////////////////// Step 1.0 - Get interactionButtonsDiv and contouringButtonDiv
-    const interactionButtonsDiv = document.getElementById(interactionButtonsDivId);
-    const contouringButtonDiv = document.createElement('div');
-    contouringButtonDiv.id = contouringButtonDivId;
-
-    const contouringButtonInnerDiv = document.createElement('div');
-    contouringButtonInnerDiv.style.display = 'flex';
-    contouringButtonInnerDiv.style.flexDirection = 'row';
-
-    ////////////////////////////////////////////////////////////////////////////  Step 2 - Create a button to enable PlanarFreehandContourSegmentationTool
-    // Step 2.1 - Create a button
-    const contourSegmentationToolButton = document.createElement('button');
-    contourSegmentationToolButton.id = contourSegmentationToolButtonId;
-    contourSegmentationToolButton.title = 'Enable Circle Brush \n (+/- to change brush size)'; // Tooltip text
-
-    // Step 2.2 - Create an image element for the logo
-    const logoBrush = document.createElement('img');
-    logoBrush.src = './logo-brush.png'; // Replace with the actual path to your logo
-    logoBrush.alt = 'Circle Brush';
-    logoBrush.style.width = '50px'; // Adjust the size as needed
-    logoBrush.style.height = '50px'; // Adjust the size as needed
-    logoBrush.style.marginRight = '5px'; // Optional: Add some space between the logo and the text
-    contourSegmentationToolButton.appendChild(logoBrush);
-
-    // Step 2.3 - Create a text node for the button text
-    const buttonText = document.createTextNode('Circle Brush');
-    contourSegmentationToolButton.appendChild(buttonText);
-    contourSegmentationToolButton.style.fontSize = '10px';
-
-    contourSegmentationToolButton.style.display = 'flex';
-    contourSegmentationToolButton.style.flexDirection = 'column';
-    contourSegmentationToolButton.style.alignItems = 'center';
-    
-    ////////////////////////////////////////////////////////////////////////////   Step 3 - Create a button to enable SculptorTool
-    // Step 3.1 - Create a button
-    const sculptorToolButton = document.createElement('button');
-    sculptorToolButton.id = sculptorToolButtonId;
-    sculptorToolButton.title = 'Enable Circle Eraser \n (+/- to change brush size)';
-
-    // Step 3.2 - Create an image element for the logo
-    const logoEraser = document.createElement('img');
-    logoEraser.src = './logo-eraser.png'; // Replace with the actual path to your logo
-    logoEraser.alt = 'Circle Eraser';
-    logoEraser.style.width = '50px'; // Adjust the size as needed
-    logoEraser.style.height = '50px'; // Adjust the size as needed
-    sculptorToolButton.style.marginRight = '5px'; // Optional: Add some space between the logo and the text
-    sculptorToolButton.appendChild(logoEraser);
-
-    // Step 3.3 - Create a text node for the button text
-    const sculptorButtonText = document.createTextNode('Circle Eraser');
-    sculptorToolButton.appendChild(sculptorButtonText);
-    sculptorToolButton.style.fontSize = '10px';
-
-    sculptorToolButton.style.display = 'flex';
-    sculptorToolButton.style.flexDirection = 'column';
-    sculptorToolButton.style.alignItems = 'center';
-    
-    //////////////////////////////////////////////////////////////////////////// Step 4 - No contouring button
-    // Step 4.1 - Create a button
-    const windowLevelButton     = document.createElement('button');
-    windowLevelButton.id        = windowLevelButtonId;
-    windowLevelButton.title = 'Enable WindowLevelTool';
-
-    // Step 4.2 - Create an image element for the logo
-    const logoWindowLevel = document.createElement('img');
-    logoWindowLevel.src = './logo-windowing.png'; // Replace with the actual path to your logo
-    logoWindowLevel.alt = 'WindowLevel';
-    logoWindowLevel.style.width = '50px'; // Adjust the size as needed
-    logoWindowLevel.style.height = '50px'; // Adjust the size as needed
-    windowLevelButton.style.marginRight = '5px'; // Optional: Add some space between the logo and the text
-    windowLevelButton.appendChild(logoWindowLevel);
-
-    // Step 4.3 - Create a text node for the button text
-    const windowLevelButtonText = document.createTextNode('WindowLevel');
-    windowLevelButton.appendChild(windowLevelButtonText);
-    windowLevelButton.style.fontSize = '10px';
-
-    windowLevelButton.style.display = 'flex';
-    windowLevelButton.style.flexDirection = 'column'; 
-    windowLevelButton.style.alignItems = 'center';
-
-    
-    ////////////////////////////////////////////////////////////////////////////////// Step 5 - AI scribble button
-
-    // Step 5.1 - Create a div
-    const editBaseContourViaScribbleDiv = document.createElement('div');
-    editBaseContourViaScribbleDiv.style.display = 'flex';
-    editBaseContourViaScribbleDiv.style.flexDirection = 'row';
-    
-    // Step 5.2 - Create a button
-    const editBaseContourViaScribbleButton     = document.createElement('button');
-    editBaseContourViaScribbleButton.id        = 'editBaseContourViaScribbleButton';
-    editBaseContourViaScribbleButton.title     = 'Enable AI-scribble';
-    editBaseContourViaScribbleDiv.appendChild(editBaseContourViaScribbleButton);
-    
-    // Step 5.3 - Create an image element for the logo
-    const logoScribble = document.createElement('img');
-    logoScribble.src = './logo-scribble.png'; // Replace with the actual path to your logo
-    logoScribble.alt = 'AI-Scribble';
-    logoScribble.style.width = '50px'; // Adjust the size as needed
-    logoScribble.style.height = '50px'; // Adjust the size as needed
-    editBaseContourViaScribbleButton.appendChild(logoScribble);
-
-    // Step 5.4 - Create a text node for the button text
-    const editBaseContourViaScribbleButtonText = document.createTextNode('AI-Scribble');
-    editBaseContourViaScribbleButton.appendChild(editBaseContourViaScribbleButtonText);
-    editBaseContourViaScribbleButton.style.fontSize = '10px';
-
-    editBaseContourViaScribbleButton.style.display = 'flex';
-    editBaseContourViaScribbleButton.style.flexDirection = 'column';
-    editBaseContourViaScribbleButton.style.alignItems = 'center';
-
-    ////////////////////////////////////////////////////////////////////////////////// Step 6 - Add checkboxes for fgd and bgd
-    
-    // Step 6.1 - Create div(s) for the checkbox(es)
-    const scribbleCheckboxDiv = document.createElement('div');
-    scribbleCheckboxDiv.style.display = 'flex';
-    scribbleCheckboxDiv.style.flexDirection = 'column';
-    scribbleCheckboxDiv.style.justifyContent = 'center';
-    editBaseContourViaScribbleDiv.appendChild(scribbleCheckboxDiv);
-
-    const fgdChecBoxParentDiv = document.createElement('div');
-    fgdChecBoxParentDiv.style.display = 'flex';
-    fgdChecBoxParentDiv.style.flexDirection = 'row';
-    scribbleCheckboxDiv.appendChild(fgdChecBoxParentDiv);
-
-    const bgdCheckboxParentDiv = document.createElement('div');
-    bgdCheckboxParentDiv.style.display = 'flex';
-    bgdCheckboxParentDiv.style.flexDirection = 'row';
-    scribbleCheckboxDiv.appendChild(bgdCheckboxParentDiv);
-
-    // Step 6.2.1 - Add checkbox for fgd
-    const fgdCheckbox = document.createElement('input');
-    fgdCheckbox.type = 'checkbox';
-    fgdCheckbox.id = 'fgdCheckbox';
-    fgdCheckbox.name = 'Foreground Scribble';
-    fgdCheckbox.value = 'Foreground Scribble';
-    fgdCheckbox.checked = true;
-    fgdCheckbox.style.transform = 'scale(1.5)';
-    fgdCheckbox.addEventListener('change', function() {
-        if (this.checked){
-            bgdCheckbox.checked = false;
-            setAnnotationColor(COLOR_RGB_FGD);
-        }
-    });
-    fgdChecBoxParentDiv.appendChild(fgdCheckbox);
-
-    // Step 6.2.2 - Add label for fgd
-    const fgdLabel = document.createElement('label');
-    fgdLabel.htmlFor = 'fgdCheckbox';
-    fgdLabel.style.color = COLOR_RGB_FGD // 'goldenrod'; // '#DAA520', 'rgb(218, 165, 32)'
-    fgdLabel.appendChild(document.createTextNode('Foreground Scribble'));
-    fgdChecBoxParentDiv.appendChild(fgdLabel);
-    
-
-    // Step 6.3 - Add checkbox for bgd
-    const bgdCheckbox = document.createElement('input');
-    bgdCheckbox.type = 'checkbox';
-    bgdCheckbox.id = 'bgdCheckbox';
-    bgdCheckbox.name = 'Background Scribble';
-    bgdCheckbox.value = 'Background Scribble';
-    bgdCheckbox.checked = false;
-    bgdCheckbox.style.transform = 'scale(1.5)';
-    bgdCheckbox.addEventListener('change', function() {
-        if (this.checked){
-            fgdCheckbox.checked = false;
-            setAnnotationColor(COLOR_RGB_BGD);
-        }
-    });
-    bgdCheckboxParentDiv.appendChild(bgdCheckbox);
-
-    // Step 6.4 - Add label for bgd
-    const bgdLabel = document.createElement('label');
-    bgdLabel.htmlFor = 'bgdCheckbox';
-    bgdLabel.style.color = COLOR_RGB_BGD;
-    bgdLabel.appendChild(document.createTextNode('Background Scribble'));
-    bgdCheckboxParentDiv.appendChild(bgdLabel);
-
-    ////////////////////////////////////////////////////////////////////////////////////
-    //////////////////////////////////////////////////////////////////////////////////// Step 1.99 - Add buttons to contouringButtonDiv
-    contouringButtonDiv.appendChild(contouringButtonInnerDiv);
-    contouringButtonInnerDiv.appendChild(contourSegmentationToolButton);
-    contouringButtonInnerDiv.appendChild(sculptorToolButton);
-    contouringButtonInnerDiv.appendChild(windowLevelButton);
-    contouringButtonInnerDiv.appendChild(editBaseContourViaScribbleDiv);
-    
-    // Step 7 - Add contouringButtonDiv to contentDiv
-    interactionButtonsDiv.appendChild(contouringButtonDiv); 
-    
-    return {windowLevelButton, contourSegmentationToolButton, sculptorToolButton, editBaseContourViaScribbleButton, fgdCheckbox, bgdCheckbox};
-
-}
-const {windowLevelButton, contourSegmentationToolButton, sculptorToolButton, editBaseContourViaScribbleButton, fgdCheckbox, bgdCheckbox} = await createContouringHTML();
+await makeGUIElementsHelper.createContouringHTML();
 
 async function otherHTMLElements(){
 
@@ -568,17 +349,7 @@ function printHeaderInConsole(strToPrint){
 let orthancHeaders = new Headers();
 orthancHeaders.set('Authorization', 'Basic ' + btoa('orthanc'+ ":" + 'orthanc'));
 
-function setButtonBoundaryColor(button, shouldSet, color = 'red') {
-    if (button instanceof HTMLElement) {
-        if (shouldSet) {
-            button.style.border = `2px solid ${color}`;
-        } else {
-            button.style.border = '';
-        }
-    } else {
-        console.error('Provided argument is not a DOM element');
-    }
-}
+
 
 async function showPET(thisButton){
     // NOTE: petBool=if pet data is available and loaded, fusedPETCT=if true, then PET shown, otherwise not
@@ -596,7 +367,7 @@ async function showPET(thisButton){
                 viewportTmp.removeVolumeActors([volumeIdPET], false);
                 fusedPETCT = false;
             });
-            setButtonBoundaryColor(thisButton, false);
+            makeGUIElementsHelper.setButtonBoundaryColor(thisButton, false);
         }
         else {
             // [axialID, sagittalID, coronalID].forEach((viewportId) => {
@@ -609,28 +380,11 @@ async function showPET(thisButton){
                 // viewportTmp.setProperties({ colormap: { name: 'PET 20 Step', opacity:0.5 }, voiRange: { upper: 50000, lower: 100, } }, volumeIdPET);
                 // console.log(' -- colormap: ', viewportTmp.getColormap(volumeIdPET), viewportTmp.getColormap(volumeIdCT)); 
             };
-            setButtonBoundaryColor(thisButton, true);
+            makeGUIElementsHelper.setButtonBoundaryColor(thisButton, true);
         }
     }else{
         updateGUIElementsHelper.showToast('No PET data available')
     }
-}
-
-function setAnnotationColor(rgbColorString){
-    // rgbColorString = 'rgb(255,0,0)';
-    
-    // Step 1 - Get styles
-    let styles = cornerstone3DTools.annotation.config.style.getDefaultToolStyles();
-    
-    // Step 2 - Set the color
-    styles.global.color            = rgbColorString;
-    styles.global.colorHighlighted = rgbColorString;
-    styles.global.colorLocked      = rgbColorString;
-    styles.global.colorSelected    = rgbColorString;
-    
-    // Step 3 - set stype
-    cornerstone3DTools.annotation.config.style.setDefaultToolStyles(styles);
-
 }
 
 async function setupDropDownMenu(orthanDataURLS, patientIdx) {
@@ -828,154 +582,7 @@ async function getToolsAndToolGroup() {
     
 }
 
-function setContouringButtonsLogic(verbose=true){
 
-    // Step 0 - Init
-    const toolGroupContours         = cornerstone3DTools.ToolGroupManager.getToolGroup(toolGroupIdContours);
-    // const toolGroupScribble         = cornerstone3DTools.ToolGroupManager.getToolGroup(toolGroupIdScribble);
-    const windowLevelTool           = cornerstone3DTools.WindowLevelTool;
-    const planarFreeHandContourTool = cornerstone3DTools.PlanarFreehandContourSegmentationTool;
-    const sculptorTool              = cornerstone3DTools.SculptorTool;
-    const planarFreehandROITool     = cornerstone3DTools.PlanarFreehandROITool;
-    
-    // Step 2 - Add event listeners to buttons        
-    try{
-        [windowLevelButton, contourSegmentationToolButton, sculptorToolButton, editBaseContourViaScribbleButton].forEach((buttonHTML, buttonId) => {
-            if (buttonHTML === null) return;
-            
-            buttonHTML.addEventListener('click', async function() {
-                if (buttonId === 0) { // windowLevelButton
-                    toolGroupContours.setToolActive(windowLevelTool.toolName, { bindings: [ { mouseButton: cornerstone3DTools.Enums.MouseBindings.Primary, }, ], });              
-                    if (config.MODALITY_CONTOURS == config.MODALITY_SEG){
-                        toolGroupContours.setToolPassive(config.strBrushCircle);
-                        toolGroupContours.setToolPassive(config.strEraserCircle);
-                    } else if (config.MODALITY_CONTOURS == config.MODALITY_RTSTRUCT){
-                        toolGroupContours.setToolPassive(planarFreeHandContourTool.toolName);
-                        toolGroupContours.setToolPassive(sculptorTool.toolName);
-                    }
-                    toolGroupContours.setToolPassive(planarFreehandROITool.toolName);  
-                    
-                    setButtonBoundaryColor(windowLevelButton, true);
-                    setButtonBoundaryColor(contourSegmentationToolButton, false);
-                    setButtonBoundaryColor(sculptorToolButton, false);
-                    setButtonBoundaryColor(editBaseContourViaScribbleButton, false);
-                    
-                }
-                else if (buttonId === 1) { // contourSegmentationToolButton
-                    
-                    // Step 1 - Set tools as active/passive
-                    toolGroupContours.setToolPassive(windowLevelTool.toolName); 
-                    if (config.MODALITY_CONTOURS == config.MODALITY_SEG){
-                        toolGroupContours.setToolActive(config.strBrushCircle, { bindings: [ { mouseButton: cornerstone3DTools.Enums.MouseBindings.Primary, }, ], });  
-                        toolGroupContours.setToolPassive(config.strEraserCircle);
-                    } else if (config.MODALITY_CONTOURS == config.MODALITY_RTSTRUCT){
-                        toolGroupContours.setToolActive(planarFreeHandContourTool.toolName, { bindings: [ { mouseButton: cornerstone3DTools.Enums.MouseBindings.Primary, }, ], });
-                        toolGroupContours.setToolPassive(sculptorTool.toolName);
-                    }
-                    toolGroupContours.setToolPassive(planarFreehandROITool.toolName);
-                    
-                    // Step 2 - Set active segId and segRepId
-                    const allSegIdsAndUIDs =  cornerstone3DTools.segmentation.state.getAllSegmentationRepresentations();
-                    if (verbose) console.log(' - [setContouringButtonsLogic()] allSegIdsAndUIDs: ', allSegIdsAndUIDs, ' || predSegmentationUIDs: ', config.predSegmentationUIDs);
-                    if (config.predSegmentationUIDs != undefined){
-                        if (config.predSegmentationUIDs.length != 0){
-                            cornerstone3DTools.segmentation.segmentIndex.setActiveSegmentIndex(config.predSegmentationId, 1);
-                            cornerstone3DTools.segmentation.activeSegmentation.setActiveSegmentationRepresentation(toolGroupIdContours, config.predSegmentationUIDs[0]);
-
-                            // Step 3 - Set boundary colors 
-                            setButtonBoundaryColor(windowLevelButton, false);
-                            setButtonBoundaryColor(contourSegmentationToolButton, true);
-                            setButtonBoundaryColor(sculptorToolButton, false);
-                            setButtonBoundaryColor(editBaseContourViaScribbleButton, false);
-
-                        } else {
-                            const toastStr = ''
-                            updateGUIElementsHelper.showToast('You cannot edit the base prediction (len=0). Make some AI-refinements first! ')
-                            setAllContouringToolsPassive();
-                        }
-                    } else {
-                        updateGUIElementsHelper.showToast('You cannot edit the base prediction(=undefined). Make some AI-refinements first!')
-                        setAllContouringToolsPassive();
-                    }
-                }
-                else if (buttonId === 2) { // sculptorToolButton
-
-                    // Step 1 - Set tools as active/passive
-                    toolGroupContours.setToolPassive(windowLevelTool.toolName);
-                    if (config.MODALITY_CONTOURS == config.MODALITY_SEG){
-                        toolGroupContours.setToolPassive(config.strBrushCircle);
-                        toolGroupContours.setToolActive(config.strEraserCircle, { bindings: [ { mouseButton: cornerstone3DTools.Enums.MouseBindings.Primary, }, ], });
-                    } else if (config.MODALITY_CONTOURS == config.MODALITY_RTSTRUCT){
-                        toolGroupContours.setToolPassive(planarFreeHandContourTool.toolName);
-                        toolGroupContours.setToolActive(sculptorTool.toolName, { bindings: [ { mouseButton: cornerstone3DTools.Enums.MouseBindings.Primary, }, ], });
-                    }
-                    toolGroupContours.setToolPassive(planarFreehandROITool.toolName);
-                    
-                    // Step 2 - Set active segId and segRepId
-                    const allSegIdsAndUIDs =  cornerstone3DTools.segmentation.state.getAllSegmentationRepresentations();
-                    if (verbose) console.log(' - [setContouringButtonsLogic()] allSegIdsAndUIDs: ', allSegIdsAndUIDs, ' || predSegmentationUIDs: ', config.predSegmentationUIDs);
-                    if (config.predSegmentationUIDs != undefined){
-                        if (config.predSegmentationUIDs.length != 0){
-                            cornerstone3DTools.segmentation.segmentIndex.setActiveSegmentIndex(config.predSegmentationId, 1);
-                            cornerstone3DTools.segmentation.activeSegmentation.setActiveSegmentationRepresentation(toolGroupIdContours, config.predSegmentationUIDs[0]);
-
-                            // Step 3 - Set boundary colors
-                            setButtonBoundaryColor(windowLevelButton, false);
-                            setButtonBoundaryColor(contourSegmentationToolButton, false);
-                            setButtonBoundaryColor(sculptorToolButton, true);
-                            setButtonBoundaryColor(editBaseContourViaScribbleButton, false);
-                        }
-                        else{
-                            setAllContouringToolsPassive();
-                            updateGUIElementsHelper.showToast('You cannot edit the base prediction (len=0). Make some AI-refinements first! ')
-                        }
-                    }else{
-                        setAllContouringToolsPassive();
-                        updateGUIElementsHelper.showToast('You cannot edit the base prediction(=undefined). Make some AI-refinements first!')
-                    }
-                }
-                else if (buttonId === 3) { // editBaseContourViaScribbleButton
-                    
-                    toolGroupContours.setToolPassive(windowLevelTool.toolName);
-                    if (config.MODALITY_CONTOURS == config.MODALITY_SEG){
-                        toolGroupContours.setToolPassive(config.strBrushCircle);
-                        toolGroupContours.setToolPassive(config.strEraserCircle);
-                    } else if (config.MODALITY_CONTOURS == config.MODALITY_RTSTRUCT){
-                        toolGroupContours.setToolPassive(planarFreeHandContourTool.toolName);
-                        toolGroupContours.setToolPassive(sculptorTool.toolName);
-                    }
-                    toolGroupContours.setToolActive(planarFreehandROITool.toolName, { bindings: [ { mouseButton: cornerstone3DTools.Enums.MouseBindings.Primary, }, ], });
-                    
-                    const allSegIdsAndUIDs =  cornerstone3DTools.segmentation.state.getAllSegmentationRepresentations();
-                    console.log(' - [setContouringButtonsLogic()] allSegIdsAndUIDs: ', allSegIdsAndUIDs, ' || scribbleSegmentationUIDs: ', config.scribbleSegmentationUIDs);
-                    if (config.scribbleSegmentationUIDs != undefined){
-                        if (config.scribbleSegmentationUIDs.length != 0){
-                            cornerstone3DTools.segmentation.activeSegmentation.setActiveSegmentationRepresentation(toolGroupIdContours, config.scribbleSegmentationUIDs[0]);
-                            if (fgdCheckbox.checked) setAnnotationColor(COLOR_RGB_FGD);
-                            if (bgdCheckbox.checked) setAnnotationColor(COLOR_RGB_BGD);
-
-                            // Step 3 - Set boundary colors
-                            setButtonBoundaryColor(windowLevelButton, false);
-                            setButtonBoundaryColor(contourSegmentationToolButton, false);
-                            setButtonBoundaryColor(sculptorToolButton, false);
-                            setButtonBoundaryColor(editBaseContourViaScribbleButton, true);
-                        } else{
-                            updateGUIElementsHelper.showToast('Issue with accessing scribbleSegmentationUIDs: ', config.scribbleSegmentationUIDs)
-                            setAllContouringToolsPassive();
-                        }
-                    }else{
-                        updateGUIElementsHelper.showToast('Issue with accessing scribbleSegmentationUIDs: ', config.scribbleSegmentationUIDs)
-                        setAllContouringToolsPassive();
-                    }
-                }
-            });
-        });
-    } catch (error){
-        setAllContouringToolsPassive();
-        console.log('   -- [setContouringButtonsLogic()] Error: ', error);
-    }
-
-}
 
 async function setRenderingEngineAndViewports(){
 
@@ -1008,9 +615,9 @@ async function restart() {
         printHeaderInConsole('Step 0 - restart()');
 
         // Step 1 - Block GUI
-        [windowLevelButton, contourSegmentationToolButton, sculptorToolButton, editBaseContourViaScribbleButton, showPETButton].forEach((buttonHTML) => {
+        [config.windowLevelButton , config.contourSegmentationToolButton, config.sculptorToolButton, config.editBaseContourViaScribbleButton, showPETButton].forEach((buttonHTML) => {
             if (buttonHTML === null) return;
-            setButtonBoundaryColor(buttonHTML, false);
+            makeGUIElementsHelper.setButtonBoundaryColor(buttonHTML, false);
             buttonHTML.disabled = true;
         });
 
@@ -1194,7 +801,7 @@ async function fetchAndLoadData(patientIdx){
                 updateGUIElementsHelper.unshowLoaderAnimation();
                 updateGUIElementsHelper.setSliceIdxHTMLForAllHTML();
                 updateGUIElementsHelper.showToast(`Data loaded successfully (CT=${totalImagesIdsCT} slices, ROIs=${totalROIsRTSTRUCT})`, 3000, true);
-                [windowLevelButton, contourSegmentationToolButton, sculptorToolButton, editBaseContourViaScribbleButton, showPETButton].forEach((buttonHTML) => {
+                [config.windowLevelButton , config.contourSegmentationToolButton, config.sculptorToolButton, config.editBaseContourViaScribbleButton, showPETButton].forEach((buttonHTML) => {
                     if (buttonHTML === null) return;
                     buttonHTML.disabled = false;
                 });
@@ -1237,7 +844,7 @@ async function setup(patientIdx){
     // // -------------------------------------------------> Step 4 - Get .dcm data
     await makeGUIElementsHelper.waitForCredentials(); // For the first time
     await fetchAndLoadData(patientIdx);
-    setContouringButtonsLogic();
+    makeGUIElementsHelper.setContouringButtonsLogic();
     keyboardEventsHelper.setMouseAndKeyboardEvents();
 
 }

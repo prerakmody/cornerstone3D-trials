@@ -84,6 +84,15 @@ export let thumbnailContainerDiv;
 export function setThumbnailContainerDiv(div) { thumbnailContainerDiv = div; }
 
 // Button ids
+
+export let windowLevelButton,contourSegmentationToolButton,sculptorToolButton,editBaseContourViaScribbleButton,fgdCheckbox,bgdCheckbox
+export function setWindowLevelButton(button) { windowLevelButton = button; }
+export function setContourSegmentationToolButton(button) { contourSegmentationToolButton = button; }
+export function setSculptorToolButton(button) { sculptorToolButton = button; }
+export function setEditBaseContourViaScribbleButton(button) { editBaseContourViaScribbleButton = button; }
+export function setFgdCheckbox(checkbox) { fgdCheckbox = checkbox; }
+export function setBgdCheckbox(checkbox) { bgdCheckbox = checkbox; }
+
 export const interactionButtonsDivId = 'interactionButtonsDiv'
 export const contouringButtonDivId           = 'contouringButtonDiv';
 export const contourSegmentationToolButtonId = 'PlanarFreehandContourSegmentationTool-Button';

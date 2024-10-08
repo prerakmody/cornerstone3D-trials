@@ -1,4 +1,5 @@
 import * as config from './config.js';
+import * as makeGUIElementsHelper from './makeGUIElementsHelper.js';
 import * as updateGUIElementsHelper from './updateGUIElementsHelper.js';
 import * as cornerstoneHelpers from './cornerstoneHelpers.js';
 import * as annotationHelpers from './annotationHelpers.js';
@@ -174,6 +175,60 @@ function setMouseAndKeyboardEvents(){
         if (event.key === 'r'){
             cornerstoneHelpers.resetView();
             updateGUIElementsHelper.setSliceIdxHTMLForAllHTML()
+        }
+
+        if (event.key === 'f'){
+            const fgdCheckbox = document.getElementById(config.fgdCheckboxId);
+            fgdCheckbox.checked = true;
+            const bgdCheckbox = document.getElementById(config.bgdCheckboxId);
+            bgdCheckbox.checked = false
+            makeGUIElementsHelper.setAnnotationColor(config.COLOR_RGB_FGD);
+            config.editBaseContourViaScribbleButton.click();
+        }
+
+        if (event.key === 'b'){
+            const bgdCheckbox = document.getElementById(config.bgdCheckboxId);
+            bgdCheckbox.checked = true;
+            const fgdCheckbox = document.getElementById(config.fgdCheckboxId);
+            fgdCheckbox.checked = false
+            makeGUIElementsHelper.setAnnotationColor(config.COLOR_RGB_BGD);
+            config.editBaseContourViaScribbleButton.click();
+        }
+
+        // capture escape key
+        if (event.key === 'Escape'){
+            console.log('   -- [keydown] Escape key pressed');
+            // Set all buttons to false
+            [config.windowLevelButton , config.contourSegmentationToolButton, config.sculptorToolButton, config.editBaseContourViaScribbleButton].forEach((buttonHTML, buttonId) => {
+                
+                // Step 1 - Change HTML
+                buttonHTML.checked = false;
+                makeGUIElementsHelper.setButtonBoundaryColor(buttonHTML, false);
+
+                // Step 2 - Disable cornerstone3D tools
+                const toolGroupContours         = cornerstone3DTools.ToolGroupManager.getToolGroup(config.toolGroupIdContours);
+                // const toolGroupScribble         = cornerstone3DTools.ToolGroupManager.getToolGroup(toolGroupIdScribble);
+                const windowLevelTool           = cornerstone3DTools.WindowLevelTool;
+                const planarFreeHandContourTool = cornerstone3DTools.PlanarFreehandContourSegmentationTool;
+                const sculptorTool              = cornerstone3DTools.SculptorTool;
+                const planarFreehandROITool     = cornerstone3DTools.PlanarFreehandROITool;
+                toolGroupContours.setToolPassive(windowLevelTool.toolName);          
+                if (config.MODALITY_CONTOURS == config.MODALITY_SEG){
+                    toolGroupContours.setToolPassive(config.strBrushCircle);
+                    toolGroupContours.setToolPassive(config.strEraserCircle);
+                } else if (config.MODALITY_CONTOURS == config.MODALITY_RTSTRUCT){
+                    toolGroupContours.setToolPassive(planarFreeHandContourTool.toolName);
+                    toolGroupContours.setToolPassive(sculptorTool.toolName);
+                }
+                toolGroupContours.setToolPassive(planarFreehandROITool.toolName);  
+
+                // Remove any scribbles
+                const scribbleAnnotations = annotationHelpers.getAllPlanFreeHandRoiAnnotations()
+                if (scribbleAnnotations.length > 0){
+                    const scribbleAnnotationUID = scribbleAnnotations[scribbleAnnotations.length - 1].annotationUID;
+                    annotationHelpers.handleStuffAfterProcessEndpoint(scribbleAnnotationUID);
+                }
+            });
         }
     });
 

@@ -146,7 +146,7 @@ if 1:
     # Settings - Python server
     HOST       = '0.0.0.0' # ['localhost', 0.0.0.0]
     PORT       = 55000
-    MODE_DEBUG = True
+    MODE_DEBUG = False
 
     # Settings - Model Input
     SHAPE_TENSOR  = (1, 5, 144, 144, 144)
@@ -279,7 +279,8 @@ def getTorchDevice(verbose=False):
         print (' - Unknown platform: {}'.format(platform.system()))
 
     # Step 2 - Debug
-    device = torch.device('cpu')
+    if 0:
+        device = torch.device('cpu')
 
     # Step 99 - Final
     if verbose:
@@ -1281,6 +1282,16 @@ def getDistanceMap(scribbleMapData, preparedDataTorch, scribbleType, points3D, d
         viewType, sliceId = getViewTypeAndSliceId(points3D) # [TODO: Do I need this?]
 
         # Step 2 - Update scribbleMapData
+        # Step 2.1 - Remove points that are outside the range of scribbleMapData.shape (scribbleMapData.shape = [H,W,D] set in getCTArray())
+        originalLen = points3D.shape[0]
+        points3D = points3D[(points3D[:,0] >= 0) & (points3D[:,0] < scribbleMapData.shape[1])]
+        points3D = points3D[(points3D[:,1] >= 0) & (points3D[:,1] < scribbleMapData.shape[0])]
+        points3D = points3D[(points3D[:,2] >= 0) & (points3D[:,2] < scribbleMapData.shape[2])]
+        finalLen = points3D.shape[0]
+        if originalLen != finalLen:
+            print (' - [getDistanceMap()] Removed {} points that were outside the range of scribbleMapData.shape'.format(originalLen-finalLen))
+        
+        # Step 2.2 - Update scribbleMapData
         if scribbleType == KEY_SCRIBBLE_FGD:
             scribbleMapData[points3D[:,1], points3D[:,0], points3D[:,2]] = VALUE_INT_FGD
         elif scribbleType == KEY_SCRIBBLE_BGD:
@@ -1308,7 +1319,7 @@ def getDistanceMap(scribbleMapData, preparedDataTorch, scribbleType, points3D, d
         traceback.print_exc()
         if MODE_DEBUG: pdb.set_trace()
     
-    return scribbleMapData, preparedDataTorch, viewType, sliceId
+    return points3D, scribbleMapData, preparedDataTorch, viewType, sliceId
 
 #################################################################
 #                        PLOTTING UTILS
@@ -1678,7 +1689,7 @@ async def lifespan(app: fastapi.FastAPI):
     # 2024-10-02
     elif 1:
         expName   = 'UNetv1__DICE-LR1e3__W5-B32-MoreData__Cls1-Pt-Scr__Trial1'
-        epoch     = 80
+        epoch     = 90 # [80,90(best),190]
         modelType = KEY_UNET_V1 # type == <class 'monai.networks.nets.unet.UNet'>
         # DEVICE    = torch.device('cpu')
         loadOnnx  = True # True, False
@@ -1902,7 +1913,7 @@ async def process(payload: PayloadProcess, request: starlette.requests.Request):
             # Step 3.2 - Get distance map
             tDistMapStart = time.time()
             # preparedDataTorch, viewType, sliceId = getDistanceMapOld(preparedDataTorch, scribbleType, points3D, DISTMAP_Z, DISTMAP_SIGMA)
-            scribbleMapData, preparedDataTorch, viewType, sliceId = getDistanceMap(scribbleMapData, preparedDataTorch, scribbleType, points3D, DISTMAP_Z, DISTMAP_SIGMA)
+            newPoints3D, scribbleMapData, preparedDataTorch, viewType, sliceId = getDistanceMap(scribbleMapData, preparedDataTorch, scribbleType, points3D, DISTMAP_Z, DISTMAP_SIGMA)
             if viewType is None or sliceId is None:
                 raise fastapi.HTTPException(status_code=500, detail="Error in /process => getDistanceMap() failed")
             print (' - [process()] torch.sum(preparedDataTorch, dim=(2,3,4)): ', torch.sum(preparedDataTorch, dim=(2,3,4)))
@@ -1928,7 +1939,7 @@ async def process(payload: PayloadProcess, request: starlette.requests.Request):
                 try: 
                     segArrayGT     = patientData[KEY_SEG_ARRAY_GT]
                     preparedDataNp = copy.deepcopy(to_numpy(preparedDataTorch))
-                    thread = threading.Thread(target=run_executor_in_thread, args=(plot, scribbleMapData, preparedDataNp, segArrayGT, patientName, patientData[KEY_SCRIBBLE_COUNTER], points3D, scribbleType, segArrayRefinedNumpy, patientData[KEY_PATH_SAVE]))
+                    thread = threading.Thread(target=run_executor_in_thread, args=(plot, scribbleMapData, preparedDataNp, segArrayGT, patientName, patientData[KEY_SCRIBBLE_COUNTER], newPoints3D, scribbleType, segArrayRefinedNumpy, patientData[KEY_PATH_SAVE]))
                     thread.daemon = True  # This makes the thread a daemon thread
                     thread.start()
                 except:
