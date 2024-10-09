@@ -422,7 +422,7 @@ async function getDataURLs(verbose = false){
 
 // ************************************************** /process
 
-async function makeRequestToProcess(points3D, scribbleAnnotationUID, verbose=false){
+async function makeRequestToProcess(points3D, viewType, scribbleAnnotationUID=[], verbose=false){
 
     let requestStatus = false;
     let responseData  = {}
@@ -441,6 +441,7 @@ async function makeRequestToProcess(points3D, scribbleAnnotationUID, verbose=fal
             [config.KEY_DATA]: {
                 [config.KEY_POINTS_3D]: points3D
                 , [config.KEY_SCRIB_TYPE]:scribbleType
+                , [config.KEY_VIEW_TYPE]: viewType
                 , [config.KEY_CASE_NAME]: config.orthanDataURLS[config.patientIdx]['caseName'],}
             , [config.KEY_IDENTIFIER]: config.instanceName
             , [config.KEY_USER]: config.userCredFirstName + '-' + config.userCredLastName + '-' + config.userCredRole
@@ -545,18 +546,22 @@ function setServerStatus(serverMessageId, serverMessageStr){
         serverStatusCircle.style.backgroundColor = 'red';
         serverStatusCircle.style.animation = 'blinker 1s linear infinite';
         serverStatusTextDiv.innerHTML = 'Server Status: <br> - Red: Server is not running <br> - Green: Server is running';
+        config.setServerStatus(config.KEY_SERVER_STATUS_NOTLOADED)
     } else if (serverMessageId == 1){
         serverStatusCircle.style.backgroundColor = 'red';
         serverStatusCircle.style.animation = 'none';
         serverStatusTextDiv.innerHTML = serverMessageStr;
+        config.setServerStatus(config.KEY_SERVER_STATUS_NOTLOADED)
     }else if (serverMessageId == 2){
         serverStatusCircle.style.backgroundColor = 'green';
         serverStatusCircle.style.animation = 'none';
         serverStatusTextDiv.innerHTML = serverMessageStr;
-    } else if (serverMessageId == 3){
+        config.setServerStatus(config.KEY_SERVER_STATUS_LOADED)
+    } else if (serverMessageId == 3){ // never used?
         serverStatusCircle.style.backgroundColor = 'red';
         serverStatusCircle.style.animation = 'blinker 1s linear infinite';
         serverStatusTextDiv.innerHTML = serverMessageStr;
+        config.setServerStatus(config.KEY_SERVER_STATUS_NOTLOADED)
     }
 
 }

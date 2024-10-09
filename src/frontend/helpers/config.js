@@ -3,6 +3,8 @@ import * as dockerNames from 'docker-names'
 export const instanceName = dockerNames.getRandomName()
 console.log(' ------------ instanceName: ', instanceName)
 
+// ************************************************** HTML ids (specific to cornerstone3D)
+export const HTML_CLASS_CORNERSTONE_CANVAS = 'cornerstone-canvas'
 
 // ************************************************** HTML ids
 
@@ -25,10 +27,19 @@ export const viewPortIdsAll          = viewportIds.concat(viewPortPTIds);
 
 export const otherButtonsDivId       = 'otherButtonsDiv';
 
+export const KEY_AXIAL    = 'Axial'
+export const KEY_CORONAL  = 'Coronal'
+export const KEY_SAGITTAL = 'Sagittal'
+
 export let viewportGridDiv, viewportCTGridDiv, viewportPTGridDiv;
-export let viewPortDivsAll, axialDiv, sagittalDiv, coronalDiv, axialDivPT, sagittalDivPT, coronalDivPT;
+export let viewPortDivsCT, viewPortDivsPT, viewPortDivsAll, axialDiv, sagittalDiv, coronalDiv, axialDivPT, sagittalDivPT, coronalDivPT;
 export let serverStatusDiv, serverStatusCircle, serverStatusTextDiv;
 export let axialSliceDiv, sagittalSliceDiv, coronalSliceDiv, axialSliceDivPT, sagittalSliceDivPT, coronalSliceDivPT;
+
+export let KEY_SERVER_STATUS_LOADED    = 'loaded';
+export let KEY_SERVER_STATUS_NOTLOADED = 'notloaded';
+export let serverStatus=KEY_SERVER_STATUS_NOTLOADED;
+export function setServerStatus(status) { serverStatus = status; }
 
 export let mouseHoverDiv, canvasPosHTML, ctValueHTML, ptValueHTML;
 
@@ -42,6 +53,8 @@ export function setAxialDivPT(div) { axialDivPT = div; }
 export function setSagittalDivPT(div) { sagittalDivPT = div; }
 export function setCoronalDivPT(div) { coronalDivPT = div; }
 export function setViewPortDivsAll(divs) { viewPortDivsAll = divs; }
+export function setViewPortDivsCT(divs) { viewPortDivsCT = divs; }
+export function setViewPortDivsPT(divs) { viewPortDivsPT = divs; }
 
 export function getServerStatusDiv() { return serverStatusDiv; }
 export function getServerStatusCircle() { return serverStatusCircle; }
@@ -156,9 +169,22 @@ export const SEG_TYPE_LABELMAP = 'LABELMAP'
 export const SEG_TYPE_CONTOUR  = 'CONTOUR'
 
 // Shortcuts
-export const SHORTCUT_KEY_C = 'c';
+export const SHORTCUT_KEY_C     = 'c';
+export const SHORTCUT_KEY_F     = 'f';
+export const SHORTCUT_KEY_B     = 'b';
+export const SHORTCUT_KEY_ESC   = 'Escape';
+export const SHORTCUT_KEY_R     = 'r';
+export const SHORTCUT_KEY_PLUS  = '+';
+export const SHORTCUT_KEY_MINUS = '-';
 export const SHORTCUT_KEY_ARROW_LEFT = 'ArrowLeft';
 export const SHORTCUT_KEY_ARROW_RIGHT = 'ArrowRight';
+
+// MOUSE EVENTS
+export const MOUSE_EVENT_WHEEL = 'wheel';
+export const MOUSE_EVENT_MOUSEUP = 'mouseup';
+export const MOUSE_EVENT_MOUSEMOVE = 'mousemove';
+export const MOUSE_EVENT_CLICK = 'click';
+
 
 // ************************************************** Network constants
 
@@ -172,6 +198,7 @@ export const KEY_USER          = 'user'
 export const KEY_POINTS_3D     = 'points3D'
 export const KEY_SCRIB_TYPE    = 'scribbleType'
 export const KEY_CASE_NAME     = 'caseName'
+export const KEY_VIEW_TYPE     = 'viewType'
 export const METHOD_POST       = 'POST'
 export const METHOD_GET        = 'GET'
 export const HEADERS_JSON      = {'Content-Type': 'application/json',}

@@ -19,7 +19,10 @@ async function getScribbleType() {
 }
 
 async function handleStuffAfterProcessEndpoint(scribbleAnnotationUID){
-    cornerstone3DTools.annotation.state.removeAnnotation(scribbleAnnotationUID);
+
+    if (scribbleAnnotationUID.length > 0)
+        cornerstone3DTools.annotation.state.removeAnnotation(scribbleAnnotationUID);
+    
     cornerstoneHelpers.renderNow();
     await updateGUIElementsHelper.unshowLoaderAnimation();
 }

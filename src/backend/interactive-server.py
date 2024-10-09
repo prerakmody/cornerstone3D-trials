@@ -89,11 +89,11 @@ if 1:
     VALUE_INT_FGD = 1
     VALUE_INT_BGD = 2
 
-
+    KEY_VIEW_TYPE     = 'viewType'
     KEY_SCRIBBLE_TYPE = 'scribbleType'
-    KEY_SCRIBBLE_FGD = 'fgd'
-    KEY_SCRIBBLE_BGD = 'bgd'
-    KEY_POINTS_3D    = 'points3D'
+    KEY_SCRIBBLE_FGD  = 'fgd'
+    KEY_SCRIBBLE_BGD  = 'bgd'
+    KEY_POINTS_3D     = 'points3D'
 
     # Keys - For DICOM server
     KEY_CASE_NAME          = 'caseName'
@@ -123,7 +123,7 @@ if 1:
     COLORSTR_GREEN = 'green'
     COLORSTR_PINK  = 'pink'
     COLORSTR_GRAY  = 'gray'
-    SAVE_DPI = 200
+    SAVE_DPI = 200 # 200=3MB, 150=?]
 
     # Keys - For platforms
     KEY_PLATFORM_LINUX   = 'Linux'
@@ -400,7 +400,10 @@ class PayloadPrepare(pydantic.BaseModel):
 
 class ProcessData(pydantic.BaseModel):
     points3D: typing.List[typing.Tuple[int, int, int]] = pydantic.Field(...)
+    viewType: str = pydantic.Field(...)
     scribbleType: str = pydantic.Field(...)
+    # viewType: typing.Literal[KEY_AXIAL, KEY_SAGITTAL, KEY_CORONAL] = pydantic.Field(...)  # Example allowed values
+    # scribbleType: typing.Literal['type1', 'type2'] = pydantic.Field(...)  # Example allowed values
     caseName: str = pydantic.Field(...)
 
 # Incoming packet
@@ -714,6 +717,7 @@ def getCTArray(client, patientData):
             return ctArray, patientData
         
         ctArray = np.zeros((len(ctInstances), ctInstances[0].Rows, ctInstances[0].Columns), dtype=np.int16)
+        # ctArray = np.zeros((ctInstances[0].Rows, ctInstances[0].Columns, len(ctInstances)), dtype=np.int16) # [NOTE: It should be this!]
         for instance in ctInstances:
             ctArray[:, :, int(instance.InstanceNumber)-1] = instance.pixel_array
         
@@ -1126,32 +1130,30 @@ def getPatientUUIDs(patientID):
 #                        DIST MAP UTILS
 #################################################################
 
-def getViewTypeAndSliceId(points3D):
+def getViewTypeAndSliceId(points3D, viewType):
 
-    viewType = None
     sliceId = None
     try:
         
-        for viewIdx in [0,1,2]:
-            points3DAtIdx = points3D[:,viewIdx]
-            if np.unique(points3DAtIdx).shape[0] == 1:
-                if viewIdx == 0:
-                    viewType = KEY_SAGITTAL
-                elif viewIdx == 1:
-                    viewType = KEY_CORONAL
-                elif viewIdx == 2:
-                    viewType = KEY_AXIAL
-                sliceId = points3DAtIdx[0]
-                break
-
-            # if points3D[0][viewIdx] == points3D[1][viewIdx] == points3D[-1][viewIdx] == points3D[-2][viewIdx]:
-            #     if viewIdx == 0: 
-            #         viewType = KEY_SAGITTAL
-            #     elif viewIdx == 1: 
-            #         viewType = KEY_CORONAL
-            #     elif viewIdx == 2: 
-            #         viewType = KEY_AXIAL
-            #     sliceId = points3D[0][viewIdx]
+        if viewType is None:
+            for viewIdx in [0,1,2]:
+                points3DAtIdx = points3D[:,viewIdx]
+                if np.unique(points3DAtIdx).shape[0] == 1:
+                    if viewIdx == 0:
+                        viewType = KEY_SAGITTAL
+                    elif viewIdx == 1:
+                        viewType = KEY_CORONAL
+                    elif viewIdx == 2:
+                        viewType = KEY_AXIAL
+                    sliceId = points3DAtIdx[0]
+                    break
+        else:
+            if viewType == KEY_AXIAL:
+                sliceId = points3D[0][2]
+            elif viewType == KEY_SAGITTAL:
+                sliceId = points3D[0][0]
+            elif viewType == KEY_CORONAL:
+                sliceId = points3D[0][1]
 
     except:
         traceback.print_exc()
@@ -1194,14 +1196,17 @@ def getScribbleColorMap(cmap, opacityBoolForScribblePoints):
     
     return cmapNew, normNew
 
-def getGaussianDistanceMapOld(ctArrayShape, points3D, distZ, sigma):
+def getGaussianDistanceMapOld(ctArrayShape, points3D, distZ, sigma, viewType=None):
 
     gaussianDistanceMap = None
-    viewType, sliceId = None, None
+    sliceId = None
     try:
         
         # Step 0 - Identify viewType and sliceID
-        viewType, sliceId = getViewTypeAndSliceId(points3D)
+        if viewType is None:
+            viewType, sliceId = getViewTypeAndSliceId(points3D, viewType)
+        else:
+            _, sliceId = getViewTypeAndSliceId(points3D, viewType)
         if viewType is None or sliceId is None:
             return gaussianDistanceMap
 
@@ -1227,30 +1232,14 @@ def getGaussianDistanceMapOld(ctArrayShape, points3D, distZ, sigma):
     
     return gaussianDistanceMap, viewType, sliceId
 
-def getDistanceMapOld(preparedDataTorch, scribbleType, points3D, distMapZ, distMapSigma):
-
-    viewType, sliceId = None, None
-
-    try:
-        
-        ctArrayShape   = tuple(preparedDataTorch[0,0].shape)
-        fgdMap, bgdMap = np.zeros(ctArrayShape), np.zeros(ctArrayShape)
-        if scribbleType == KEY_SCRIBBLE_FGD:
-            fgdMap, viewType, sliceId = getGaussianDistanceMap(ctArrayShape, points3D, distZ=distMapZ, sigma=distMapSigma)
-            preparedDataTorch[0,3] = torch.tensor(fgdMap, dtype=torch.float32, device=DEVICE)
-        elif scribbleType == KEY_SCRIBBLE_BGD:
-            bgdMap, viewType, sliceId = getGaussianDistanceMap(ctArrayShape, points3D, distZ=distMapZ, sigma=distMapSigma)
-            preparedDataTorch[0,4] = torch.tensor(bgdMap, dtype=torch.float32, device=DEVICE)
-        else:
-            print (' - [process()] Unknown scribbleType: {}'.format(scribbleType))
-
-    except:
-        traceback.print_exc()
-        if MODE_DEBUG: pdb.set_trace()
-    
-    return preparedDataTorch, viewType, sliceId
-
 def getGaussianDistanceMap(scribbleMapData, distZ, sigma):
+    """
+    Params
+    ------
+    scribbleMapData: np.ndarray, [H,W,D], containing 1's and 0's
+    distZ: float
+    sigma: float
+    """
 
     # Step 0 - Init
     gaussianDistanceMap = None
@@ -1265,21 +1254,35 @@ def getGaussianDistanceMap(scribbleMapData, distZ, sigma):
         # Step 2 - Get gaussian distance map
         gaussianDistanceMap = np.exp(-(1-euclideanDistanceMap)**2 / (2 * sigma**2))
 
+        # Step 3 - Check
+        if np.any(scribbleMapData == 1):
+            if not np.any(gaussianDistanceMap == 1):
+                print (' - [getGaussianDistanceMap()] Found 1 in scribbleMapData, but no 1 in gaussianDistanceMap')
+
     except:
         traceback.print_exc()
         if MODE_DEBUG: pdb.set_trace()
     
     return gaussianDistanceMap
 
-def getDistanceMap(scribbleMapData, preparedDataTorch, scribbleType, points3D, distMapZ, distMapSigma):
-
+def getDistanceMap(scribbleMapData, preparedDataTorch, scribbleType, points3D, distMapZ, distMapSigma, viewType):
+    """
+    Params
+    ------
+    scribbleMapData: np.ndarray, [H,W,D], containing either VALUE_INT_FGD or VALUE_INT_BGD
+    preparedDataTorch: torch.tensor, [1,5,H,W,D]
+    scribbleType: str
+    points3D: np.ndarray, [N,3]: its emptiness has already been checked in prepare()
+    distMapZ: float
+    distMapSigma: float
+    """
     # Step 0 - Init
-    viewType, sliceId = None, None # [NOTE: only for viz purposes]
+    sliceId = None # [NOTE: only for viz purposes]
 
     try:
         
         # Step 1 - Identify viewType and sliceID
-        viewType, sliceId = getViewTypeAndSliceId(points3D) # [TODO: Do I need this?]
+        viewType, sliceId = getViewTypeAndSliceId(points3D, viewType=viewType) # [TODO: Do I need this?]
 
         # Step 2 - Update scribbleMapData
         # Step 2.1 - Remove points that are outside the range of scribbleMapData.shape (scribbleMapData.shape = [H,W,D] set in getCTArray())
@@ -1292,10 +1295,11 @@ def getDistanceMap(scribbleMapData, preparedDataTorch, scribbleType, points3D, d
             print (' - [getDistanceMap()] Removed {} points that were outside the range of scribbleMapData.shape'.format(originalLen-finalLen))
         
         # Step 2.2 - Update scribbleMapData
-        if scribbleType == KEY_SCRIBBLE_FGD:
-            scribbleMapData[points3D[:,1], points3D[:,0], points3D[:,2]] = VALUE_INT_FGD
-        elif scribbleType == KEY_SCRIBBLE_BGD:
-            scribbleMapData[points3D[:,1], points3D[:,0], points3D[:,2]] = VALUE_INT_BGD
+        if finalLen > 0:
+            if scribbleType == KEY_SCRIBBLE_FGD:
+                scribbleMapData[points3D[:,1], points3D[:,0], points3D[:,2]] = VALUE_INT_FGD
+            elif scribbleType == KEY_SCRIBBLE_BGD:
+                scribbleMapData[points3D[:,1], points3D[:,0], points3D[:,2]] = VALUE_INT_BGD
 
         # Step 2 - Get gaussian distance maps
         ctArrayShape   = tuple(preparedDataTorch[0,0].shape)
@@ -1325,14 +1329,21 @@ def getDistanceMap(scribbleMapData, preparedDataTorch, scribbleType, points3D, d
 #                        PLOTTING UTILS
 #################################################################
 
-def plotData(scribbleMapData, ctArray, ptArray, gtArray, predArray, refineArray=None, sliceId=None, caseName='', counter=0, points3D=None, scribbleType=None, extraSlices=7, saveFolderPath=False):
+def plotData(scribbleMapData, ctArray, ptArray, gtArray, predArray, refineArray, sliceId, caseName, counter, points3D, viewType, scribbleType, extraSlices=7, saveFolderPath=False):
     """
     Params
     ------
+    scribbleMapData: np.ndarray, [H,W,D], containing either VALUE_INT_FGD or VALUE_INT_BGD
     ctArray, ptArray, gtArray, predArray, refineArray: np.ndarray, [H,W,depth]
+    sliceId: int
+    caseName: str
+    counter: int
+    points3D: np.ndarray, [N,3]
+    viewType: str
+    scribbleType: str
     """
 
-    points3DDistanceMap, viewType, sliceId = None, None, None
+    points3DDistanceMap, sliceId = None, None
     pngName = None
 
     try:
@@ -1353,10 +1364,10 @@ def plotData(scribbleMapData, ctArray, ptArray, gtArray, predArray, refineArray=
 
         # Step 0 - Identify viewType and sliceID
         points3DDistanceMap = None
-        viewType = None
+        # viewType = None
         if points3D is not None:
             ctArrayShape = tuple(ctArray.shape)
-            points3DDistanceMap, viewType, sliceId = getGaussianDistanceMapOld(ctArrayShape, points3D, distZ=DISTMAP_Z, sigma=DISTMAP_SIGMA)
+            points3DDistanceMap, _, sliceId = getGaussianDistanceMapOld(ctArrayShape, points3D, distZ=DISTMAP_Z, sigma=DISTMAP_SIGMA, viewType=viewType)
         
         scribbleMapDataFgd = copy.deepcopy(scribbleMapData)
         scribbleMapDataFgd[scribbleMapDataFgd != VALUE_INT_FGD] = 0
@@ -1519,6 +1530,8 @@ def plotData(scribbleMapData, ctArray, ptArray, gtArray, predArray, refineArray=
                         # axarr[2,columnId].imshow(rotCoronal(points3DDistanceMap[sliceNeighborId, :, :]), cmap=cmapScribbleDist, norm=normScribbleDist)
                         if scribbleType == KEY_SCRIBBLE_FGD  : axarr[2,columnId].imshow(rotCoronal(points3DDistanceMapFgd[sliceNeighborId, :, :]), cmap=cmapScribbleDist, norm=normScribbleDist)
                         elif scribbleType == KEY_SCRIBBLE_BGD: axarr[2,columnId].imshow(rotCoronal(points3DDistanceMapBgd[sliceNeighborId, :, :]), cmap=cmapScribbleDist, norm=normScribbleDist)
+                else:
+                    print (' - [plotData()] Unknown viewType: {}'.format(viewType))
         
         supTitleStr = 'CaseName: {} | SliceIdx: {} | SlideID: (per GUI): {}'.format(caseName, sliceId, sliceId+1)
         if points3D is not None:
@@ -1543,9 +1556,12 @@ def plotData(scribbleMapData, ctArray, ptArray, gtArray, predArray, refineArray=
     return points3DDistanceMap, viewType, sliceId, pngName
 
 def plot2DInteractionAsRGB(points3DDistanceMap, viewType, sliceId, pngName, counter, ctArray, segArrayGT, segArrayPred, refineArray=None, saveFolderPath=None):
-    
+    """
+    In this function, we plot the interaction between the prediction, GT, and scribble in RGB format
+    Here R=Pred, G=GT, B=Interaction
+    """
     try:
-        
+        print (' - [plot2DInteractionAsRGB()] viewType: {} | sliceId: {}'.format(viewType, sliceId))
         if points3DDistanceMap is not None and viewType is not None and sliceId is not None and pngName is not None:
             
             # Step 0 - Init
@@ -1556,7 +1572,7 @@ def plot2DInteractionAsRGB(points3DDistanceMap, viewType, sliceId, pngName, coun
             # Step 1 - Create image placeholder
             image = np.zeros((ctArray.shape[0], ctArray.shape[1], 3))
 
-            # Step 2 - Chose prediuction map on basis of counter
+            # Step 2 - Chose prediction map on basis of counter
             if counter == 1:
                 segArrayPredThis = segArrayPred
             else:
@@ -1589,10 +1605,11 @@ def plot2DInteractionAsRGB(points3DDistanceMap, viewType, sliceId, pngName, coun
         traceback.print_exc()
         if MODE_DEBUG: pdb.set_trace()
 
-def plot(scribbleMapData, preparedDataTorch, segArrayGT, caseName, counter, points3D, scribbleType, refineArray=None, saveFolderPath=None):
+def plot(scribbleMapData, preparedDataTorch, segArrayGT, caseName, counter, points3D, viewType, scribbleType, refineArray=None, saveFolderPath=None):
     """
     Params
     ------
+    scribbleMapData: np.ndarray, [H,W,D], containing either VALUE_INT_FGD or VALUE_INT_BGD
     preparedDataTorch: torch.Tensor, shape: (batch_size, 3, height, width)
 
     """
@@ -1603,7 +1620,7 @@ def plot(scribbleMapData, preparedDataTorch, segArrayGT, caseName, counter, poin
 
         # PLotting data    
         if 1:
-            points3DDistanceMap, viewType, sliceId, pngName = plotData(scribbleMapData, ctArray, ptArray, segArrayGT, segArrayPred, refineArray, None, caseName, counter, points3D, scribbleType, saveFolderPath=saveFolderPath)
+            points3DDistanceMap, _, sliceId, pngName = plotData(scribbleMapData, ctArray, ptArray, segArrayGT, segArrayPred, refineArray, None, caseName, counter, points3D, viewType, scribbleType, saveFolderPath=saveFolderPath)
 
         # Saving interactions in RGB format (R=Pred, G=GT, B=Interaction)
         if 1:
@@ -1874,7 +1891,6 @@ async def process(payload: PayloadProcess, request: starlette.requests.Request):
         userAgent, referer = getRequestInfo(request)
         clientUserName     = payload.user
         clientIdentifier   = payload.identifier + '__' + clientUserName
-        # clientIdentifier   = payload.identifier # NOTE: Old method ()
         processPayloadData = payload.data.dict()
         patientName        = processPayloadData[KEY_CASE_NAME]
         returnMessagePrefix = "[clientIdentifier={}, patientName={}, loadOnnx={}]".format(clientIdentifier, patientName, LOAD_ONNX)
@@ -1897,6 +1913,14 @@ async def process(payload: PayloadProcess, request: starlette.requests.Request):
         # Step 3 - Process scribble data
         if dataAlreadyPresent:
             
+            # Step 3.0 - Extract data
+            points3D     = processPayloadData[KEY_POINTS_3D] # [(h/w, h/w, d), (), ..., ()] [NOTE: cornerstone3D sends array-indexed data, so now +1/-1 needed]
+            if len(points3D) == 0:
+                raise fastapi.HTTPException(status_code=500, detail="{} No scribble points selected. Please select scribble points.".format(returnMessagePrefix))
+            points3D     = np.array([list(x) for x in points3D])
+            viewType     = processPayloadData[KEY_VIEW_TYPE]
+            scribbleType = processPayloadData[KEY_SCRIBBLE_TYPE]
+
             # Step 3.0 - Init
             patientData       = SESSIONSGLOBAL[clientIdentifier][patientName]
             preparedData      = patientData[KEY_DATA]
@@ -1905,18 +1929,12 @@ async def process(payload: PayloadProcess, request: starlette.requests.Request):
             preparedDataTorch[0,4] = torch.zeros_like(preparedDataTorch[0,1])
             scribbleMapData   = patientData[KEY_SCRIBBLE_MAP]
             
-            # Step 3.1 - Extract data
-            points3D     = processPayloadData[KEY_POINTS_3D] # [(h/w, h/w, d), (), ..., ()] [NOTE: cornerstone3D sends array-indexed data, so now +1/-1 needed]
-            points3D     = np.array([list(x) for x in points3D])
-            scribbleType = processPayloadData[KEY_SCRIBBLE_TYPE]
-
             # Step 3.2 - Get distance map
             tDistMapStart = time.time()
-            # preparedDataTorch, viewType, sliceId = getDistanceMapOld(preparedDataTorch, scribbleType, points3D, DISTMAP_Z, DISTMAP_SIGMA)
-            newPoints3D, scribbleMapData, preparedDataTorch, viewType, sliceId = getDistanceMap(scribbleMapData, preparedDataTorch, scribbleType, points3D, DISTMAP_Z, DISTMAP_SIGMA)
+            newPoints3D, scribbleMapData, preparedDataTorch, viewType, sliceId = getDistanceMap(scribbleMapData, preparedDataTorch, scribbleType, points3D, DISTMAP_Z, DISTMAP_SIGMA, viewType)
             if viewType is None or sliceId is None:
                 raise fastapi.HTTPException(status_code=500, detail="Error in /process => getDistanceMap() failed")
-            print (' - [process()] torch.sum(preparedDataTorch, dim=(2,3,4)): ', torch.sum(preparedDataTorch, dim=(2,3,4)))
+            # print (' - [process()] torch.sum(preparedDataTorch, dim=(2,3,4)): ', torch.sum(preparedDataTorch, dim=(2,3,4)))
             tDistMap = time.time() - tDistMapStart
 
             # Step 4.1 - Get refined segmentation
@@ -1939,7 +1957,7 @@ async def process(payload: PayloadProcess, request: starlette.requests.Request):
                 try: 
                     segArrayGT     = patientData[KEY_SEG_ARRAY_GT]
                     preparedDataNp = copy.deepcopy(to_numpy(preparedDataTorch))
-                    thread = threading.Thread(target=run_executor_in_thread, args=(plot, scribbleMapData, preparedDataNp, segArrayGT, patientName, patientData[KEY_SCRIBBLE_COUNTER], newPoints3D, scribbleType, segArrayRefinedNumpy, patientData[KEY_PATH_SAVE]))
+                    thread = threading.Thread(target=run_executor_in_thread, args=(plot, scribbleMapData, preparedDataNp, segArrayGT, patientName, patientData[KEY_SCRIBBLE_COUNTER], newPoints3D, viewType, scribbleType, segArrayRefinedNumpy, patientData[KEY_PATH_SAVE]))
                     thread.daemon = True  # This makes the thread a daemon thread
                     thread.start()
                 except:

@@ -330,7 +330,7 @@ async function otherHTMLElements(){
     otherButtonsDiv.appendChild(resetViewButton);
     otherButtonsDiv.appendChild(showPETButton);
     otherButtonsDiv.appendChild(histContainer);
-    // otherButtonsDiv.appendChild(mouseHoverDiv);
+    // otherButtonsDiv.appendChild(B);
     interactionButtonsDiv.appendChild(otherButtonsDiv);
 
     return {caseSelectionHTML, resetViewButton, showPETButton};
@@ -534,7 +534,7 @@ async function getToolsAndToolGroup() {
     // toolGroupContours.setToolConfiguration(referenceLinesTool.toolName, {sourceViewportId: axialID,});
     config.viewPortDivsAll.forEach((viewportDiv, index) => {
         viewportDiv.addEventListener('mouseenter', function() {
-            console.log(' - [cornerstoneInit()] Mouse entered viewportIds[index]: ', config.viewPortIdsAll[index]);
+            // console.log(' - [cornerstoneInit()] Mouse entered viewportIds[index]: ', config.viewPortIdsAll[index]);
             toolGroupContours.setToolConfiguration(referenceLinesTool.toolName, {sourceViewportId: config.viewPortIdsAll[index]});
         });
     });
@@ -557,24 +557,8 @@ async function getToolsAndToolGroup() {
     // Step 6 - Add events
     // Listen for keydown event
     window.addEventListener('keydown', async function(event) {
-        // For brush tool radius        
-        if (config.MODALITY_CONTOURS == config.MODALITY_SEG){
-            const toolGroupContours = cornerstone3DTools.ToolGroupManager.getToolGroup(toolGroupIdContours);
-            if (toolGroupContours.toolOptions[config.strBrushCircle].mode === MODE_ACTIVE || toolGroupContours.toolOptions[config.strEraserCircle].mode === MODE_ACTIVE){
-                const segUtils       = cornerstone3DTools.utilities.segmentation;
-                let initialBrushSize = segUtils.getBrushSizeForToolGroup(toolGroupIdContours);
-                if (event.key === '+')
-                    segUtils.setBrushSizeForToolGroup(toolGroupIdContours, initialBrushSize + 1);
-                else if (event.key === '-'){
-                    if (initialBrushSize > 1)
-                        segUtils.setBrushSizeForToolGroup(toolGroupIdContours, initialBrushSize - 1);
-                }
-                let newBrushSize = segUtils.getBrushSizeForToolGroup(toolGroupIdContours);
-                updateGUIElementsHelper.showToast(`Brush size: ${newBrushSize}`);
-            }
-        }
 
-        else if (event.key == 'p'){
+        if (event.key == 'p'){
             await showPET();
             await setSliceIdxForViewPortFromGlobalSliceIdxVars(false);
         }
@@ -853,8 +837,9 @@ if (1){
     // config.setPatientIdx(13); // CHMR005 (wont follow instruction)
     // config.setPatientIdx(13); // CHMR016
     // config.setPatientIdx(16);  // CHMR023 (problematic. No more)
+    config.setPatientIdx(19); // CHMR028 (many edits to make!)
+    // config.setPatientIdx(21); // CHMR030 (many edits to make!)
     // config.setPatientIdx(22); // CHMR034 (no major issues)
-    config.setPatientIdx(21); // CHMR030 (many edits to make!)
     // config.setPatientIdx(23); // CHMR040 (1 edit to make in coronal)
     config.setModalityContours(config.MODALITY_SEG);
 }

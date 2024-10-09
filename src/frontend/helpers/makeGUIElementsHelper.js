@@ -444,6 +444,8 @@ async function createViewPortsHTML() {
     config.setCTValueHTML(ctValueHTML);
     config.setPTValueHTML(ptValueHTML);
 
+    config.setViewPortDivsCT([axialDiv, sagittalDiv, coronalDiv]);
+    config.setViewPortDivsPT([axialDivPT, sagittalDivPT, coronalDivPT]);
     config.setViewPortDivsAll([axialDiv, sagittalDiv, coronalDiv, axialDivPT, sagittalDivPT, coronalDivPT]);
     setThumbnailContainerHeightAndWidth();
 
@@ -659,6 +661,58 @@ async function createContouringHTML() {
 
 }
 
+function getCheckedBoxIdForFgdBgdCheckbox(){
+    const fgdCheckbox = document.getElementById(config.fgdCheckboxId);
+    const bgdCheckbox = document.getElementById(config.bgdCheckboxId);
+    if (fgdCheckbox.checked) return config.fgdCheckboxId;
+    if (bgdCheckbox.checked) return config.bgdCheckboxId;
+}
+
+function eventTriggerForFgdBgdCheckbox(checkBoxId){
+    // checkBoxId: 'fgdCheckbox' or 'bgdCheckbox'
+
+    // Step 0 - Init
+    const bgdCheckbox = document.getElementById(config.bgdCheckboxId);
+    const fgdCheckbox = document.getElementById(config.fgdCheckboxId);
+    
+    // Step 1 - Common stuff
+    changeCursorColorForInteractiveScribles(checkBoxId);
+
+    if (checkBoxId === config.fgdCheckboxId){
+        fgdCheckbox.checked = true;
+        bgdCheckbox.checked = false;
+        setAnnotationColor(config.COLOR_RGB_FGD);
+    } else if (checkBoxId === 'bgdCheckbox'){
+        bgdCheckbox.checked = true;
+        fgdCheckbox.checked = false;
+        setAnnotationColor(config.COLOR_RGB_BGD);
+    } else {
+        console.log(' - [eventTriggerForFgdBgdCheckbox()] Invalid checkBoxId:', checkBoxId);
+    }
+}
+
+function changeCursorColorForInteractiveScribles(checkBoxId) {
+    
+    document.body.style.cursor = 'default';
+    
+    Array.from(document.getElementsByClassName(config.HTML_CLASS_CORNERSTONE_CANVAS)).forEach((element) => {
+        // element.style.cursor = 'crosshair';
+        // element.style.cursor = 'url(./faviconSmall.png), pointer';
+        if (checkBoxId === config.fgdCheckboxId){
+            element.style.cursor = 'url(./pencil-fgd.png), pointer';
+        } else if (checkBoxId === config.bgdCheckboxId){
+            element.style.cursor = 'url(./pencil-bgd.png), pointer';
+        }
+    });
+}
+
+function changeCursorToDefault() {
+    // document.body.style.cursor = 'default';
+    Array.from(document.getElementsByClassName(config.HTML_CLASS_CORNERSTONE_CANVAS)).forEach((element) => {
+        element.style.cursor = 'default';
+    });
+}
+
 function setContouringButtonsLogic(verbose=true){
 
     // Step 0 - Init
@@ -676,6 +730,11 @@ function setContouringButtonsLogic(verbose=true){
             
             buttonHTML.addEventListener('click', async function() {
                 if (buttonId === 0) { // config.windowLevelButton 
+                    
+                    // Step 0 - Init
+                    changeCursorToDefault()
+
+                    // Step 1 - Set tools as active/passive
                     toolGroupContours.setToolActive(windowLevelTool.toolName, { bindings: [ { mouseButton: cornerstone3DTools.Enums.MouseBindings.Primary, }, ], });              
                     if (config.MODALITY_CONTOURS == config.MODALITY_SEG){
                         toolGroupContours.setToolPassive(config.strBrushCircle);
@@ -694,6 +753,9 @@ function setContouringButtonsLogic(verbose=true){
                 }
                 else if (buttonId === 1) { // config.contourSegmentationToolButton
                     
+                    // Step 0 - Init
+                    changeCursorToDefault()
+
                     // Step 1 - Set tools as active/passive
                     toolGroupContours.setToolPassive(windowLevelTool.toolName); 
                     if (config.MODALITY_CONTOURS == config.MODALITY_SEG){
@@ -729,7 +791,10 @@ function setContouringButtonsLogic(verbose=true){
                         setAllContouringToolsPassive();
                     }
                 }
-                else if (buttonId === 2) { // config.sculptorToolButton
+                else if (buttonId === 2) { // config.sculptorToolButton 
+
+                    // Step 0 - Init
+                    changeCursorToDefault()
 
                     // Step 1 - Set tools as active/passive
                     toolGroupContours.setToolPassive(windowLevelTool.toolName);
@@ -764,9 +829,17 @@ function setContouringButtonsLogic(verbose=true){
                         setAllContouringToolsPassive();
                         updateGUIElementsHelper.showToast('You cannot edit the base prediction(=undefined). Make some AI-refinements first!')
                     }
+
+                    // Step 3 - Check config.serverStatus
+                    if (config.serverStatus == config.KEY_SERVER_STATUS_NOTLOADED){
+                        updateGUIElementsHelper.showToast('Server is has not yet loaded data. Wait a moment!')
+                    }
                 }
                 else if (buttonId === 3) { // config.editBaseContourViaScribbleButton
                     
+                    // Step 0 - Init
+                    eventTriggerForFgdBgdCheckbox(getCheckedBoxIdForFgdBgdCheckbox());
+
                     toolGroupContours.setToolPassive(windowLevelTool.toolName);
                     if (config.MODALITY_CONTOURS == config.MODALITY_SEG){
                         toolGroupContours.setToolPassive(config.strBrushCircle);
@@ -866,3 +939,4 @@ function setButtonBoundaryColor(button, shouldSet, color = 'red') {
 // ------------------------------------- Final export
 export { createViewPortsHTML, waitForCredentials, createContouringHTML, setContouringButtonsLogic }; // all called in interactive-frontend.js
 export {setButtonBoundaryColor, setAnnotationColor}
+export {eventTriggerForFgdBgdCheckbox, changeCursorToDefault}

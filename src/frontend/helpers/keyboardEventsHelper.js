@@ -104,33 +104,100 @@ function getAllContouringToolsPassiveStatus(){
     return allToolsStatus;
 }
 
+// ******************************* DIV TOOLS ********************************************
+function getOtherDivs(htmlElement){
+
+    // Step 0 - Init
+    let otherHTMLElements = [];
+    
+    // Step 1.1 - For CT divs
+    if (htmlElement.id == config.axialID){
+        otherHTMLElements = [config.sagittalDiv, config.coronalDiv];
+    } else if (htmlElement.id == config.sagittalID){
+        otherHTMLElements = [config.axialDiv, config.coronalDiv];
+    } else if (htmlElement.id == config.coronalID){
+        otherHTMLElements = [config.axialDiv, config.sagittalDiv];
+    }
+
+    // Step 1.2 - For PET divs
+    else if (htmlElement.id == config.axialPTID){
+        otherHTMLElements = [config.sagittalDivPT, config.coronalDivPT];
+    } else if (htmlElement.id == config.sagittalPTID){
+        otherHTMLElements = [config.axialDivPT, config.coronalDivPT];
+    } else if (htmlElement.id == config.coronalPTID){
+        otherHTMLElements = [config.axialDivPT, config.sagittalDivPT];
+    }
+
+    return otherHTMLElements
+}
+
+function getHoveredPointIn3D(volumeId, htmlOfElement, evt) {
+    
+    // Step 0 - Init
+    let index3D = undefined;
+    const volume = cornerstone3D.cache.getVolume(volumeId);
+    if (!volume) {
+        return index3D;
+    }
+
+    // Step 1 - Get viewport
+    const viewportOfElement = cornerstone3D.getEnabledElement(htmlOfElement).viewport; 
+
+    // Step 1 - Get the canvas/world and final index3D position
+    const rect      = htmlOfElement.getBoundingClientRect();
+    const canvasPos = [Math.floor(evt.clientX - rect.left), Math.floor(evt.clientY - rect.top)];
+    const worldPos  = viewportOfElement.canvasToWorld(canvasPos);
+    index3D         = getIndex(volume, worldPos);
+    
+    // Step 2 - Round the index3D values
+    if (index3D[0] != NaN || index3D[0] != 'NaN')
+        index3D = index3D.map((val) => Math.round(val));
+    else
+        console.log('   -- [getHoveredPointIn3D()] index3D[0] is NaN: '. rect, canvasPos, worldPos);
+
+    return index3D;
+}
+
+function getViewTypeFromDiv(htmlElement){
+    let viewType = undefined;
+
+    if (htmlElement.id == config.axialID || htmlElement.id == config.axialPTID)
+        viewType = config.KEY_AXIAL;
+    else if (htmlElement.id == config.sagittalID || htmlElement.id == config.sagittalPTID)
+        viewType = config.KEY_SAGITTAL;
+    else if (htmlElement.id == config.coronalID || htmlElement.id == config.coronalPTID)
+        viewType = config.KEY_CORONAL;
+
+    return viewType
+
+}
+
 // ******************************* MAIN FUNCTION ********************************************
 function setMouseAndKeyboardEvents(){
 
-    // Step 1 - handle scroll event
-    document.addEventListener('wheel', function(evt) {
-        if (evt.target.className == 'cornerstone-canvas') {
-            // NOTE: Here we only change the slideIdxHTML, not the sliceIdxViewportReference
-            const divObj = evt.target.offsetParent.parentElement
-            const {viewport: activeViewport, viewportId: activeViewportId} = cornerstone3D.getEnabledElement(divObj);
-            const imageIdxHTMLForViewport = activeViewport.getCurrentImageIdIndex()
-            const totalImagesForViewPort  = activeViewport.getNumberOfSlices()
-            updateGUIElementsHelper.setSliceIdxHTMLForViewPort(activeViewportId, imageIdxHTMLForViewport, totalImagesForViewPort)
+    // Step 1 - Handle keydown events
+    window.addEventListener('keydown', async function(event) {
+
+        // Contour-related: For show/unshow contours
+        if (event.key === config.SHORTCUT_KEY_C) {
+            showUnshowAllSegmentations()
+        }
+        
+        // Viewport-related: For reset view
+        if (event.key === config.SHORTCUT_KEY_R){
+            cornerstoneHelpers.resetView();
+            updateGUIElementsHelper.setSliceIdxHTMLForAllHTML()
             updateGUIElementsHelper.setGlobalSliceIdxViewPortReferenceVars()
         }
-    });
 
-    // Step 2 - handle left-arrow and right-arrow keydown event
-    document.addEventListener('keydown', async function(evt) {
-        
-        // For slice traversal
-        if (config.viewPortIdsAll.includes(evt.target.id)){
-            if (evt.key == config.SHORTCUT_KEY_ARROW_LEFT || evt.key == config.SHORTCUT_KEY_ARROW_RIGHT){
+        // Viewport-related: For slice traversal
+        if (event.key == config.SHORTCUT_KEY_ARROW_LEFT || event.key == config.SHORTCUT_KEY_ARROW_RIGHT){
 
-                try {
+            try {
 
+                if (config.viewPortIdsAll.includes(event.target.id)){
                     // Step 1 - Init
-                    const {viewport: activeViewport, viewportId: activeViewportId} = cornerstone3D.getEnabledElement(evt.target);
+                    const {viewport: activeViewport, viewportId: activeViewportId} = cornerstone3D.getEnabledElement(event.target);
                     const sliceIdxHTMLForViewport = activeViewport.getCurrentImageIdIndex()
                     const totalImagesForViewPort  = activeViewport.getNumberOfSlices()
                     let viewportViewReference     = activeViewport.getViewReference()
@@ -138,9 +205,9 @@ function setMouseAndKeyboardEvents(){
                     // Step 2 - Handle keydown event 
                     // Step 2.1 - Update sliceIdxHTMLForViewport
                     let newSliceIdxHTMLForViewport;
-                    if (evt.key == config.SHORTCUT_KEY_ARROW_LEFT){
+                    if (event.key == config.SHORTCUT_KEY_ARROW_LEFT){
                         newSliceIdxHTMLForViewport = sliceIdxHTMLForViewport - 1;
-                    } else if (evt.key == config.SHORTCUT_KEY_ARROW_RIGHT){
+                    } else if (event.key == config.SHORTCUT_KEY_ARROW_RIGHT){
                         newSliceIdxHTMLForViewport = sliceIdxHTMLForViewport + 1;
                     }
                     if (newSliceIdxHTMLForViewport < 0) newSliceIdxHTMLForViewport = 0;
@@ -148,56 +215,38 @@ function setMouseAndKeyboardEvents(){
                     updateGUIElementsHelper.setSliceIdxHTMLForViewPort(activeViewportId, newSliceIdxHTMLForViewport, totalImagesForViewPort)
 
                     // Step 2.2 - Update the viewport itself
-                    const newSliceIdxViewPortReference = convertSliceIdxHTMLToSliceIdxViewportReference(newSliceIdxHTMLForViewport, activeViewportId, totalImagesForViewPort)
+                    const newSliceIdxViewPortReference = updateGUIElementsHelper.convertSliceIdxHTMLToSliceIdxViewportReference(newSliceIdxHTMLForViewport, activeViewportId, totalImagesForViewPort)
                     viewportViewReference.sliceIndex = newSliceIdxViewPortReference;
                     await activeViewport.setViewReference(viewportViewReference);
                     cornerstoneHelpers.renderNow();
 
-                } catch (error){
-                    console.error('   -- [keydown] Error: ', error);
+                    // Update sliceIdx vars
+                    updateGUIElementsHelper.setGlobalSliceIdxViewPortReferenceVars()
                 }
+
+            } catch (error){
+                console.error('   -- [keydown] Error: ', error);
             }
         }
 
-        // For show/unshow contours
-        if (evt.key === config.SHORTCUT_KEY_C) {
-            console.log('   -- [keydown] showUnshowAllSegmentations()');
-            showUnshowAllSegmentations()
+        // Tool-related: For AI interactive tool
+        if (event.key === config.SHORTCUT_KEY_F){
+            makeGUIElementsHelper.eventTriggerForFgdBgdCheckbox(config.fgdCheckboxId);
+            config.editBaseContourViaScribbleButton.click();
         }
-
-        // Update sliceIdx vars
-        updateGUIElementsHelper.setGlobalSliceIdxViewPortReferenceVars()
-
-    });
-
-    // Step 3 - handle 'r' keydown event
-    window.addEventListener('keydown', async function(event) {
-        if (event.key === 'r'){
-            cornerstoneHelpers.resetView();
-            updateGUIElementsHelper.setSliceIdxHTMLForAllHTML()
-        }
-
-        if (event.key === 'f'){
-            const fgdCheckbox = document.getElementById(config.fgdCheckboxId);
-            fgdCheckbox.checked = true;
-            const bgdCheckbox = document.getElementById(config.bgdCheckboxId);
-            bgdCheckbox.checked = false
-            makeGUIElementsHelper.setAnnotationColor(config.COLOR_RGB_FGD);
+        
+        // Tool-related: For AI interactive tool
+        if (event.key === config.SHORTCUT_KEY_B){
+            makeGUIElementsHelper.eventTriggerForFgdBgdCheckbox(config.bgdCheckboxId);
             config.editBaseContourViaScribbleButton.click();
         }
 
-        if (event.key === 'b'){
-            const bgdCheckbox = document.getElementById(config.bgdCheckboxId);
-            bgdCheckbox.checked = true;
-            const fgdCheckbox = document.getElementById(config.fgdCheckboxId);
-            fgdCheckbox.checked = false
-            makeGUIElementsHelper.setAnnotationColor(config.COLOR_RGB_BGD);
-            config.editBaseContourViaScribbleButton.click();
-        }
+        // Tool-related: For disabling all tools
+        if (event.key === config.SHORTCUT_KEY_ESC){
 
-        // capture escape key
-        if (event.key === 'Escape'){
-            console.log('   -- [keydown] Escape key pressed');
+            // Step 0 - Init
+            makeGUIElementsHelper.changeCursorToDefault();
+
             // Set all buttons to false
             [config.windowLevelButton , config.contourSegmentationToolButton, config.sculptorToolButton, config.editBaseContourViaScribbleButton].forEach((buttonHTML, buttonId) => {
                 
@@ -230,15 +279,44 @@ function setMouseAndKeyboardEvents(){
                 }
             });
         }
+        
+        // Tool-related: For changing brush size
+        if (event.key === config.SHORTCUT_KEY_PLUS || event.key === config.SHORTCUT_KEY_MINUS){
+            if (config.MODALITY_CONTOURS == config.MODALITY_SEG){
+                const toolGroupContours = cornerstone3DTools.ToolGroupManager.getToolGroup(config.toolGroupIdContours);
+                if (toolGroupContours.toolOptions[config.strBrushCircle].mode === config.MODE_ACTIVE || toolGroupContours.toolOptions[config.strEraserCircle].mode === config.MODE_ACTIVE){
+                    const segUtils       = cornerstone3DTools.utilities.segmentation;
+                    const toolName       = toolGroupContours.toolOptions[config.strBrushCircle].mode === config.MODE_ACTIVE ? config.strBrushCircle : config.strEraserCircle;
+                    let initialBrushSize = segUtils.getBrushSizeForToolGroup(config.toolGroupIdContours, toolName);
+                    if (event.key === '+')
+                        segUtils.setBrushSizeForToolGroup(config.toolGroupIdContours, initialBrushSize + 1);
+                    else if (event.key === '-'){
+                        if (initialBrushSize > 1)
+                            segUtils.setBrushSizeForToolGroup(config.toolGroupIdContours, initialBrushSize - 1);
+                    }
+                    let newBrushSize = segUtils.getBrushSizeForToolGroup(config.toolGroupIdContours);
+                    updateGUIElementsHelper.showToast(`Brush size: ${newBrushSize}`);
+                }
+            }    
+        }
+
     });
 
-    // Step 4 - Add event listeners for mouseup event
-    const toolGroupContours         = cornerstone3DTools.ToolGroupManager.getToolGroup(config.toolGroupIdContours);
-    config.viewPortIdsAll.forEach((viewportId, index) => {
-        const viewportDiv = document.getElementById(viewportId);
+    // Step 2 - Handle mouse events
+    const toolGroupContours = cornerstone3DTools.ToolGroupManager.getToolGroup(config.toolGroupIdContours);
+    config.viewPortDivsAll.forEach((viewportDiv, index) => {
         
-        // Step 4.1 - Mouseup event
-        viewportDiv.addEventListener('mouseup', function() {
+        // Step 2.1 - Wheel event
+        viewportDiv.addEventListener(config.MOUSE_EVENT_WHEEL, function(evt) {
+            const {viewport: activeViewport, viewportId: activeViewportId} = cornerstone3D.getEnabledElement(viewportDiv);
+            const imageIdxHTMLForViewport = activeViewport.getCurrentImageIdIndex()
+            const totalImagesForViewPort  = activeViewport.getNumberOfSlices()
+            updateGUIElementsHelper.setSliceIdxHTMLForViewPort(activeViewportId, imageIdxHTMLForViewport, totalImagesForViewPort)
+            updateGUIElementsHelper.setGlobalSliceIdxViewPortReferenceVars()
+        });
+
+        // Step 2.2 - Mouseup event
+        viewportDiv.addEventListener(config.MOUSE_EVENT_MOUSEUP, function(evt) {
             setTimeout(async () => {
 
                 // const freehandRoiToolMode = toolGroupContours.toolOptions[planarFreehandROITool.toolName].mode;
@@ -255,21 +333,21 @@ function setMouseAndKeyboardEvents(){
                             // console.log(' - [setContouringButtonsLogic()] points3D: ', points3D);
                             const points3DInt = points3D.map(x => x.map(y => Math.abs(Math.round(y))));
                             await updateGUIElementsHelper.takeSnapshots([config.viewportDivId]);
-                            await apiEndpointHelpers.makeRequestToProcess(points3DInt, scribbleAnnotationUID);
+                            await apiEndpointHelpers.makeRequestToProcess(points3DInt, getViewTypeFromDiv(viewportDiv), scribbleAnnotationUID);
                         }
                     } else {
-                        console.log(' - [setContouringButtonsLogic()] scribbleAnnotations: ', scribbleAnnotations);
+                        console.log(' - [setMouseAndKeyboardEvents()] scribbleAnnotations: ', scribbleAnnotations);
                         cornerstoneHelpers.renderNow();
                     }
                 } else if (getAllContouringToolsPassiveStatus()) {
-                    console.log('   -- [setContouringButtonsLogic()] freehandRoiToolMode: ', freehandRoiToolMode);
+                    // console.log('   -- [setContouringButtonsLogic()] freehandRoiToolMode: ', freehandRoiToolMode);
                     updateGUIElementsHelper.showToast('Please enable the AI-scribble button to draw contours');
                 }
             }, 100);
         });
-        
-        // Step 4.2 - Mousemove event
-        viewportDiv.addEventListener('mousemove', function(evt) {
+
+        // Step 2.3 - Mousemove event
+        viewportDiv.addEventListener(config.MOUSE_EVENT_MOUSEMOVE, function(evt) {
             if (config.volumeIdCT != undefined){
                 const volumeCTThis = cornerstone3D.cache.getVolume(config.volumeIdCT);
                 if (volumeCTThis != undefined){
@@ -294,7 +372,41 @@ function setMouseAndKeyboardEvents(){
                 }
             }
         });
-    })
+
+        // Step 2.4 - Mousedrag event
+        viewportDiv.addEventListener(cornerstone3DTools.Enums.Events.MOUSE_DRAG, function(evt) {
+            const windowLevelToolMode = toolGroupContours.toolOptions[cornerstone3DTools.WindowLevelTool.toolName].mode;
+            if (windowLevelToolMode === config.MODE_ACTIVE){
+                const htmlElement = evt.detail.element;
+                const newVoiRange = cornerstone3D.getEnabledElement(htmlElement).viewport.getProperties().voiRange;
+
+                getOtherDivs(htmlElement).forEach((element) => {
+                    cornerstone3D.getEnabledElement(element).viewport.setProperties({ voiRange: newVoiRange });
+                });
+            }
+        });
+
+        // Step 2.5 - Mouseclick event
+        viewportDiv.addEventListener(config.MOUSE_EVENT_CLICK, function(evt) {
+            const freehandRoiToolMode = toolGroupContours.toolOptions[cornerstone3DTools.PlanarFreehandROITool.toolName].mode;
+            if (freehandRoiToolMode === config.MODE_ACTIVE){
+                const scribbleAnnotations = annotationHelpers.getAllPlanFreeHandRoiAnnotations()
+                if (scribbleAnnotations.length == 0){
+                    const points3DInt = getHoveredPointIn3D(config.volumeIdCT, viewportDiv, evt);
+                    console.log('   -- [setMouseAndKeyboardEvents(evt=click)] points3DInt: ', points3DInt);
+                    (function() {
+                        (async () => {
+                            await updateGUIElementsHelper.takeSnapshots([config.viewportDivId]);
+                            await apiEndpointHelpers.makeRequestToProcess([points3DInt], getViewTypeFromDiv(viewportDiv), []);
+                        })();
+                    })();
+                    
+            
+                }
+            }
+        });
+
+    });
 
 }
 
