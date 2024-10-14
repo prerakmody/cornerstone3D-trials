@@ -7,6 +7,9 @@ import * as cornerstoneHelpers from './cornerstoneHelpers.js';
 import * as cornerstone3D from '@cornerstonejs/core';
 import * as cornerstone3DTools from '@cornerstonejs/tools';
 
+import dcmjs from 'dcmjs';
+import { Buffer } from "buffer";
+
 
 async function getOrthancPatientIds() {
     let res = {};
@@ -432,7 +435,7 @@ async function makeRequestToProcess(points3D, viewType, scribbleAnnotationUID=[]
         //------------------------------------------------------- Step 0 - Init
         console.log(' \n ----------------- Python server (/process) ----------------- \n')
         console.log('   -- [makeRequestToProcess()] patientIdx: ', config.patientIdx);
-        console.log('   -- [makeRequestToProcess()] caseName: ', config.orthanDataURLS[config.patientIdx]['caseName']);
+        console.log('   -- [makeRequestToProcess()] caseName: ', config.orthanDataURLS[config.patientIdx][config.KEY_CASE_NAME]);
         updateGUIElementsHelper.setGlobalSliceIdxViewPortReferenceVars(verbose=true)
 
         //------------------------------------------------------- Step 1 - Make a request to /process
@@ -442,7 +445,7 @@ async function makeRequestToProcess(points3D, viewType, scribbleAnnotationUID=[]
                 [config.KEY_POINTS_3D]: points3D
                 , [config.KEY_SCRIB_TYPE]:scribbleType
                 , [config.KEY_VIEW_TYPE]: viewType
-                , [config.KEY_CASE_NAME]: config.orthanDataURLS[config.patientIdx]['caseName'],}
+                , [config.KEY_CASE_NAME]: config.orthanDataURLS[config.patientIdx][config.KEY_CASE_NAME],}
             , [config.KEY_IDENTIFIER]: config.instanceName
             , [config.KEY_USER]: config.userCredFirstName + '-' + config.userCredLastName + '-' + config.userCredRole
         }
@@ -450,7 +453,9 @@ async function makeRequestToProcess(points3D, viewType, scribbleAnnotationUID=[]
         
         console.log('   -- [makeRequestToProcess()] processPayload: ', processPayload);
         try{
-            const response = await fetch(config.URL_PYTHON_SERVER + config.ENDPOINT_PROCESS, {method: config.METHOD_POST, headers: config.HEADERS_JSON, body: JSON.stringify(processPayload), credentials: 'include',}); // credentials: 'include' is important for cross-origin requests
+            const response = await fetch(config.URL_PYTHON_SERVER + config.ENDPOINT_PROCESS
+                , {method: config.METHOD_POST, headers: config.HEADERS_JSON, body: JSON.stringify(processPayload), credentials: 'include',}
+            ); // credentials: 'include' is important for cross-origin requests
             const responseJSON = await response.json();
             requestStatus = true;
             console.log('   -- [makeRequestToProcess()] (view,sliceIdx): ', await annotationHelpers.getSliceIdxinPoints3D(points3D));
@@ -655,5 +660,54 @@ document.addEventListener('DOMContentLoaded', (event) => {
     }, 1000);
 });
 
+// ************************************************** /upload
+async function uploadDICOMData(bufferOrDataset, filename) {
+
+    /**
+     * Trigger file download from an array buffer
+     * @param bufferOrDataset - ArrayBuffer or DicomDataset
+     * @param filename - name of the file to download
+     */
+    
+    // Step 1 - Create a blob from the buffer or dataset
+    let blob;
+    if (bufferOrDataset instanceof ArrayBuffer) {
+        blob = new Blob([bufferOrDataset], { type: "application/dicom" });
+    } else {
+        if (!bufferOrDataset._meta) {
+            throw new Error("Dataset must have a _meta property");
+        }
+        const buffer = Buffer.from(dcmjs.data.datasetToDict(bufferOrDataset).write());
+        blob = new Blob([buffer], { type: "application/dicom" });
+    }
+
+    // Step 2 - Send to endpoint (/uploadManualRefinement)
+    const formData = new FormData();
+    formData.append("file", blob, filename);
+    // formData.append('file', new Blob([dicomPart10Buffer], { type: "application/dicom" }), filename);
+    formData.append(config.KEY_IDENTIFIER, config.instanceName)
+    formData.append(config.KEY_USER, config.getUserStrForServer())
+    formData.append(config.KEY_CASE_NAME, config.orthanDataURLS[config.patientIdx][config.KEY_CASE_NAME])
+
+    try {
+        const response = await fetch(config.URL_PYTHON_SERVER + config.ENDPOINT_UPLOAD_MANUALREFINEMENT, {
+            method: config.METHOD_POST,
+            body: formData
+        })
+        const responseJSON = await response.json();
+        if (response.status == 200){
+            console.log('   -- [downloadDICOMData()] responseJSON: ', responseJSON);
+            updateGUIElementsHelper.showToast('Manual refinement uploaded successfully');
+        } else {    
+            console.error('   -- [downloadDICOMData()] Error in uploading manual refinement: ', responseJSON);
+            updateGUIElementsHelper.showToast('Error in uploading manual refinement');
+        }
+    } catch (error){
+        console.error('   -- [downloadDICOMData()] Error: ', error);
+        updateGUIElementsHelper.showToast('Error in uploading manual refinement');
+    }
+}
+
 export {getDataURLs}
 export {makeRequestToProcess, makeRequestToPrepare, setServerStatus}
+export {uploadDICOMData}

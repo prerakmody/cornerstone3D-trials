@@ -8,6 +8,9 @@ import html2canvas from 'html2canvas';
 // ******************************* SliceIdx handling ********************************************
 
 function setGlobalSliceIdxViewPortReferenceVars(verbose=false){
+    /**
+     * This function sets global variables for slice indexes. Useful after loading AI annotations
+     */
 
     // Step 1 - Get relevant variables
     const {viewport: axialViewport, viewportId: axialViewportId}       = cornerstone3D.getEnabledElement(config.axialDiv);
@@ -55,12 +58,13 @@ function setGlobalSliceIdxViewPortReferenceVars(verbose=false){
 function convertSliceIdxHTMLToSliceIdxViewportReference(sliceIdxHTML, viewportId, totalImagesForViewPort){
     
     let sliceIdxViewportReference;
-    
-    if (viewportId == config.sagittalID){
+
+    if (viewportId == config.sagittalID || viewportId == config.sagittalPTID){
         sliceIdxViewportReference = sliceIdxHTML
-    } else if (viewportId == config.coronalID || viewportId == config.axialID){
+    } else if (viewportId == config.coronalID || viewportId == config.axialID || viewportId == config.coronalPTID || viewportId == config.axialPTID){
        sliceIdxViewportReference = (totalImagesForViewPort-1) - (sliceIdxHTML);
     }
+
     return sliceIdxViewportReference
 }
 

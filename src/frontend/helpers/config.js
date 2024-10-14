@@ -86,6 +86,7 @@ export let userCredFirstName, userCredLastName, userCredRole;
 export function setUserCredFirstName(name) { userCredFirstName = name; }
 export function setUserCredLastName(name) { userCredLastName = name; }
 export function setUserCredRole(role) { userCredRole = role; }
+export function getUserStrForServer() { return userCredFirstName + '-' + userCredLastName + '-' + userCredRole; }
 
 // Server status
 export const serverHealthDivId = 'serverHealthDivId';
@@ -192,6 +193,7 @@ export const MOUSE_EVENT_CLICK = 'click';
 export const URL_PYTHON_SERVER = `${window.location.origin}`.replace('50000', '55000') //[`${window.location.origin}`, 'https://localhost:55000']
 export const ENDPOINT_PREPARE  = '/prepare'
 export const ENDPOINT_PROCESS  = '/process'
+export const ENDPOINT_UPLOAD_MANUALREFINEMENT = "/uploadManualRefinement"
 export const KEY_DATA          = 'data'
 export const KEY_IDENTIFIER    = 'identifier'
 export const KEY_USER          = 'user'

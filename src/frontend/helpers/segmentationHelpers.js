@@ -297,5 +297,33 @@ async function fetchAndLoadDCMSeg(searchObj, imageIds, maskType){
 
 }
 
+// ******************************* UTILS ********************************************
+
+function generateMockMetadata(segmentIndex, color) {
+    const RecommendedDisplayCIELabValue = dcmjs.data.Colors.rgb2DICOMLAB(
+        color.slice(0, 3).map(value => value / 255)
+    ).map(value => Math.round(value));
+
+    return {
+        SegmentedPropertyCategoryCodeSequence: {
+            CodeValue: "T-D0050",
+            CodingSchemeDesignator: "SRT",
+            CodeMeaning: "Tissue"
+        },
+        SegmentNumber: segmentIndex.toString(),
+        SegmentLabel: "GTVp",
+        SegmentAlgorithmType: "MANUAL",
+        SegmentAlgorithmName: "Manual-Refine-BrushOREraser",
+        RecommendedDisplayCIELabValue,
+        SegmentedPropertyTypeCodeSequence: {
+            CodeValue: "T-D0050",
+            CodingSchemeDesignator: "SRT",
+            CodeMeaning: "Tissue"
+        }
+    };
+}
+
+
 export {addSegmentationToState, fetchAndLoadDCMSeg}
 export {setSegmentationIndexOpacity}
+export {generateMockMetadata}

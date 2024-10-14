@@ -79,6 +79,7 @@ if 1:
     KEY_CLIENT_IDENTIFIER    = 'clientIdentifier'
     KEY_DCM_LIST             = 'dcmList'
     KEY_SCRIBBLE_COUNTER     = 'scribbleCounter'
+    KEY_MANUAL_COUNTER       = 'manualCounter'
     KEY_DATETIME             = 'dateTime'
     KEY_PATH_SAVE            = 'pathSave'
     KEY_SEG_ARRAY_GT         = 'segArrayGT'
@@ -174,8 +175,10 @@ if 1:
     FILENAME_PATIENTS_UUIDS_JSON = 'patients-uuids.json'
     FILENAME_METAINFO_SEG_JSON   = 'metainfo-segmentation.json'
     SERIESDESC_SUFFIX_REFINE     = 'Series-SEG-Refine'
+    SERIESDESC_SUFFIX_REFINE_MAN = 'Series-SEG-RefineManual'
     CREATORNAME_REFINE           = 'Modys Refinement model: ' + str(KEY_UNET_V1)
     SERIESNUM_REFINE             = 5
+    SERIESNUM_REFINE_MANUAL      = 6
     SUFIX_REFINE                 = 'Refine'
 
     PATH_HOSTCERT  = DIR_ASSETS / 'hostCert.pem'
@@ -412,6 +415,15 @@ class PayloadProcess(pydantic.BaseModel):
     identifier: str = pydantic.Field(...)
     user: str = pydantic.Field(...)
 
+
+def getClientIdentifier(identifier, user):
+    try:
+        return identifier + '__' + user
+    
+    except:
+        traceback.print_exc()
+        return 'Meh'
+    
 #################################################################
 #                        NNET MODELS
 #################################################################
@@ -1710,6 +1722,13 @@ async def lifespan(app: fastapi.FastAPI):
         modelType = KEY_UNET_V1 # type == <class 'monai.networks.nets.unet.UNet'>
         # DEVICE    = torch.device('cpu')
         loadOnnx  = True # True, False
+    
+    # 2024-10-14 (Obedience Loss)
+    elif 0:
+        expName = 'UNetv1__1DICEep1-1Obedep2-LR1e3__W3-B32-MoreData__Cls1-Pt-Scr__Trial2_ep50'
+        epoch     = 100
+        modelType = KEY_UNET_V1
+        loadOnnx  = True
 
     MODEL, ORT_SESSION = loadModelUsingUserPath(DEVICE, expName, epoch, modelType, loadOnnx)
     LOAD_ONNX = loadOnnx
@@ -1792,7 +1811,7 @@ async def prepare(payload: PayloadPrepare, request: starlette.requests.Request):
         tStart             = time.time()
         userAgent, referer = getRequestInfo(request)
         clientUserName     = payload.user
-        clientIdentifier   = payload.identifier + '__' + clientUserName
+        clientIdentifier   = getClientIdentifier(payload.identifier, payload.user) # payload.identifier + '__' + clientUserName
         preparePayloadData = payload.data.dict()
         patientName        = preparePayloadData[KEY_CASE_NAME]
         # user         = request.user # AuthenticationMiddleware must be installed to access request.user
@@ -1802,7 +1821,7 @@ async def prepare(payload: PayloadPrepare, request: starlette.requests.Request):
         
         if patientName not in SESSIONSGLOBAL[clientIdentifier]:
             SESSIONSGLOBAL[clientIdentifier][patientName] = {KEY_DATA:{}, KEY_TORCH_DATA: [], KEY_SCRIBBLE_MAP: []
-                                                , KEY_DCM_LIST: [], KEY_SCRIBBLE_COUNTER: 0
+                                                , KEY_DCM_LIST: [], KEY_SCRIBBLE_COUNTER: 0, KEY_MANUAL_COUNTER: 0
                                                 , KEY_SEG_SOP_INSTANCE_UID: None, KEY_SEG_SERIES_INSTANCE_UID: None
                                                 , KEY_SEG_ORTHANC_ID: None
                                                 , KEY_DATETIME: datetime.datetime.now().strftime("%Y-%m-%d %H-%M-%S")
@@ -1890,7 +1909,7 @@ async def process(payload: PayloadProcess, request: starlette.requests.Request):
         tStart = time.time()
         userAgent, referer = getRequestInfo(request)
         clientUserName     = payload.user
-        clientIdentifier   = payload.identifier + '__' + clientUserName
+        clientIdentifier   = getClientIdentifier(payload.identifier, payload.user) # payload.identifier + '__' + clientUserName
         processPayloadData = payload.data.dict()
         patientName        = processPayloadData[KEY_CASE_NAME]
         returnMessagePrefix = "[clientIdentifier={}, patientName={}, loadOnnx={}]".format(clientIdentifier, patientName, LOAD_ONNX)
@@ -2016,6 +2035,60 @@ async def serverHealth():
         except Exception as e:
             traceback.print_exc()
             raise fastapi.HTTPException(status_code=500, detail=" Error in /serverHealth => {}".format(str(e)))
+
+@app.post('/uploadManualRefinement')
+async def uploadManualRefinement(file: fastapi.UploadFile = fastapi.File(...), identifier: str = fastapi.Form(...), user: str = fastapi.Form(...), caseName: str = fastapi.Form(...)):
+
+    try:
+        
+        # Step 1 - Read the file content
+        try:
+            file_content = await file.read()
+        except Exception as e:
+            traceback.print_exc()
+            raise fastapi.HTTPException(status_code=500, detail="Error in /uploadManualRefinement => {}".format(str(e)))
+
+        # Step 2 - Get file save path
+        try:
+            clientIdentifier = getClientIdentifier(identifier, user)
+            pathFolderMask   = Path(SESSIONSGLOBAL[clientIdentifier][caseName][KEY_PATH_SAVE])
+            if not pathFolderMask.exists():
+                pathFolderMask.mkdir(parents=True, exist_ok=True)
+        except Exception as e:
+            traceback.print_exc()
+            raise fastapi.HTTPException(status_code=500, detail="Error in /uploadManualRefinement => clientIdentifier or caseName not found in SESSIONSGLOBAL")
+
+        # Step 3 - Dicom tag modification
+        try:
+            dicom_file     = pydicom.filebase.DicomBytesIO(file_content)
+            dicom_dataset  = pydicom.dcmread(dicom_file)
+            SESSIONSGLOBAL[clientIdentifier][caseName][KEY_MANUAL_COUNTER] += 1
+            counter = SESSIONSGLOBAL[clientIdentifier][caseName][KEY_MANUAL_COUNTER]
+            dicom_dataset.SeriesDescription = '-'.join([caseName, SERIESDESC_SUFFIX_REFINE_MAN, Path(pathFolderMask).parts[-1], str(counter)])
+            dicom_dataset.SeriesNumber      = SERIESNUM_REFINE_MANUAL
+        except Exception as e:
+            traceback.print_exc()
+            raise fastapi.HTTPException(status_code=500, detail="Error in /uploadManualRefinement => dicom tag modification failed")
+
+        # Step 4 - Save path
+        try:
+            pathFile = pathFolderMask.joinpath(file.filename.format(counter))
+            try:
+                # with open(pathFile, "wb") as fileObject:
+                #     fileObject.write(file_content)
+                #     return {"status": "File '{}' uploaded successfully".format(Path(pathFile).parts[-1])}
+                dicom_dataset.save_as(pathFile)
+            except Exception as e:
+                traceback.print_exc()
+                raise fastapi.HTTPException(status_code=500, detail="Error in /uploadManualRefinement => {}".format(str(e)))
+
+        except:
+            traceback.print_exc()
+            raise fastapi.HTTPException(status_code=500, detail="Error in /uploadManualRefinement => clientIdentifier or caseName not found in SESSIONSGLOBAL")
+
+    except Exception as e:
+        traceback.print_exc()
+        raise fastapi.HTTPException(status_code=500, detail=" Error in /uploadManualRefinement => {}".format(str(e)))
 
 #################################################################
 #                           MAIN
