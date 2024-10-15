@@ -1,5 +1,6 @@
 """
 https://orthanc.uclouvain.be/api/index.html#tag/Patients
+ - This file downloads from Orthanc server using python and REST API
 """
 
 import io
@@ -15,17 +16,22 @@ import numpy as np
 from pathlib import Path
 import matplotlib.pyplot as plt
 
+import pydicom_seg # to read .dcm with modality=SEG
+
 MODALITY_CT  = 'CT'
 MODALITY_PT  = 'PT'
 MODALITY_SEG = 'SEG'
 
 URL_ROOT = 'http://localhost:8042'
+URL_ENDPOINT = 'dicom-web'
 
 KEY_ORTHANC_ID   = 'OrthancId'
 KEY_STUDIES    = 'Studies'
 KEY_SERIES     = 'Series'
+KEY_INSTANCES  = 'Instances'
 KEY_STUDIES_ORTHANC_ID = 'StudiesOrthancId'
 KEY_SERIES_ORTHANC_ID  = 'SeriesOrthancId'
+KEY_INSTANCE_ORTHANC_ID = 'InstanceOrthancId'
 KEY_STUDY_UID   = 'StudyUID'
 KEY_SERIES_UID  = 'SeriesUID'
 KEY_INSTANCE_UID = 'InstanceUID'
@@ -34,7 +40,15 @@ KEY_MODALITY    = 'Modality'
 KEY_MODALITY_SEG = 'SEG'
 KEY_SERIES_DESC  = 'SeriesDescription'
 
-def getOrthancPatientIds():
+SERIES_DESC_GT  = '{}-Series-SEG-GT'
+SERIES_DESC_PRED = '{}-Series-SEG-Pred'
+
+def getOrthancPatientIds(specificPatientId=None):
+    """
+    Returns
+    -------
+    res: dict, {'CHMR001': KEY_ORTHANC_ID: '8c9400a8-e7942cc9-a453c142-9e072032-b158df2e', 'KEY_STUDIES_ORTHANC_ID': ''}
+    """
 
     res = {}
 
@@ -54,6 +68,8 @@ def getOrthancPatientIds():
                     patientData        = patientResponse.json()
                     patientActualId    = patientData['MainDicomTags']['PatientID']
                     patientStudiesOrthancIds = patientData['Studies']
+                    if specificPatientId is not None and patientActualId != specificPatientId:
+                        continue
                     res[patientActualId] = {
                         KEY_ORTHANC_ID: patientOrthancId,
                         KEY_STUDIES: []
@@ -86,23 +102,23 @@ def getOrthancPatientIds():
                                     
                                     # Step 5 - Get Instance Data (for SEG only)
                                     if modality == KEY_MODALITY_SEG:
-                                        print (seriesData)
+                                        # print (seriesData)
                                         instanceRequest = URL_ROOT + '/instances/' + seriesData['Instances'][0]
                                         instanceResponse = requests.get(instanceRequest, verify=False)
                                         if instanceResponse.status_code == 200:
-                                            
                                             instanceData = instanceResponse.json()
                                             instanceUID  = instanceData['MainDicomTags']['SOPInstanceUID']
                                             res[patientActualId][KEY_STUDIES][-1][KEY_SERIES][-1][KEY_INSTANCE_UID] = instanceUID
+                                            res[patientActualId][KEY_STUDIES][-1][KEY_SERIES][-1][KEY_INSTANCE_ORTHANC_ID] = instanceData['ID']
                                         else:
-                                            print (' - [getOrthancPatientIds()] instanceResponse: ', instanceResponse.status_code, instanceResponse.reason)
+                                            print (' - [ERROR][getOrthancPatientIds()] instanceResponse: ', instanceResponse.status_code, instanceResponse.reason)
                                 else:
-                                    print (' - [getOrthancPatientIds()] seriesResponse: ', seriesResponse.status_code, seriesResponse.reason)
+                                    print (' - [ERROR][getOrthancPatientIds()] seriesResponse: ', seriesResponse.status_code, seriesResponse.reason)
                         else:
-                            print (' - [getOrthancPatientIds()] studyResponse: ', studyResponse.status_code, studyResponse.reason)
+                            print (' - [ERROR][getOrthancPatientIds()] studyResponse: ', studyResponse.status_code, studyResponse.reason)
                         
                 else:
-                    print (' - [getOrthancPatientIds()] patientResponse: ', patientResponse.status_code, patientResponse.reason)
+                    print (' - [ERROR][getOrthancPatientIds()] patientResponse: ', patientResponse.status_code, patientResponse.reason)
         else:
             print (' - [getOrthancPatientIds()] response: ', response.status_code, response.reason)
             
@@ -135,17 +151,23 @@ def getDownloadedFilePaths(tmpDirPath, zipContent):
             if 'Modality' in ds:
                 modality       = ds.Modality
             
-            instanceNumber = None
-            if 'InstanceNumber' in ds:
-                instanceNumber = int(ds.InstanceNumber)
-            
-            if modality not in res: 
-                if instanceNumber is not None:
-                    res[modality] = {instanceNumber: filePath}
-                else:
-                    res[modality] = [filePath] # for rtstruct
-            else: 
-                res[modality][instanceNumber] = filePath
+            # Step 4 - Save file paths (according to modality)
+            if modality in [MODALITY_CT, MODALITY_PT]:
+                instanceNumber = None
+                if 'InstanceNumber' in ds:
+                    instanceNumber = int(ds.InstanceNumber)
+                
+                if modality not in res: 
+                    if instanceNumber is not None:
+                        res[modality] = {instanceNumber: filePath}
+                else: 
+                    res[modality][instanceNumber] = filePath
+
+            elif modality in [MODALITY_SEG]:
+                if modality not in res: 
+                    res[modality] = [filePath]
+                else: 
+                    res[modality].append(filePath)
 
     except:
         traceback.print_exc()
@@ -213,17 +235,61 @@ def plot(ctArray, ptArray, maskPredArray=None):
     except:
         traceback.print_exc()
 
-def downloadPatientZip(patientId, patientIdObj):
+def getSegsArray(patientId, patientIdObj):
+
+    try:
+        
+        # Step 0 - Init
+        segURL      = '/'.join([URL_ROOT, KEY_INSTANCES.lower(), '{}', 'file'])
+        orthancInstanceUIDGT, orthancInstanceUIDPred = None, None
+        arrayGT, arrayPred = None, None
+
+        # Step 1 - Get Orthanc Instance UIDs
+        for seriesObj in patientIdObj[patientId][KEY_STUDIES][0][KEY_SERIES]:
+            if seriesObj[KEY_MODALITY] == KEY_MODALITY_SEG:
+                if seriesObj[KEY_SERIES_DESC] == SERIES_DESC_GT.format(patientId):
+                    orthancInstanceUIDGT = seriesObj[KEY_INSTANCE_ORTHANC_ID]
+                elif seriesObj[KEY_SERIES_DESC] == SERIES_DESC_PRED.format(patientId):
+                    orthancInstanceUIDPred = seriesObj[KEY_INSTANCE_ORTHANC_ID]
+
+        # Step 2 - Get URLs
+        queryGT = segURL.format(orthancInstanceUIDGT)
+        queryPred = segURL.format(orthancInstanceUIDPred)
+        
+        # Step 3 - Get Segs Array
+        for query in [queryGT, queryPred]:
+            with tempfile.TemporaryDirectory() as tmpDirPath:
+                response = requests.get(query)
+                if response.status_code == 200:
+                    
+                    # Step 2.1 - Save tmp file
+                    with open(Path(tmpDirPath) / 'seg.dcm', 'wb') as f:
+                        f.write(response.content)
+
+                        # Step 2.2 - Read the dcm file
+                        ds = pydicom.dcmread(f.name)
+                        if ds.SeriesDescription == SERIES_DESC_GT.format(patientId):
+                            arrayGT = ds.pixel_array
+                        elif ds.SeriesDescription == SERIES_DESC_PRED.format(patientId):
+                            arrayPred = ds.pixel_array
+
+    except:
+        traceback.print_exc()
+        pdb.set_trace()
+    
+    return arrayGT, arrayPred
+
+def downloadPatientZip(patientId, patientIdObj, modality=[], returns=False):
 
     try:
         
         # Step 1 - Create a tmp folder
         with tempfile.TemporaryDirectory() as tmpDirPath:
-            print (' - tmpDirPath: ', tmpDirPath)
+            # print (' - tmpDirPath: ', tmpDirPath)
 
             # Step 2 - Get Orthanc Zip
             patientOrthancId = patientIdObj[patientId][KEY_ORTHANC_ID]
-            query    = URL_ROOT + '/patients/' + patientOrthancId + '/archive'
+            query    = URL_ROOT + '/patients/' + patientOrthancId + '/archive' # [TODO: I dont have to download all the data!]
             response = requests.post(query, data='{"Synchronous":true}', verify=False)
             if response.status_code == 200:
                 
@@ -234,10 +300,23 @@ def downloadPatientZip(patientId, patientIdObj):
                 # pdb.set_trace()
 
                 # Step 4 - Convert dcms to torch arrays
-                ctArray       = convertDcmToTorchArray(dcmFilePaths[MODALITY_CT])
-                ptArray       = convertDcmToTorchArray(dcmFilePaths[MODALITY_PT])
-                maskPredArray = None
-                plot(ctArray, ptArray, maskPredArray)
+                # ctArray       = convertDcmToTorchArray(dcmFilePaths[MODALITY_CT])
+                # ptArray       = convertDcmToTorchArray(dcmFilePaths[MODALITY_PT])
+                # maskPredArray = None
+                # plot(ctArray, ptArray, maskPredArray)
+
+                dcmMaskPaths = dcmFilePaths[MODALITY_SEG]
+                dsGT, dsPred = None, None
+                pathMaskGT, pathMaskPred = None, None 
+                for dcmMaskPath in dcmMaskPaths:
+                    ds = pydicom.dcmread(dcmMaskPath, stop_before_pixels=True)
+                    if ds.SeriesDescription == SERIES_DESC_GT.format(patientId):
+                        pathMaskGT = dcmMaskPath
+                    elif ds.SeriesDescription == SERIES_DESC_PRED.format(patientId):
+                        pathMaskPred = dcmMaskPath
+
+                pdb.set_trace()
+                
 
                 # Step 5 - z-norm and concat data [CT, PET, Seg]
 
@@ -252,18 +331,19 @@ if __name__ == '__main__':
 
     try:
         
-        # Step 1 - Get Orthanc Patient IDs
-        patientIdObj = getOrthancPatientIds()
-        # print (' - patientIds: ', patientIdObj) # {'CHMR001': KEY_ORTHANC_ID: '8c9400a8-e7942cc9-a453c142-9e072032-b158df2e', 'KEY_STUDIES_ORTHANC_ID': ''}
-        pprint.pprint(patientIdObj)
-
-
+        # Step 1 - Define the patientId for download
         patientIdForDownload = None
-        if 0:
-            patientIdForDownload = 'CHMR001'
+        if 1:
+            patientIdForDownload = 'CHMR028'
         
+        # Step 2 - Download the patient zip (or for a specific modality)
         if patientIdForDownload is not None:
-            downloadPatientZip(patientIdForDownload, patientIdObj)
+            patientIdObj = getOrthancPatientIds(patientIdForDownload)
+
+            if 1:
+                arrayGT, arrayPred = getSegsArray(patientIdForDownload, patientIdObj)
+            elif 0:
+                downloadPatientZip(patientIdForDownload, patientIdObj, modality=[MODALITY_SEG], returns=True)
         
 
     except:
@@ -287,4 +367,9 @@ curl -X GET http://localhost:8042/series/d1682049-00cbdd91-16548797-5639007a-2ee
 
 (CHMR-001)
 curl -X GET http://localhost:8042/instances/8ba755b5-103b0834-405c40bd-b39e565c-6c97268d
+
+(CHMR-028)
+[Fail] curl -X GET http://localhost:8042/instances/1.2.826.0.1.3680043.8.498.78325365302799724640799265451668049689
+[Fail] curl -X GET http://localhost:8042/instances/1.2.826.0.1.3680043.8.498.78325365302799724640799265451668049689/file3
+[Works] curl -X GET http://localhost:8042/instances/a6843d8b-58e0adf0-4b05b279-d78017ee-75fb0bf7/file --output seg.dcm^
 """

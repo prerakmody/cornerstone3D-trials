@@ -1,3 +1,6 @@
+"""
+This file converts .nii.gz files to .dcm files for CT, PT and SEG modalities.
+"""
 import pdb
 import copy
 import nrrd

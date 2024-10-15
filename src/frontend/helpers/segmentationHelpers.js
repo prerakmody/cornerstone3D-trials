@@ -1,4 +1,5 @@
 import * as config from './config.js';
+import * as updateGUIElementsHelper from './updateGUIElementsHelper.js';
 
 import dcmjs from 'dcmjs';
 import * as dicomWebClient from "dicomweb-client";
@@ -6,6 +7,8 @@ import * as dicomWebClient from "dicomweb-client";
 import * as cornerstone3D from '@cornerstonejs/core';
 import * as cornerstone3DTools from "@cornerstonejs/tools";
 import * as cornerstoneAdapters from "@cornerstonejs/adapters";
+
+
 
 function setSegmentationIndexColor(paramToolGroupId, paramSegUID, segmentationIndex, colorRGBAArray) {
     /**
@@ -105,6 +108,8 @@ async function fetchAndLoadDCMSeg(searchObj, imageIds, maskType){
         const dicomData = dcmjs.data.DicomMessage.readFile(arrayBuffer);
         dataset         = dcmjs.data.DicomMetaDictionary.naturalizeDataset(dicomData.dict); 
         dataset._meta   = dcmjs.data.DicomMetaDictionary.namifyDataset(dicomData.meta);
+        const urlTmp = `${client.wadoURL}/studies/${searchObj.StudyInstanceUID}/series/${searchObj.SeriesInstanceUID}/instances/${searchObj.SOPInstanceUID}`;
+        console.log('   -- [fetchAndLoadDCMSeg()] urlTmp: ', urlTmp)
 
     } catch (error){
         try{
@@ -261,6 +266,7 @@ async function fetchAndLoadDCMSeg(searchObj, imageIds, maskType){
             const derivedVolumeScalarData     = await derivedVolume.getScalarData();
             await derivedVolumeScalarData.set(new Uint8Array(generateToolState.labelmapBufferArray[0]));
             
+            
             // Step 5 - Set variables and colors
             try{
                 // console.log(' - [fetchAndLoadDCMSeg(',maskType,')]: segReprUIDs: ', segReprUIDs)
@@ -288,6 +294,10 @@ async function fetchAndLoadDCMSeg(searchObj, imageIds, maskType){
             } catch (error){
                 console.log('   -- [fetchAndLoadDCMSeg()] For maskType:', maskType, ' || Error: ', error);
             }
+
+            // Step 99 - ?
+            await updateGUIElementsHelper.setSliceIdxForViewPortFromGlobalSliceIdxVars(false)
+
         } catch (error){
             console.log('   -- [fetchAndLoadDCMSeg()] For maskType:', maskType, ' || Error: ', error);
         }
