@@ -108,8 +108,8 @@ async function fetchAndLoadDCMSeg(searchObj, imageIds, maskType){
         const dicomData = dcmjs.data.DicomMessage.readFile(arrayBuffer);
         dataset         = dcmjs.data.DicomMetaDictionary.naturalizeDataset(dicomData.dict); 
         dataset._meta   = dcmjs.data.DicomMetaDictionary.namifyDataset(dicomData.meta);
-        const urlTmp = `${client.wadoURL}/studies/${searchObj.StudyInstanceUID}/series/${searchObj.SeriesInstanceUID}/instances/${searchObj.SOPInstanceUID}`;
-        console.log('   -- [fetchAndLoadDCMSeg()] urlTmp: ', urlTmp)
+        // const urlTmp = `${client.wadoURL}/studies/${searchObj.StudyInstanceUID}/series/${searchObj.SeriesInstanceUID}/instances/${searchObj.SOPInstanceUID}`;
+        // console.log('   -- [fetchAndLoadDCMSeg()] urlTmp: ', urlTmp)
 
     } catch (error){
         try{
@@ -242,7 +242,7 @@ async function fetchAndLoadDCMSeg(searchObj, imageIds, maskType){
     else if (dataset.Modality === config.MODALITY_SEG){
         // Step 2 - Read dicom tags and generate a "toolState".
         // Important keys here are toolState.segmentsOnFrame (for debugging) and toolState.labelmapBufferArray
-        console.log('   -- [fetchAndLoadDCMSeg()] maskType: ', maskType, ' || imageIds[0]', imageIds[0])
+        // console.log('   -- [fetchAndLoadDCMSeg()] maskType: ', maskType, ' || imageIds[0]', imageIds[0])
         try{
             const generateToolState = await cornerstoneAdapters.adaptersSEG.Cornerstone3D.Segmentation.generateToolState(
                 imageIds,

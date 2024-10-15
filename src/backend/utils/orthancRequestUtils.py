@@ -13,7 +13,7 @@ import pydicom
 import pprint
 import traceback
 import numpy as np
-from pathlib import Path
+from pathlib import Path, WindowsPath
 import matplotlib.pyplot as plt
 
 import pydicom_seg # to read .dcm with modality=SEG
@@ -25,6 +25,7 @@ MODALITY_SEG = 'SEG'
 URL_ROOT = 'http://localhost:8042'
 URL_ENDPOINT = 'dicom-web'
 
+KEY_ID           = 'ID'
 KEY_ORTHANC_ID   = 'OrthancId'
 KEY_STUDIES    = 'Studies'
 KEY_SERIES     = 'Series'
@@ -235,8 +236,58 @@ def plot(ctArray, ptArray, maskPredArray=None):
     except:
         traceback.print_exc()
 
-def getSegsArray(patientId, patientIdObj):
+def getPyDicomObjects(patientId, patientIdObj, modality, seriesDesc=None):
 
+    try:
+        
+        # Step 0 - Init
+        modalitySeriesURL = '/'.join([URL_ROOT, KEY_SERIES.lower(), '{}', KEY_INSTANCES.lower()])
+        instanceURL       = '/'.join([URL_ROOT, KEY_INSTANCES.lower(), '{}', 'file'])
+        modalitySeriesOrthancId = None
+        listOfPydicomObjects = []
+
+        # Step 1 - Get Orthanc Series ID
+        for seriesObj in patientIdObj[patientId][KEY_STUDIES][0][KEY_SERIES]:
+            if seriesObj[KEY_MODALITY] == modality:
+                if seriesDesc is not None and seriesObj[KEY_SERIES_DESC] == seriesDesc:
+                    modalitySeriesOrthancId = seriesObj[KEY_SERIES_ORTHANC_ID]
+                else:
+                    modalitySeriesOrthancId = seriesObj[KEY_SERIES_ORTHANC_ID]
+
+        # Step 2 - Get URLs
+        queryForSeries    = modalitySeriesURL.format(modalitySeriesOrthancId)
+        responseForSeries = requests.get(queryForSeries)
+        if responseForSeries.status_code == 200:
+            instance_uids = responseForSeries.json()
+
+            with tempfile.TemporaryDirectory() as tmpDirPath:
+                for instance_uid_obj in instance_uids:
+                    # print (' - instance_uid: ', instance_uid_obj[KEY_ID])
+                    queryForInstance = instanceURL.format(instance_uid_obj[KEY_ID])
+                    responseForInstance = requests.get(queryForInstance)
+                    if responseForInstance.status_code == 200:
+                        with open(Path(tmpDirPath) / 'instance.dcm', 'wb') as f:
+                            f.write(responseForInstance.content)
+                            ds = pydicom.dcmread(f.name)
+                            listOfPydicomObjects.append(ds)
+    
+        # Step 3 - Sort listOfPydicomObjects
+        try:
+            listOfPydicomObjects.sort(key=lambda x: float(x.ImagePositionPatient[2]))
+            # listOfPydicomObjects = sorted(listOfPydicomObjects, key=lambda x: x.InstanceNumber)
+        except:
+            pass
+
+    except:
+        traceback.print_exc()
+        pdb.set_trace()
+    
+    return listOfPydicomObjects
+
+def getSegsArray(patientId, patientIdObj):
+    """
+    The arrayGT and arrayPred are in the shape of [depth, H, W]
+    """
     try:
         
         # Step 0 - Init
@@ -327,6 +378,51 @@ def downloadPatientZip(patientId, patientIdObj, modality=[], returns=False):
         traceback.print_exc()
         pdb.set_trace()
 
+def getSegArrayInShapeMismatchScene(listObjsCT, pathSeg):
+    """
+    Following RAS orientation (or inferior to superior), the 0th slice is the most inferior slice (i.e. towards feet) and the last slice is the most superior slice (i.e. towards head).
+    """
+
+    try:
+        # Step 0 - Init
+        startIdx, endIdx = -1, -1
+        segArray = None
+
+        # Step 1 - Get PyDicomObjects
+        
+        listObjSEG = pydicom.dcmread(pathSeg)
+
+        # Step 2 - Find the start index
+        segImagePositionPatientStart = listObjSEG.PerFrameFunctionalGroupsSequence[-1].PlanePositionSequence[0].ImagePositionPatient
+        segImagePositionPatientEnd   = listObjSEG.PerFrameFunctionalGroupsSequence[0].PlanePositionSequence[0].ImagePositionPatient
+        for idx, objCT in enumerate(listObjsCT):
+            if objCT.ImagePositionPatient == segImagePositionPatientStart:
+                startIdx = idx
+            elif objCT.ImagePositionPatient == segImagePositionPatientEnd:
+                endIdx = idx
+
+        # Step 3 - Create an empty segmentation array using the shape of the CT
+        # print (' - [INFO] startIdx: ', startIdx, ' endIdx: ', endIdx)
+        if startIdx != -1 and endIdx != -1:
+            listObjSEGArray = listObjSEG.pixel_array
+            segArray = np.zeros(listObjsCT[0].pixel_array.shape + (len(listObjsCT),))
+            for iter, i in enumerate(range(startIdx, endIdx+1)): segArray[..., endIdx-iter] = listObjSEGArray[iter] # iter=0 seems to be superior here
+
+            # segArray[..., endIdx: startIdx+1] = listObjSEG.pixel_array.reshape(listObjSEG.Rows, listObjSEG.Columns, -1)
+            # plt.imshow(segArray[:,:,endIdx]); plt.title('SliceIdx: ' + str(endIdx)); plt.show()
+            # plt.imshow(segArray[:,:,endIdx+1]); plt.title('SliceIdx: ' + str(endIdx+1)); plt.show() # should be nothing here
+            # plt.imshow(segArray[:,:,startIdx]); plt.title('SliceIdx: ' + str(startIdx)); plt.show()
+            # plt.imshow(segArray[:,:,startIdx-1]); plt.title('SliceIdx: ' + str(startIdx-1)); plt.show() # should be nothing here
+            # plt.imshow(segArray[:,:,startIdx+1]); plt.title('SliceIdx: ' + str(startIdx+1)); plt.show() 
+
+        # pdb.set_trace()
+
+    except:
+        traceback.print_exc()
+        pdb.set_trace()
+    
+    return segArray
+
 if __name__ == '__main__':
 
     try:
@@ -340,8 +436,15 @@ if __name__ == '__main__':
         if patientIdForDownload is not None:
             patientIdObj = getOrthancPatientIds(patientIdForDownload)
 
-            if 1:
+            if 0:
                 arrayGT, arrayPred = getSegsArray(patientIdForDownload, patientIdObj)
+            elif 0:
+                # listObjsCT = getPyDicomObjects(patientIdForDownload, patientIdObj, MODALITY_CT)
+                listObjsSEGGT = getPyDicomObjects(patientIdForDownload, patientIdObj, MODALITY_SEG, seriesDesc=SERIES_DESC_GT.format(patientIdForDownload))
+            elif 1:
+                listObjsCT = getPyDicomObjects(patientIdForDownload, patientIdObj, MODALITY_CT)
+                pathSeg = 'D:\\HCAI\\Project 5 - Interactive Contour Refinement\\code\\cornerstone3D-trials\\_experiments\\2024-10-15 12-06-39 -- gracious_torvalds__Prerak-Mody-NonExpert\\CHMR028-ManualRefine-1.dcm'
+                _ = getSegArrayInShapeMismatchScene(listObjsCT, pathSeg)
             elif 0:
                 downloadPatientZip(patientIdForDownload, patientIdObj, modality=[MODALITY_SEG], returns=True)
         
@@ -372,4 +475,6 @@ curl -X GET http://localhost:8042/instances/8ba755b5-103b0834-405c40bd-b39e565c-
 [Fail] curl -X GET http://localhost:8042/instances/1.2.826.0.1.3680043.8.498.78325365302799724640799265451668049689
 [Fail] curl -X GET http://localhost:8042/instances/1.2.826.0.1.3680043.8.498.78325365302799724640799265451668049689/file3
 [Works] curl -X GET http://localhost:8042/instances/a6843d8b-58e0adf0-4b05b279-d78017ee-75fb0bf7/file --output seg.dcm^
+
+curl -X GET http://localhost:8042/series/164b5fa2-a98a839f-0c806186-c7beda38-930f5a76 --output seg.dcm
 """

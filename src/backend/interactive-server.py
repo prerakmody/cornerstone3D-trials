@@ -2066,6 +2066,8 @@ async def uploadManualRefinement(file: fastapi.UploadFile = fastapi.File(...), i
             counter = SESSIONSGLOBAL[clientIdentifier][caseName][KEY_MANUAL_COUNTER]
             dicom_dataset.SeriesDescription = '-'.join([caseName, SERIESDESC_SUFFIX_REFINE_MAN, Path(pathFolderMask).parts[-1], str(counter)])
             dicom_dataset.SeriesNumber      = SERIESNUM_REFINE_MANUAL
+            dicom_dataset.PatientName       = caseName
+            dicom_dataset.PatientID         = caseName
         except Exception as e:
             traceback.print_exc()
             raise fastapi.HTTPException(status_code=500, detail="Error in /uploadManualRefinement => dicom tag modification failed")

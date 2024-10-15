@@ -446,18 +446,20 @@ function setMouseAndKeyboardEvents(){
             
             // Step 2.2.2 - Handle brush/eraser tool
             if (getBrushOrEraserToolMode() === config.MODE_ACTIVE){
-                console.log('   -- [setMouseAndKeyboardEvents()] getBrushOrEraserToolMode() === config.MODE_ACTIVE: ');
                 
                 // Step 1 - Get data
                 const volumeCT           = cornerstone3D.cache.getVolume(config.volumeIdCT);
                 const predSegUID         = config.predSegmentationUIDs[0];
                 const images             = volumeCT.getCornerstoneImages();
                 const segmentationVolume = cornerstone3D.cache.getVolume(config.predSegmentationId);
-                const labelMapObj = cornerstoneAdapters.adaptersSEG.Cornerstone3D.Segmentation.generateLabelMaps2DFrom3D(segmentationVolume)
+                const labelMapObj = cornerstoneAdapters.adaptersSEG.Cornerstone3D.Segmentation.generateLabelMaps2DFrom3D(segmentationVolume) 
+                // labelMapObj.dimensions = [144,144,144], but labelMapObj.labelmaps2D only contains mask data
+                // labelMapObj.numFrames = 0 [Why?]
 
                 // Step 2 - Generate fake metadata as an example
                 labelMapObj.metadata = [];
-                labelMapObj.segmentsOnLabelmap.forEach(segmentIndex => {
+                console.log('   -- [setMouseAndKeyboardEvents()] labelMapObj: ', labelMapObj);
+                labelMapObj.segmentsOnLabelmap.forEach(segmentIndex => { // only 1 segment in this project
                     const color = cornerstone3DTools.segmentation.config.color.getColorForSegmentIndex(
                         config.toolGroupIdContours,
                         predSegUID,

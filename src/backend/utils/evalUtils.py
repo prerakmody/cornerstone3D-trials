@@ -90,9 +90,16 @@ def eval(pathsManualExperiments, pathsSemiAutoExperiments):
           
         # Step 2 - Get GT/Pred
         for patientId in allPatientIds:
+            
+            # Step 2.0 - Init
             resDICE[patientId] = {KEY_MANUAL_DICE:[], KEY_SEMIAUTO_DICE:[]}
-            patientIdObj = orthancRequestUtils.getOrthancPatientIds(patientId)
+
+            # Step 2.1 - Some .dcm and Orthanc stuff
+            patientIdObj       = orthancRequestUtils.getOrthancPatientIds(patientId)
             arrayGT, arrayPred = orthancRequestUtils.getSegsArray(patientId, patientIdObj)
+            listObjsCT         = orthancRequestUtils.getPyDicomObjects(patientId, patientIdObj, orthancRequestUtils.MODALITY_CT)
+
+            # Step 2.2 - Get the GT and Pred masks (and compute DICE for step=0)
             baseDICE = compute_dice(arrayGT, arrayPred, meta=f"{patientId} - GT/Pred")
             resDICE[patientId][KEY_MANUAL_DICE].append(baseDICE)
             resDICE[patientId][KEY_SEMIAUTO_DICE].append(baseDICE)
@@ -100,31 +107,35 @@ def eval(pathsManualExperiments, pathsSemiAutoExperiments):
             resPlot.append([patientId, KEY_SEMIAUTO_DICE, 0, baseDICE])
 
             # Step 3.1 - Read patientsManual[patientId] and compute DICE
-            if 0:
-                for fileId, dcmFile in enumerate(patientsManual[patientId]):
+            if 1:
+                arrayGTCopy = arrayGT.copy()
+                arrayGTForManual = np.moveaxis(arrayGTCopy,[0,1,2], [2,0,1])
+                for fileId, pathDcmFile in enumerate(patientsManual[patientId]):
                     try:
-                        ds = pydicom.dcmread(dcmFile)
-                        maskArray = ds.pixel_array
-                        dice = compute_dice(maskArray, arrayGT, meta=f"{patientId} - {dcmFile}")
+                        maskArrayManualRefine = orthancRequestUtils.getSegArrayInShapeMismatchScene(listObjsCT, pathDcmFile)
+                        dice = compute_dice(maskArrayManualRefine.astype(np.uint8), arrayGTForManual, meta=f"{patientId} - {pathDcmFile}")
+                        if 0:
+                            sliceIdx = 71; plt.imshow(maskArrayManualRefine[:,:,sliceIdx], cmap='gray'); plt.imshow(arrayGTForManual[:,:,sliceIdx], alpha=0.5, cmap='gray');plt.show()
+                        # print (f" - [INFO][eval()][{KEY_MANUAL_DICE}][id={fileId}] patientId: {patientId} id: {fileId} dice: {dice}")
                         resDICE[patientId][KEY_MANUAL_DICE].append(dice)
                         resPlot.append([patientId, KEY_MANUAL_DICE, fileId+1, dice])
                     except:
-                        print (f" - [ERROR][eval()][{KEY_MANUAL_DICE}][id={fileId}] Error in patientId: {patientId} dcmFile: {dcmFile}")
+                        print (f" - [ERROR][eval()][{KEY_MANUAL_DICE}][id={fileId}] Error in patientId: {patientId} dcmFile: {pathDcmFile}")
                         traceback.print_exc()
                         pdb.set_trace()
                         resDICE[patientId][KEY_MANUAL_DICE].append(-1)
 
             # Step 3.2 - Read patientsSemiAuto[patientId] and compute DICE
             if 1:
-                for fileId, dcmFile in enumerate(patientsSemiAuto[patientId]):
+                for fileId, pathDcmFile in enumerate(patientsSemiAuto[patientId]):
                     try:
-                        ds = pydicom.dcmread(dcmFile)
+                        ds = pydicom.dcmread(pathDcmFile)
                         maskArray = ds.pixel_array
-                        dice = compute_dice(maskArray, arrayGT, meta=f"{patientId} - {dcmFile}")
+                        dice = compute_dice(maskArray, arrayGT, meta=f"{patientId} - {pathDcmFile}")
                         resDICE[patientId][KEY_SEMIAUTO_DICE].append(dice)
                         resPlot.append([patientId, KEY_SEMIAUTO_DICE, fileId+1, dice])
                     except:
-                        print (f" - [ERROR][eval()][{KEY_SEMIAUTO_DICE}][id={fileId}] Error in patientId: {patientId} dcmFile: {dcmFile}")
+                        print (f" - [ERROR][eval()][{KEY_SEMIAUTO_DICE}][id={fileId}] Error in patientId: {patientId} dcmFile: {pathDcmFile}")
                         traceback.print_exc()
                         resDICE[patientId][KEY_SEMIAUTO_DICE].append(-1)
         
